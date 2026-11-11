@@ -28,6 +28,14 @@ dotnet format backend/Subscribed.slnx --verify-no-changes
 Running the app locally, the admin CLI and the configuration keys are described in
 [`backend/README.md`](backend/README.md); production deployment in [`deploy/README.md`](deploy/README.md).
 
+## Container releases
+
+Push a version tag such as `v0.1.0` to run CI, publish the Docker image to
+`ghcr.io/kimipsen/subscribed`, and create a GitHub Release with SPDX SBOMs, the source commit SHA,
+image SHA-256 digest and downloadable checksums. See the
+[release instructions](deploy/README.md#github-container-releases) for permissions, verification
+and digest-pinned deployment.
+
 ## Security model in one paragraph
 
 The browser only talks to the same-origin backend. The backend is a confidential OIDC client
