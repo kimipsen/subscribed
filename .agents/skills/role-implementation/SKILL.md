@@ -25,3 +25,9 @@ before editing application code.
   after three review rounds if still unresolved.
 - Hand off changed files, validation results, limitations, and any actual UI
   screenshots. Integration checks must pass before publication.
+- When the coordinator returns PR review, Actions or SonarQube/SonarCloud
+  findings, fix relevant issues in the assigned worktree and rerun checks.
+  Hand changes back for review/publication; do not push or resolve review
+  threads yourself. Existing review limits still apply. The coordinator must
+  repeat the [post-publication gate](../../../docs/agentic-flow.md#post-publication-gate)
+  after each update before declaring the overall task complete.
