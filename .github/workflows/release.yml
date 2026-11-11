@@ -65,6 +65,7 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ env.RELEASE_TAG }}
             ${{ env.IMAGE }}:sha-${{ env.SOURCE_COMMIT }}
+            ${{ !contains(env.RELEASE_TAG, '-') && format('{0}:latest', env.IMAGE) || '' }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ env.SOURCE_COMMIT }}
