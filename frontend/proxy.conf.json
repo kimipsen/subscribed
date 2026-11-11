@@ -1,0 +1,6 @@
+{
+  "/api/**": { "target": "http://localhost:5080", "secure": false },
+  "/bff/**": { "target": "http://localhost:5080", "secure": false },
+  "/signin-oidc": { "target": "http://localhost:5080", "secure": false },
+  "/health/**": { "target": "http://localhost:5080", "secure": false }
+}

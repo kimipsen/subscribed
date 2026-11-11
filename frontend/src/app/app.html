@@ -1,0 +1,35 @@
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <a class="brand" routerLink="/">Subscribed</a>
+  @if (session.current().state === 'member') {
+    <button class="menu" type="button" aria-controls="primary-nav"
+      [attr.aria-expanded]="menuOpen()" (click)="menuOpen.set(!menuOpen())">Menu</button>
+  }
+  <span class="spacer"></span>
+  @if (session.current().state === 'member' || session.current().state === 'not-member') {
+    <button type="button" (click)="session.signOut()" [disabled]="session.logoutPending()">
+      {{ session.logoutPending() ? 'Signing out...' : 'Sign out' }}
+    </button>
+  }
+</header>
+<div class="layout" [class.member]="session.current().state === 'member'">
+  @if (session.current().state === 'member') {
+    <nav id="primary-nav" aria-label="Primary" [class.open]="menuOpen()" tabindex="-1"
+      (keydown.escape)="menuOpen.set(false)">
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}"
+        ariaCurrentWhenActive="page">Home</a>
+      <a routerLink="/household" routerLinkActive="active" ariaCurrentWhenActive="page">Household</a>
+    </nav>
+  }
+  <main id="main" tabindex="-1">
+    @if (session.expired()) {
+      <div role="alert" class="notice">Your session expired.
+        <button type="button" (click)="session.signIn(router.url)">Sign in again</button>
+      </div>
+    }
+    @if (session.logoutError(); as error) {
+      <div class="error" role="alert">{{ error }}</div>
+    }
+    <router-outlet />
+  </main>
+</div>
