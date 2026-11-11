@@ -1,0 +1,70 @@
+name: CI
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (build, PostgreSQL 18 tests, format)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          # Throwaway CI-only cluster on the runner; the job generates its own test password below.
+          POSTGRES_PASSWORD: postgres-ci-bootstrap
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      CI: "true"
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 11.0.100
+      - name: Test database role with a generated password
+        run: |
+          PW="$(openssl rand -hex 16)"
+          echo "::add-mask::$PW"
+          PGPASSWORD=postgres-ci-bootstrap psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE subscribed_ci LOGIN CREATEDB CREATEROLE PASSWORD '$PW'"
+          echo "SUBSCRIBED_TEST_DB=Host=127.0.0.1;Port=5432;Username=subscribed_ci;Password=$PW;Database=postgres" >> "$GITHUB_ENV"
+      - run: dotnet restore backend/Subscribed.slnx --locked-mode
+      - run: dotnet build backend/Subscribed.slnx -c Release -warnaserror --no-restore
+      - run: dotnet test backend/Subscribed.slnx -c Release --no-build
+      - run: dotnet format backend/Subscribed.slnx --verify-no-changes --no-restore
+
+  frontend:
+    name: Frontend (lint, unit tests, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.22.2
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run lint
+      - run: npm --prefix frontend run test:ci
+      - run: npm --prefix frontend run build
+
+  workflow:
+    name: Agent workflow regression tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s tests -v

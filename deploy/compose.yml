@@ -1,0 +1,59 @@
+# Production compose (design §10.2): the Subscribed container only. PostgreSQL and Keycloak are
+# EXTERNAL services; nothing here creates databases, roles, realms or users.
+#   C="docker compose -f deploy/compose.yml"
+#   $C --profile tools run --rm migrate         # schema + grants (migrator)
+#   $C up -d                                    # app
+#   $C run --rm subscribed admin household init --name "..." --owner-subject "<sub>" --owner-label "..."
+# Endpoints come from deploy/.env (copy .env.example); credentials only from deploy/secrets/*.
+name: subscribed
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  subscribed:
+    <<: *hardening
+    image: ${SUBSCRIBED_IMAGE:?set SUBSCRIBED_IMAGE in deploy/.env}
+    restart: unless-stopped
+    ports:
+      # Bind to loopback; the TLS-terminating reverse proxy forwards to it.
+      - "127.0.0.1:${SUBSCRIBED_PORT:-8080}:8080"
+    environment:
+      App__PublicOrigin: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN}
+      App__KnownProxies: ${KNOWN_PROXIES:-}
+      Oidc__Authority: ${OIDC_AUTHORITY:?set OIDC_AUTHORITY}
+      Oidc__ClientId: ${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID}
+      Oidc__IdpLogout: ${OIDC_IDP_LOGOUT:-ClientId}
+      Database__Schema: ${DB_SCHEMA:-subscribed}
+    secrets:
+      # Key-per-file: /run/secrets/<Section>__<Key> → configuration key Section:Key.
+      - source: oidc_client_secret
+        target: Oidc__ClientSecret
+      - source: app_connection
+        target: ConnectionStrings__Subscribed
+
+  migrate:
+    <<: *hardening
+    profiles: [tools]
+    image: ${SUBSCRIBED_IMAGE:?set SUBSCRIBED_IMAGE in deploy/.env}
+    restart: "no"
+    command: ["admin", "db", "migrate"]
+    environment:
+      Database__Schema: ${DB_SCHEMA:-subscribed}
+      Database__AppRole: ${DB_APP_ROLE:-subscribed_app}
+    secrets:
+      - source: migrator_connection
+        target: ConnectionStrings__SubscribedMigrator
+
+secrets:
+  oidc_client_secret:
+    file: ./secrets/oidc_client_secret
+  app_connection:
+    file: ./secrets/app_connection
+  migrator_connection:
+    file: ./secrets/migrator_connection

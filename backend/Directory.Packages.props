@@ -1,0 +1,22 @@
+<Project>
+  <!-- Exact versions only. Evidence for the event-store choice: backend/README.md "B-1". -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Runtime -->
+    <PackageVersion Include="Marten" Version="[9.59.0]" />
+    <PackageVersion Include="Npgsql" Version="[9.0.4]" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="[11.0.0]" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.KeyPerFile" Version="[11.0.0]" />
+    <!-- Tests -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="[18.11.1]" />
+    <PackageVersion Include="xunit.v3" Version="[4.0.3]" />
+    <PackageVersion Include="xunit.v3.extensibility.core" Version="[4.0.3]" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="[4.0.1]" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="[11.0.0]" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="[11.0.0]" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="[8.23.0]" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Subscribed.TestSupport</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+    <PackageReference Include="xunit.v3.extensibility.core" />
+    <ProjectReference Include="../../src/Subscribed.Platform/Subscribed.Platform.csproj" />
+    <ProjectReference Include="../../src/Subscribed.Household/Subscribed.Household.csproj" />
+  </ItemGroup>
+
+</Project>

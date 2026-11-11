@@ -1,0 +1,15 @@
+.git
+.agentic
+**/node_modules
+**/dist
+**/bin
+**/obj
+**/TestResults
+**/coverage
+**/__pycache__
+**/.env
+**/.env.*
+**/secrets
+**/*.dump
+**/*.pfx
+**/*.p12

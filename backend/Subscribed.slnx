@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Subscribed.Api/Subscribed.Api.csproj" />
+    <Project Path="src/Subscribed.Household/Subscribed.Household.csproj" />
+    <Project Path="src/Subscribed.Platform/Subscribed.Platform.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Subscribed.Api.Tests/Subscribed.Api.Tests.csproj" />
+    <Project Path="tests/Subscribed.Persistence.Tests/Subscribed.Persistence.Tests.csproj" />
+    <Project Path="tests/Subscribed.TestSupport/Subscribed.TestSupport.csproj" />
+    <Project Path="tests/Subscribed.UnitTests/Subscribed.UnitTests.csproj" />
+  </Folder>
+</Solution>

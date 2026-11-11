@@ -1,0 +1,9 @@
+<Project>
+  <!-- Design §14.3: xUnit v3 through the VSTest adapter, so `dotnet test <slnx>` works without a
+       global.json "test" runner section (global.json is owned by the toolchain role). -->
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+    <UseMicrosoftTestingPlatformRunner>false</UseMicrosoftTestingPlatformRunner>
+    <TestingPlatformDotnetTestSupport>false</TestingPlatformDotnetTestSupport>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+  </PropertyGroup>
+</Project>
