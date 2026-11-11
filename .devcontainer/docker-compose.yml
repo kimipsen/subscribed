@@ -21,17 +21,13 @@ services:
   db:
     image: postgres:18
     restart: unless-stopped
-    # Headroom only: the API is bounded by its single shared pool (all Marten stores,
-    # Maximum Pool Size 50, see src/backend/buddy/Common/Postgres/PostgresDataSource.cs),
-    # but Keycloak, psql, the db:marten:* tasks and a second API/test host share this server.
+    # Allow headroom for local development and integration-test connections.
     command: ["postgres", "-c", "max_connections=200"]
     volumes:
       # PostgreSQL 18+ images store data in a major-version subdirectory, so the
       # mount belongs at /var/lib/postgresql, not /var/lib/postgresql/data.
       - postgres-data:/var/lib/postgresql
-      # Runs once against an empty data directory: creates the separate
-      # "keycloak" database (and a dedicated role, if KC_DB_USERNAME differs
-      # from POSTGRES_USER) the keycloak service below expects.
+      # Optional and not mounted: Keycloak is external to this development stack.
       # - ./postgres/init-keycloak-db.sh:/docker-entrypoint-initdb.d/init-keycloak-db.sh
     # Credentials live in .devcontainer/.env (gitignored). See .env.example.
     env_file:
