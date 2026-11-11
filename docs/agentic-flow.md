@@ -10,6 +10,7 @@ This repository provides four reusable skills and a resumable Python CLI:
 | Backend | Claude Code, separate worktree | Project checks + Copilot, at most 3 rounds |
 | Combined integration | Local integration worktree | Both roles' configured checks |
 | Publication | Explicit `publish` command | Draft GitHub PRs, never auto-merged |
+| Post-publication verification | Coordinator, with role authors fixing findings | Latest-commit Actions/checks complete; PR feedback and Sonar findings addressed |
 
 The three-round limit includes the first review. Exhaustion, malformed feedback,
 failed checks, missing artifacts, and CLI errors block progress rather than imply
@@ -122,6 +123,55 @@ design branch. Review/merge the design PR first, retarget implementation PRs to
 the original base, and rerun CI. Keep the design branch until dependents are
 retargeted. Do not merge the local integration branch: it exists only for tests.
 Publication can resume after partial failure; open PRs are reused.
+
+## Post-publication gate
+
+Creating a PR or pushing a fix is not completion. The coordinator owns this gate for **every**
+published PR, including manually created PRs, and repeats it after every push, rebase or
+retargeting that changes the checked source/base. The current CLI `publish` command only pushes
+branches and creates PRs: it does **not** automate this gate. A published CLI state is not evidence
+that CI, PR review or Sonar analysis succeeded.
+
+1. Record the PR's current head SHA and enumerate its Actions runs, check runs and commit statuses.
+   Wait for **all** applicable workflows/checks to finish, not just the first build or required
+   check. Include tests, image/release jobs triggered by this update and asynchronous
+   SonarQube/SonarCloud analysis. Verify results belong to the latest head SHA; if it changes,
+   restart verification. Do not start a release or create a tag merely to satisfy this gate.
+2. Inspect unsuccessful job logs and annotations. Also read PR reviews, general comments, inline
+   comments and unresolved review threads, including automated reviewer feedback. An all-green
+   build alone does not mean the PR has no outstanding issues.
+3. Inspect the SonarQube/SonarCloud quality gate **and** findings for the PR analysis, following
+   the analysis/check link when necessary. Check new-code issues and relevant security hotspots;
+   do not assume a passed quality gate means there are no actionable findings. If analysis is
+   expected but not yet reported, continue waiting. If it is unconfigured, inaccessible or fails
+   for an external reason, report that explicitly rather than claiming Sonar is clean.
+4. Fix defects introduced by or tightly coupled to the PR in its implementation branch/worktree.
+   Do not suppress quality gates, weaken tests, dismiss valid feedback or make unrelated baseline
+   repairs to obtain green checks. Delegate fixes to the assigned role when appropriate; rerun
+   local checks and required implementation review, then commit and push to the **same PR**.
+   Preserve existing review counters and caps. Explain addressed feedback on the PR; resolve a
+   thread only after verifying its issue is actually fixed.
+5. After pushing, repeat from step 1 for the new head SHA. Finish only when all applicable checks
+   have completed successfully (or intentional non-applicable skips are explained), relevant PR
+   feedback is addressed and Sonar's quality gate/findings have been checked. Report the verified
+   SHA, check results, Sonar result and any remaining blockers. Pending, missing, cancelled,
+   unexpectedly skipped or inaccessible verification is **not** a pass. If permissions, service
+   outages, baseline issues or the review cap block progress, report the exact limitation and do
+   not present the PR as fully verified.
+
+Useful starting points with the authenticated GitHub CLI:
+
+```sh
+gh pr view <PR> --json headRefOid,statusCheckRollup,reviews,comments
+gh pr checks <PR> --watch
+gh run list --commit <head-SHA>
+gh run view <run-ID> --log-failed
+```
+
+`gh pr checks --watch` covers checks GitHub associates with the PR, not necessarily every Actions
+run or Sonar finding. Enumerate runs separately and inspect inline review threads through the
+GitHub API or PR UI. A draft PR may have intentionally disabled analysis; do not mark it ready
+without permission or count missing analysis as successful verification.
 
 ## State and recovery
 

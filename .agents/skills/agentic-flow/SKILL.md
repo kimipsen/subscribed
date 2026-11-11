@@ -1,6 +1,6 @@
 ---
 name: agentic-flow
-description: 'Use when coordinating Claude, Codex, and Copilot through design, UI previews, human approval, isolated Git worktrees, implementation reviews, and draft GitHub PRs.'
+description: 'Use when coordinating Claude, Codex, and Copilot through design, UI previews, human approval, isolated Git worktrees, implementation reviews, draft GitHub PRs, and post-publication Actions and SonarQube/SonarCloud follow-up.'
 ---
 
 # Agentic flow
@@ -30,6 +30,19 @@ Use the repository's [workflow guide](../../../docs/agentic-flow.md) and
    discard another agent's work or waive failed checks.
 9. Report results and obtain permission to run `publish`. It pushes only the
    reviewed branches and creates draft, stacked GitHub PRs. Never auto-merge.
+10. Publication is not completion. Follow the workflow guide's
+    [post-publication gate](../../../docs/agentic-flow.md#post-publication-gate)
+    for every PR and every subsequent push. Wait for all Actions runs and PR
+    checks for the latest head SHA to finish, including builds, tests, release
+    jobs and asynchronous SonarQube/SonarCloud analysis. Inspect failed logs,
+    PR reviews/comments/unresolved threads, and Sonar quality-gate results and
+    actionable findings. Fix issues caused by or relevant to the PR, run local
+    checks, obtain required implementation review, and push to the same PR.
+    Repeat the wait-and-inspect cycle on the new SHA. Never treat missing,
+    pending, cancelled, inaccessible or unexpectedly skipped checks as passing.
+    Report unavailable Sonar analysis, permissions, external failures and
+    unrelated baseline issues explicitly; do not claim a clean result or
+    mark the task complete while required verification remains unresolved.
 
 Use `status` to resume a run. Keep feedback and run state out of source control.
 Do not reset review counters to get around the three-round cap.
