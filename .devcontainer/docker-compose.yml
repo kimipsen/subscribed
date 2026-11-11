@@ -1,0 +1,49 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    volumes:
+      - ../..:/workspaces:cached
+
+    # Overrides default command so things don't shut down after the process ends.
+    command: sleep infinity
+
+    # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
+    network_mode: service:db
+    
+    # Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+    # user: root
+
+    # Use "forwardPorts" in **devcontainer.json** to forward an app port locally. 
+    # (Adding the "ports" property to this file will not forward from a Codespace.)
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    # Headroom only: the API is bounded by its single shared pool (all Marten stores,
+    # Maximum Pool Size 50, see src/backend/buddy/Common/Postgres/PostgresDataSource.cs),
+    # but Keycloak, psql, the db:marten:* tasks and a second API/test host share this server.
+    command: ["postgres", "-c", "max_connections=200"]
+    volumes:
+      # PostgreSQL 18+ images store data in a major-version subdirectory, so the
+      # mount belongs at /var/lib/postgresql, not /var/lib/postgresql/data.
+      - postgres-data:/var/lib/postgresql
+      # Runs once against an empty data directory: creates the separate
+      # "keycloak" database (and a dedicated role, if KC_DB_USERNAME differs
+      # from POSTGRES_USER) the keycloak service below expects.
+      # - ./postgres/init-keycloak-db.sh:/docker-entrypoint-initdb.d/init-keycloak-db.sh
+    # Credentials live in .devcontainer/.env (gitignored). See .env.example.
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      
+    # Add "forwardPorts": ["5432"] to **devcontainer.json** to forward PostgreSQL locally.
+    # (Adding the "ports" property to this file will not forward from a Codespace.)
+
+volumes:
+  postgres-data:
