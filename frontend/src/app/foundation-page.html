@@ -31,7 +31,7 @@
         <h1 tabindex="-1">Welcome to Subscribed</h1>
         <p>Keep a clear view of your household's subscription expenses.</p>
         @if (authError()) { <p class="error" role="alert">{{ authError() }}</p> }
-        <button type="button" (click)="session.signIn(page() === 'household' ? '/household' : '/')">
+        <button type="button" (click)="session.signIn(returnUrl())">
           Sign in with your organisation
         </button>
         <p class="muted">Sign in is managed by your existing identity provider.</p>

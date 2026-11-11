@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -44,6 +44,28 @@ describe('Foundation UI', () => {
     const harness = await RouterTestingHarness.create('/');
     expect(harness.routeNativeElement?.textContent).toContain('next milestone');
     expect(harness.routeNativeElement?.querySelector('a[href="/household"]')).toBeTruthy();
+  });
+
+  it('guards household routes while preserving the sign-in return path', async () => {
+    session.current.set({ state: 'anonymous' });
+    await RouterTestingHarness.create('/household');
+    expect(TestBed.inject(Router).url).toBe('/welcome?returnUrl=%2Fhousehold');
+    http.expectNone('/api/household');
+  });
+
+  it('routes non-members to access denied without loading household data', async () => {
+    session.current.set({ state: 'not-member', user: { displayName: 'Synthetic', subject: 'ref' }, expiresAt: '' });
+    await RouterTestingHarness.create('/household');
+    expect(TestBed.inject(Router).url).toBe('/access-denied');
+    http.expectNone('/api/household');
+  });
+
+  it('keeps session failures unavailable rather than redirecting to sign in', async () => {
+    session.current.set({ state: 'unavailable', traceId: 'ref' });
+    const harness = await RouterTestingHarness.create('/household');
+    expect(harness.routeNativeElement?.textContent).toContain('could not be checked');
+    expect(TestBed.inject(Router).url).toBe('/household');
+    http.expectNone('/api/household');
   });
 
   it('retains input on concurrency failure and reloads the latest version', async () => {

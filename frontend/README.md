@@ -20,6 +20,8 @@ Development serves at `http://localhost:4200` and proxies `/api`, `/bff`,
 Production output is `dist/subscribed/browser`, served by the backend on the
 same origin. The backend replaces `__CSP_NONCE__` in the root element before
 serving HTML; do not serve production HTML without that substitution.
+Critical CSS inlining is disabled so the build does not introduce an inline
+stylesheet-loader script that would violate the backend's `script-src 'self'`.
 
 The browser never receives OIDC access or refresh tokens. Requests to relative
 API/BFF paths carry `X-CSRF: 1`; session failures render an explicit unavailable

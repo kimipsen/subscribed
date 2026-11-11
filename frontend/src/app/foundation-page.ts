@@ -30,6 +30,8 @@ export class FoundationPage {
     return code === 'cancelled' ? 'Sign in was cancelled. You can try again.' :
       code ? 'Sign in could not be completed. Please try again.' : '';
   });
+  readonly returnUrl = computed(() =>
+    this.route.snapshot.queryParamMap.get('returnUrl') ?? (this.page() === 'household' ? '/household' : '/'));
   readonly household = signal<Household | null>(null);
   readonly loading = signal(false);
   readonly saving = signal(false);
