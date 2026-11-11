@@ -33,6 +33,54 @@ Secrets are Docker secrets mounted as key-per-file (`/run/secrets/Oidc__ClientSe
 
 ## 3. Build, back up, migrate, run
 
+### GitHub container releases
+
+The [container release workflow](../.github/workflows/release.yml) runs on pushed version tags.
+It first runs the complete [CI workflow](../.github/workflows/ci.yml), then builds and publishes
+the production image to `ghcr.io/kimipsen/subscribed`. Tags must point to a commit on `master`.
+Supported versions are `vMAJOR.MINOR.PATCH`, optionally followed by a SemVer prerelease suffix
+(for example `v0.1.0-rc.1`); build-metadata suffixes are not supported.
+
+After committing and pushing the workflow and the desired application changes:
+
+```sh
+git tag -a v0.1.0 -m "Subscribed v0.1.0"
+git push origin v0.1.0
+```
+
+The workflow publishes `:v0.1.0` and `:sha-<full-source-commit>` image tags, for `linux/amd64`.
+There is deliberately no moving `latest` tag. Use the immutable digest from the release as
+`SUBSCRIBED_IMAGE` in `deploy/.env`, for example
+`ghcr.io/kimipsen/subscribed@sha256:<digest>`.
+
+Each GitHub Release includes:
+
+* `image.sbom.spdx.json`: SPDX inventory of the published image, scanned by its immutable digest.
+* `frontend.sbom.spdx.json`: supplementary source/lockfile inventory including development
+  dependencies, since the compiled Angular bundle does not retain its dependency metadata.
+* `SOURCE_COMMIT.txt`: full source Git SHA.
+* `IMAGE_DIGEST.txt`: fully qualified image reference with its SHA-256 manifest/index digest.
+* `release.json`: version, commit, digest, platform, build-run URL and SBOM filenames.
+* `SHA256SUMS`: SHA-256 checksums of the five files above. Download all six assets into one
+  directory and run `sha256sum --check SHA256SUMS`.
+
+Release notes repeat the commit SHA, image digest and digest-pinned pull command. BuildKit SBOM
+and maximum-mode provenance attestations are also attached to the image in GHCR. Checksums
+detect file corruption; they are not cryptographic signatures.
+
+No PAT is needed: the workflow uses `GITHUB_TOKEN` with package/release write access only in the
+publishing job. Repository/organization policies must permit those permissions and GHCR package
+creation. A newly created GHCR package can be private; change its package visibility if anonymous
+pulls are required. If a package already exists, grant this repository Actions access to it.
+
+The release is created as a draft and only published after every asset uploads successfully.
+Prerelease tags produce prereleases. A failed draft upload can be retried; an already published
+release is never overwritten. Do not move release tags or rebuild an already published version:
+base images can change, so use a new version instead. A failure after pushing the image may leave
+an image without a published release; resolve the failed run before using that image.
+
+### Local build and deployment
+
 ```sh
 docker build -f deploy/Dockerfile -t subscribed:<version> .     # from the repo root
 pg_dump -Fc -n subscribed … > backup.dump                         # back up first
