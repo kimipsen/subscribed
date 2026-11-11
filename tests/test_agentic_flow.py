@@ -345,6 +345,24 @@ class FlowTests(unittest.TestCase):
                 flow.run_agent("claude", "task", {"worktree": str(self.repo)}, self.folder, "failure")
         self.assertIn("provider failed", (self.folder / "failure.error.txt").read_text())
 
+    def test_design_prompt_bounds_scope_and_artifact_size(self):
+        self.init()
+        self.invoke("advance", "example")
+        author_prompt = flow.run_agent.call_args_list[0].args[1]
+        self.assertIn("below 40 KB", author_prompt)
+        self.assertIn("do not design later milestones", author_prompt)
+        self.assertIn("Do not implement the application", author_prompt)
+        self.assertIn("Do not send private repository content", author_prompt)
+        self.assertIn("source URL and observed version fields", author_prompt)
+
+    def test_review_prompt_reports_measured_diff_size(self):
+        self.init()
+        self.invoke("advance", "example")
+        stage = self.state()["stages"]["design"]
+        diff = flow.git(stage["worktree"], "diff", "--binary", stage["base"], stage["head"])
+        review_prompt = flow.run_agent.call_args_list[1].args[1]
+        self.assertIn(f"Complete diff size: {len(diff.encode())} bytes", review_prompt)
+
     def test_conflicting_roles_block_integration(self):
         self.init()
         self.invoke("advance", "example")
@@ -467,6 +485,8 @@ class FlowTests(unittest.TestCase):
                 flow.run_agent(provider, "task", stage, self.folder, provider)
             args = [call.args[0] for call in execute.call_args_list]
             self.assertIn("acceptEdits", args[0])
+            self.assertEqual(args[0][args[0].index("--allowedTools") + 1], "WebFetch,WebSearch")
+            self.assertFalse(any("Bash" in item for item in args[0]))
             self.assertIn("workspace-write", args[1])
             self.assertIn("--available-tools=view,glob,grep", args[2])
             self.assertIn("--deny-tool=write,shell", args[2])

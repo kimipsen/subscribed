@@ -34,8 +34,13 @@ stashes that checkout. No agent calls or GitHub publication occur during setup.
 
 Review the installed CLIs' permissions and repository hooks/MCP configuration
 before use. Claude uses `--permission-mode acceptEdits` without permission bypass;
-shell commands may still need narrowly scoped permissions in your Claude
-configuration. Codex uses `exec --sandbox workspace-write`, not unrestricted
+`WebFetch` and `WebSearch` are explicitly allowed so headless design sessions can
+verify public documentation without waiting for an interactive permission prompt.
+Never send private repository content, credentials, or personal data to these
+tools. Shell commands still need narrowly scoped permissions in your Claude
+configuration; no blanket shell access is granted. Report permission denials
+rather than trying alternate commands to evade them.
+Codex uses `exec --sandbox workspace-write`, not unrestricted
 execution. Copilot has only `view`, `glob`, and `grep` tools and cannot use shell
 or write tools. Model selection comes from each CLI's configuration.
 If a CLI rejects a new worktree as untrusted, inspect its repository configuration
@@ -133,6 +138,10 @@ Publication can resume after partial failure; open PRs are reused.
 - Review inputs are never silently truncated. Diffs larger than 60 KB must be
   split into smaller tasks. Copilot's full prompt is subject to OS argument limits;
   an oversized prompt fails explicitly rather than producing a partial review.
+  Design prompts ask for less than 40 KB of combined artifacts to leave revision
+  headroom. This is guidance, not a replacement for the enforced 60 KB diff limit.
+  Review prompts include the measured diff size. Designs must record source URLs
+  and observed version fields, distinguishing declared support from tested behavior.
 - A changed approved HEAD or dirty approved worktree blocks further progress.
   A moved remote base blocks publication. Resolve/rebase and create a fresh,
   fully reviewed run; do not edit approval state to bypass validation.

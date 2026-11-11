@@ -153,6 +153,7 @@ def run_agent(provider, prompt, stage, directory, label):
         argv = [
             "claude", "-p", "--output-format", "text",
             "--permission-mode", "acceptEdits",
+            "--allowedTools", "WebFetch,WebSearch",
         ]
         input_text = prompt
     elif provider == "codex":
@@ -232,7 +233,16 @@ def review_stage(state, role, directory, state_path):
             task = (
                 f"Create/revise {folder}/design.md: architecture, alternatives, risks, "
                 "acceptance criteria, API contracts, test strategy, and explicit "
-                "frontend/backend/shared-file ownership. Do not implement the application."
+                "frontend/backend/shared-file ownership. Do not implement the application. "
+                "Keep all design artifacts together below 40 KB, including any preview, "
+                "to leave revision headroom under the 60 KB complete-diff limit. "
+                "Stay within the requested task scope; do not design later milestones. "
+                "Use WebFetch/WebSearch for public documentation and cite verified sources. "
+                "For version claims, record the source URL and observed version fields; "
+                "distinguish declared compatibility from runtime-tested compatibility. "
+                "Do not send private repository content, credentials, or personal data "
+                "to search or fetch tools. Report permission blockers promptly; do not "
+                "try alternative shell commands to work around denied permissions."
             )
             if "frontend" in state["roles"]:
                 task += (
@@ -275,7 +285,8 @@ def review_stage(state, role, directory, state_path):
         digest = tree_digest(stage["worktree"])
         diff = git(stage["worktree"], "diff", "--cached", "--binary", stage["base"])
         # A huge argv can fail before the reviewer starts; never truncate evidence.
-        if len(diff.encode()) > 60_000:
+        diff_bytes = len(diff.encode())
+        if diff_bytes > 60_000:
             raise FlowError("Diff exceeds inline review limit (60 KB); split the task.")
         review_prompt = (
             context + f"\nReview round {stage['rounds']} of {MAX_ROUNDS}. "
@@ -286,6 +297,7 @@ def review_stage(state, role, directory, state_path):
             "and UI/accessibility where applicable. Insufficient evidence means revise. "
             'Return ONLY {"verdict":"approve","feedback":[]} or '
             '{"verdict":"revise","feedback":["concrete finding and required correction"]}.'
+            f"\nComplete diff size: {diff_bytes} bytes (limit: 60000 bytes)."
             f"\nComplete diff from stage base:\n{diff}\n"
         )
         if role != "design":
