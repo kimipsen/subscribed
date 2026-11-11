@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Subscribed.Household</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Subscribed.Platform/Subscribed.Platform.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Subscribed.UnitTests" />
+    <InternalsVisibleTo Include="Subscribed.Persistence.Tests" />
+    <InternalsVisibleTo Include="Subscribed.Api.Tests" />
+  </ItemGroup>
+
+</Project>

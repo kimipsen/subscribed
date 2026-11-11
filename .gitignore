@@ -480,3 +480,12 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Subscribed deployment: real endpoints and secrets never enter the repository
+deploy/.env
+deploy/secrets/
+**/appsettings.*.local.json
+# Admin CLI DDL exports (`admin db patch --output ...`)
+*.patch.sql
+# Synthetic SPA fixture written by the API tests into their output directory
+**/spa-fixture/

@@ -1,0 +1,22 @@
+root = false
+
+[*.cs]
+indent_style = space
+indent_size = 4
+charset = utf-8
+insert_final_newline = true
+csharp_style_namespace_declarations = file_scoped:warning
+
+# Logger arguments are cheap values (ids, keywords); the rule flags every CreateLogger() call.
+dotnet_diagnostic.CA1873.severity = none
+# Test method names use underscores.
+dotnet_diagnostic.CA1707.severity = none
+# Web host code is not a reusable library: ConfigureAwait is not required in ASP.NET Core.
+dotnet_diagnostic.CA2007.severity = none
+# Constant arrays in one-off setup code.
+dotnet_diagnostic.CA1861.severity = none
+# Problem/route literals are not localized.
+dotnet_diagnostic.CA1303.severity = none
+
+[*.{json,xml,props,csproj,slnx}]
+indent_size = 2

@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Subscribed.Platform</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Marten" />
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Database/grants.sql" LogicalName="Subscribed.Platform.Database.grants.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Subscribed.UnitTests" />
+    <InternalsVisibleTo Include="Subscribed.Persistence.Tests" />
+    <InternalsVisibleTo Include="Subscribed.Api.Tests" />
+  </ItemGroup>
+
+</Project>

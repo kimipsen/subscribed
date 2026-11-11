@@ -1,0 +1,16 @@
+# BuildKit reads <Dockerfile>.dockerignore next to the Dockerfile (context = repo root).
+**
+!backend/Directory.Build.props
+!backend/Directory.Build.targets
+!backend/Directory.Packages.props
+!backend/.editorconfig
+!backend/src/**
+!frontend/**
+**/bin/
+**/obj/
+**/node_modules/
+frontend/dist/
+frontend/.angular/
+**/appsettings.Development.json
+**/secrets/
+**/.env
