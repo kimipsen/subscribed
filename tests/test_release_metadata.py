@@ -48,6 +48,7 @@ class ReleaseMetadataTests(unittest.TestCase):
             self.assertEqual(checksum, hashlib.sha256((self.folder / name).read_bytes()).hexdigest())
         notes = (self.folder / "release-notes.md").read_text()
         self.assertIn(metadata["imageReference"], notes)
+        self.assertIn(f"{self.options['image']}:1.2.3", notes)
         self.assertIn(self.options["commit"], notes)
         self.assertIn("development dependencies", notes)
 

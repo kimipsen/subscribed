@@ -291,7 +291,9 @@ git tag -a v0.1.0 -m "Subscribed v0.1.0"
 git push origin v0.1.0
 ```
 
-The workflow publishes `:v0.1.0` and `:sha-<full-source-commit>` image tags, for `linux/amd64`.
+The workflow publishes both version forms (`:v0.1.0` and `:0.1.0`) and
+`:sha-<full-source-commit>` image tags, for `linux/amd64`. Version tags are derived from the
+pushed Git tag, not the frontend package version; `v0.1.0-rc.1` also gets `:0.1.0-rc.1`.
 Stable releases also update `:latest`; prereleases do not. This moving tag follows build
 publication order, not semantic-version ordering, so publishing an older stable version later
 will also move `latest`. It is updated when the image is pushed, before release assets finish

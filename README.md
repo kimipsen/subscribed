@@ -41,7 +41,8 @@ Push a version tag such as `v0.1.0` to run CI, publish the Docker image to
 `ghcr.io/kimipsen/subscribed`, and create a GitHub Release with SPDX SBOMs, the source commit SHA,
 image SHA-256 digest and downloadable checksums. See the
 [release instructions](deploy/README.md#github-container-releases) for permissions, verification
-and digest-pinned deployment. Images have version and full-SHA tags; stable releases also update
+and digest-pinned deployment. Images have version tags (both `v0.1.0` and `0.1.0`) and full-SHA
+tags; stable releases also update
 `ghcr.io/kimipsen/subscribed:latest`. Prereleases leave `latest` unchanged.
 
 ## Security model in one paragraph
