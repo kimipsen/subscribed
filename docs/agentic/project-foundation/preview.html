@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOCKUP — Subscribed foundation shell (synthetic design material)</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,sans-serif;color:#1d2330;background:#e9ebef}
+.banner{background:#5b1a8c;color:#fff;padding:10px 16px;font-weight:600;text-align:center}
+.banner small{display:block;font-weight:400}
+.controls{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px;background:#fff;border-bottom:1px solid #d6dae1;position:sticky;top:0;z-index:5}
+.controls button{border:1px solid #8a93a3;background:#fff;color:#1d2330;border-radius:6px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer;min-height:36px}
+.controls button[aria-pressed=true]{background:#2453a6;color:#fff;border-color:#2453a6}
+.controls button:focus-visible{outline:3px solid #b07f00;outline-offset:2px}
+.note{padding:8px 16px;margin:0;color:#3d4452;font-size:13px}
+.stage{display:flex;flex-wrap:wrap;gap:24px;padding:16px;align-items:flex-start}
+figure{margin:0}
+figcaption{font-size:12px;color:#3d4452;margin-bottom:6px;font-weight:600}
+iframe{display:block;background:#f4f5f7;border:1px solid #8a93a3;border-radius:10px}
+iframe.desktop{width:min(1024px,calc(100vw - 32px));height:640px}
+iframe.mobile{width:376px;height:716px;border-radius:24px;border:8px solid #2b2f36}
+.spec{margin:0 16px 24px;background:#fff;padding:12px 16px;font-size:13px}
+.spec h2{margin:0;font-size:14px}
+code{font-family:ui-monospace,monospace;font-size:12px;background:#eef0f3;padding:1px 4px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="banner" role="note">SYNTHETIC UI MOCKUP — design material only
+<small>Static HTML with fake data. Not the implemented or tested application. No real users, identity provider, or backend are involved.</small></div>
+<div class="controls" role="toolbar" aria-label="Mockup state (arrow keys move, Enter shows)"></div>
+<p class="note" id="state-desc" aria-live="polite"></p>
+<div class="stage">
+ <figure><figcaption id="cap-d">DESKTOP FRAME · 1024 px (narrower if the window is smaller)</figcaption>
+  <iframe class="desktop" id="f-desktop" title="Mockup frame, desktop layout" aria-describedby="cap-d"></iframe></figure>
+ <figure><figcaption id="cap-m">MOBILE FRAME · 360 px</figcaption>
+  <iframe class="mobile" id="f-mobile" title="Mockup frame, mobile layout" aria-describedby="cap-m"></iframe></figure>
+</div>
+<section class="spec" aria-labelledby="spec-h">
+ <h2 id="spec-h">Mockup notes (the spec is design.md §6, §7, §9)</h2>
+ <ul>
+  <li>States map to design.md §7 responses. All data is synthetic. Each frame is an isolated <code>iframe srcdoc</code>, so breakpoints follow the frame width.</li>
+  <li>Verification: static source checks only (see design.md §17). This mockup has <strong>not</strong> been rendered in a browser by the design session, and no screenshots exist.</li>
+  <li>Working: the skip link (handled before the generic "not connected" handler, so it always focuses <code>#main</code>, including in single-panel layouts where <code>#main</code> is the panel), the error-summary link, the mobile menu (Escape closes), and Copy reference (with a manual fallback). Other controls show a "not connected" notice. Keycloak's own pages are not shown.</li>
+ </ul>
+</section>
+
+<template id="tpl-css"><style>
+:root{--fg:#1d2330;--muted:#4f5766;--line:#d6dae1;--brand:#2453a6;--err:#a3231f;--focus:#b07f00}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font:15px/1.45 system-ui,sans-serif;color:var(--fg);background:#f4f5f7}
+.app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:56px 1fr;min-height:100%}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 16px;background:#fff;border-bottom:1px solid var(--line)}
+.logo{font-weight:700;color:var(--brand)}
+.spacer{flex:1}
+.user{font-size:13px;color:var(--muted)}
+.menu-btn{display:none}
+nav{background:#fff;border-right:1px solid var(--line);padding:12px 8px}
+nav a{display:flex;align-items:center;padding:0 12px;border-radius:6px;color:var(--fg);text-decoration:none;min-height:44px}
+nav a[aria-current=page]{background:#e7eefb;color:var(--brand);font-weight:600}
+main{padding:24px}
+main:focus{outline:none}
+.solo{display:grid;place-items:center;min-height:100%;padding:24px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:10px;padding:24px;max-width:520px;width:100%}
+h1{font-size:22px;margin:0 0 8px}
+h2{font-size:16px;margin:20px 0 8px}
+p{margin:0 0 12px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:6px;border:1px solid var(--brand);background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer;text-decoration:none}
+.btn.sec{background:#fff;color:var(--brand)}
+.btn[disabled]{opacity:.6;cursor:not-allowed}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.alert{border-radius:8px;padding:12px 14px;margin:0 0 16px;border:1px solid}
+.alert strong{display:block}
+.alert a{color:inherit}
+.err{background:#fdecea;border-color:#e3a19c;color:var(--err)}
+.warn{background:#fff4dc;border-color:#e0bd6e;color:#6b4200}
+.ok{background:#e6f4ea;border-color:#93c9a3;color:#1d6b3a}
+.info{background:#e8f0fc;border-color:#a9c2ea;color:#1f4d8f}
+label{display:block;font-weight:600;margin-bottom:4px}
+input{width:100%;min-height:44px;padding:8px 10px;border:1px solid #6b7486;border-radius:6px;font:inherit;color:var(--fg)}
+input[aria-invalid=true]{border:2px solid var(--err)}
+.hint{font-size:13px;color:var(--muted);margin-top:4px}
+.ferr{font-size:13px;color:var(--err);margin-top:4px;font-weight:600}
+.mono{font-family:ui-monospace,monospace;font-size:13px;background:#eef0f3;padding:2px 6px;border-radius:4px;word-break:break-all}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
+.empty{text-align:center;border:2px dashed #b9bec8;border-radius:10px;padding:32px 16px;background:#fff}
+.skel{background:linear-gradient(90deg,#dfe3e9 25%,#eceff3 50%,#dfe3e9 75%);background-size:200% 100%;animation:sh 1.4s infinite;border-radius:6px;height:14px;margin:10px 0}
+@keyframes sh{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skel{animation:none}}
+.skip{position:absolute;left:8px;top:8px;z-index:10;background:#fff;color:var(--brand);padding:10px 14px;border:2px solid var(--brand);border-radius:6px;font-weight:600;transform:translateY(-300%)}
+.skip:focus{transform:none}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wm{position:fixed;right:8px;bottom:6px;font-size:11px;font-weight:600;color:#3d4452;background:#fff;border:1px solid var(--line);padding:2px 6px;border-radius:4px;pointer-events:none}
+.toast{position:fixed;left:8px;bottom:6px;font-size:12px;color:#fff;background:#3d4452;padding:6px 10px;border-radius:6px;max-width:70%}
+.toast:empty{display:none}
+@media (max-width:899px){
+ .app{grid-template-columns:1fr;grid-template-rows:56px auto 1fr}
+ nav{display:none}
+ nav.open{display:block;grid-column:1/-1;border-right:0;border-bottom:1px solid var(--line)}
+ .menu-btn{display:inline-flex;min-height:44px;min-width:44px;align-items:center;justify-content:center;border:1px solid #6b7486;background:#fff;border-radius:6px;font:inherit;color:var(--fg)}
+ .user .name{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+ main{padding:16px}
+ h1{font-size:20px}
+ .row .btn{flex:1 1 100%}
+ .solo{padding:12px}
+ .panel{padding:18px}
+}
+</style></template>
+
+<template id="tpl-js"><script>
+(function(){
+ var toast=document.getElementById('toast');
+ function say(t){toast.textContent=t;clearTimeout(say.t);say.t=setTimeout(function(){toast.textContent='';},4000);}
+ function byId(i){return document.getElementById(i);}
+ document.addEventListener('click',function(e){
+  var el;
+  if((el=e.target.closest('.skip'))){e.preventDefault();byId('main').focus();return;}
+  if((el=e.target.closest('[data-focus]'))){e.preventDefault();byId(el.getAttribute('data-focus')).focus();return;}
+  if((el=e.target.closest('[data-menu]'))){var open=el.getAttribute('aria-expanded')!=='true';byId('nav').classList.toggle('open',open);el.setAttribute('aria-expanded',String(open));return;}
+  if((el=e.target.closest('[data-copy]'))){
+   var ref=byId('ref'),st=byId('copy-status');
+   var manual=function(){var r=document.createRange();r.selectNodeContents(ref);var s=window.getSelection();s.removeAllRanges();s.addRange(r);st.textContent='Select and copy the reference manually (it is selected for you).';};
+   try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(ref.textContent).then(function(){st.textContent='Reference copied.';},manual);}else{manual();}}catch(err){manual();}
+   return;}
+  if((el=e.target.closest('a,button'))){e.preventDefault();say('Mockup only: "'+el.textContent.trim()+'" is not connected.');}
+ });
+ document.addEventListener('submit',function(e){e.preventDefault();});
+ document.addEventListener('keydown',function(e){
+  var n=byId('nav'),b=document.querySelector('[data-menu]');
+  if(e.key==='Escape'&&n&&b&&n.classList.contains('open')){n.classList.remove('open');b.setAttribute('aria-expanded','false');b.focus();}
+ });
+})();
+</script></template>
+
+<script>
+(function(){
+'use strict';
+var USER_A='Synthetic User A', SUB_B='00000000-0000-4000-8000-00000000000b', TRACE='00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+var CSS=document.getElementById('tpl-css').innerHTML, JS=document.getElementById('tpl-js').innerHTML;
+var SKIP='<a class="skip" href="#main">Skip to content</a>';
+var SKEL='<div aria-hidden="true"><div class="skel" style="width:40%;height:22px"></div><div class="skel"></div><div class="skel" style="width:80%"></div><div class="skel" style="width:60%"></div></div>';
+
+function shell(active,body,banner){
+ function link(id,text){return '<a href="#"'+(active===id?' aria-current="page"':'')+'>'+text+'</a>';}
+ return SKIP+'<div class="app"><header class="topbar"><button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav" data-menu><span aria-hidden="true">☰</span><span class="sr">Menu</span></button>'+
+ '<span class="logo">Subscribed</span><span class="spacer"></span>'+
+ '<span class="user"><span aria-hidden="true">👤 </span><span class="name"><span class="sr">Signed in as </span>'+USER_A+'</span></span>'+
+ '<button class="btn sec" type="button" style="padding:0 12px">Sign out</button></header>'+
+ '<nav id="nav" aria-label="Main">'+link('home','Home')+link('household','Household')+'</nav>'+
+ '<main id="main" tabindex="-1">'+(banner||'')+body+'</main></div>';
+}
+function solo(body){return SKIP+'<div class="solo"><main id="main" class="panel" tabindex="-1">'+body+'</main></div>';}
+function alert(kind,role,title,text){return '<div class="alert '+kind+'"'+(role?' role="'+role+'"':'')+'><strong>'+title+'</strong>'+text+'</div>';}
+
+function form(o){
+ o=o||{};
+ var inv=!!o.err;
+ return '<h1 tabindex="-1">Household</h1><p class="muted">Synthetic Household · version 3</p>'+(o.alert||'')+
+ (inv?alert('err','alert','There is a problem','<a href="#hn" data-focus="hn">'+o.err+'</a>'):'')+
+ '<form novalidate><label for="hn">Household name</label>'+
+ '<input id="hn" type="text" value="'+(o.value===undefined?'Synthetic Household':o.value)+'" aria-describedby="hn-hint'+(inv?' hn-err':'')+'"'+(inv?' aria-invalid="true"':'')+(o.saving?' readonly':'')+'>'+
+ '<div class="hint" id="hn-hint">1–80 characters. Visible to all household members.</div>'+
+ (inv?'<div class="ferr" id="hn-err">'+o.err+'</div>':'')+
+ '<div class="row"><button class="btn" type="submit"'+(o.saving?' disabled':'')+'>'+(o.saving?'Saving…':'Save name')+'</button>'+
+ (o.reload?'<button class="btn sec" type="button">Reload latest</button>':'')+'</div></form>'+
+ '<h2>Members</h2><p class="muted small">Granted by the administrator (admin CLI). Read-only in this milestone.</p>'+
+ '<table><caption class="sr">Household members</caption><thead><tr><th scope="col">Member</th><th scope="col">Granted</th></tr></thead><tbody>'+
+ '<tr><td>Member A</td><td>2026-01-01</td></tr><tr><td>Member C</td><td>2026-01-02</td></tr></tbody></table>';
+}
+
+var S=[
+ {id:'loading',label:'Loading session',desc:'GET /bff/session in flight; status announced, skeletons hidden from assistive tech.',
+  html:function(){return SKIP+'<div class="app"><header class="topbar"><span class="logo">Subscribed</span></header><nav aria-label="Main" aria-busy="true">'+SKEL+'</nav>'+
+  '<main id="main" tabindex="-1" aria-busy="true"><h1 class="sr">Loading</h1><p role="status" class="muted">Loading your session… Placeholders are shown until it is ready.</p>'+SKEL+'</main></div>';}},
+ {id:'welcome',label:'Signed out (anonymous)',desc:'state "anonymous" → /welcome. Sign in navigates the full page to /bff/login?returnUrl=/.',
+  html:function(){return solo('<h1 tabindex="-1">Subscribed</h1><p>Track your household\'s recurring subscriptions in one shared list.</p><p class="muted">Sign in with your organisation account. Access is limited to members of this household.</p><div class="row"><a class="btn" href="#">Sign in</a></div>');}},
+ {id:'authfail',label:'Sign-in failed',desc:'/welcome?authError=callback-failed. The authError=cancelled variant shows an info alert: "Sign-in was cancelled."',
+  html:function(){return solo('<h1 tabindex="-1">Subscribed</h1>'+alert('err','alert','Sign-in could not be completed.','Please try again. If it keeps happening, contact your administrator.')+'<div class="row"><a class="btn" href="#">Try signing in again</a></div>');}},
+ {id:'denied',label:'Access not granted',desc:'state "not-member" (API: 403 not-a-household-member). Copy reference works.',
+  html:function(){return solo('<h1 tabindex="-1">You don\'t have access yet</h1>'+alert('warn','alert','Signed in, but not a household member.','Signing in alone does not grant access to household data.')+'<p>Ask the household administrator to grant access and give them this reference:</p><p><span class="mono" id="ref">'+SUB_B+'</span></p><p class="muted small">Signed in as Synthetic User B. This is your account identifier, not a password.</p><p id="copy-status" class="small" role="status"></p><div class="row"><button class="btn sec" type="button" data-copy>Copy reference</button><button class="btn" type="button">Sign out</button></div>');}},
+ {id:'home',label:'Home (empty)',desc:'state "member"; honest empty state. Try the mobile menu.',
+  html:function(){return shell('home','<h1 tabindex="-1">Welcome, '+USER_A+'</h1><p class="muted">Synthetic Household · 2 members</p><div class="empty"><h2>No subscriptions yet</h2><p class="muted">Subscription tracking arrives in a later milestone.<br>This release covers sign-in and household access.</p></div>');}},
+ {id:'household',label:'Household (loaded)',desc:'GET /api/household → 200, ETag "3". Name editable; members read-only.',
+  html:function(){return shell('household',form());}},
+ {id:'validation',label:'Validation error',desc:'Client rule or server 400 on "name"; summary link focuses the field.',
+  html:function(){return shell('household',form({value:'',err:'Enter a household name (1–80 characters).'}));}},
+ {id:'saving',label:'Saving',desc:'PUT /api/household/name with If-Match "3" in flight; Save disabled.',
+  html:function(){return shell('household',form({value:'Renamed Synthetic Household',saving:true,alert:'<p role="status" class="muted">Saving…</p>'}));}},
+ {id:'conflict',label:'Concurrency conflict',desc:'PUT → 412 concurrency-conflict (currentVersion 4). Input kept; user reloads before retrying.',
+  html:function(){return shell('household',form({value:'Renamed Synthetic Household',reload:true,alert:alert('err','alert','Someone else changed this household.','Your change was not saved. Reload the latest version, then try again.')}));}},
+ {id:'expired',label:'Session expired',desc:'An API call returned 401. Sign in returns to the current page.',
+  html:function(){return shell('household','<h1 class="sr" tabindex="-1">Household</h1>'+SKEL,alert('warn','alert','Your session has expired.','Sign in again to continue. You will return to this page.<div class="row"><a class="btn" href="#">Sign in again</a></div>'));}},
+ {id:'error',label:'Service unavailable',desc:'503, network error, or unexpected 403; never shown as signed out.',
+  html:function(){return solo('<h1 tabindex="-1">Subscribed is temporarily unavailable</h1>'+alert('err','alert','We couldn\'t reach the service.','Your data is safe. Try again in a moment.')+'<p class="muted small">If this continues, give your administrator this reference:<br><span class="mono">'+TRACE+'</span></p><div class="row"><button class="btn" type="button">Retry</button></div>');}},
+ {id:'signedout',label:'Signed out',desc:'/signed-out; the info note appears for ?idp=0.',
+  html:function(){return solo(alert('ok','status','You have signed out of Subscribed.','')+'<h1 tabindex="-1">See you next time</h1><p class="muted">Your session on this device has ended.</p>'+alert('info','','Your organisation sign-in may still be active.','On a shared device, also sign out of your organisation account.')+'<div class="row"><a class="btn" href="#">Sign in again</a></div>');}},
+ {id:'notfound',label:'Not found',desc:'Unknown SPA route. Unknown /api paths return a 404 problem, not this page.',
+  html:function(){return shell('','<h1 tabindex="-1">Page not found</h1><p class="muted">The page you asked for does not exist.</p><div class="row"><a class="btn sec" href="#">Go to Home</a></div>');}}
+];
+
+function doc(s,kind){
+ return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>MOCKUP ('+kind+'): '+s.label+'</title>'+CSS+'</head><body>'+
+  s.html()+'<div class="toast" id="toast" role="status"></div><span class="wm" aria-hidden="true">MOCKUP · synthetic</span>'+JS+'</body></html>';
+}
+
+var ctrl=document.querySelector('.controls'),desc=document.getElementById('state-desc'),buttons=[];
+function render(id){
+ var s=S.filter(function(x){return x.id===id;})[0]||S[0];
+ document.getElementById('f-desktop').srcdoc=doc(s,'desktop');
+ document.getElementById('f-mobile').srcdoc=doc(s,'mobile');
+ desc.textContent='Showing: '+s.label+' — '+s.desc;
+ buttons.forEach(function(b){var on=b.dataset.id===s.id;b.setAttribute('aria-pressed',String(on));b.tabIndex=on?0:-1;});
+ if(location.hash.slice(1)!==s.id)history.replaceState(null,'','#'+s.id);
+}
+S.forEach(function(s,i){
+ var b=document.createElement('button');b.type='button';b.textContent=(i+1)+' · '+s.label;b.dataset.id=s.id;b.tabIndex=-1;
+ b.addEventListener('click',function(){render(s.id);});
+ ctrl.appendChild(b);buttons.push(b);
+});
+// Toolbar pattern: roving tabindex; arrows/Home/End move focus, Enter/Space activate.
+ctrl.addEventListener('keydown',function(e){
+ var i=buttons.indexOf(document.activeElement);if(i<0)return;
+ var n={ArrowRight:i+1,ArrowDown:i+1,ArrowLeft:i-1,ArrowUp:i-1,Home:0,End:buttons.length-1}[e.key];
+ if(n===undefined)return;
+ e.preventDefault();n=(n+buttons.length)%buttons.length;
+ buttons[i].tabIndex=-1;buttons[n].tabIndex=0;buttons[n].focus();
+});
+window.addEventListener('hashchange',function(){render(location.hash.slice(1));});
+render(location.hash.slice(1)||'loading');
+})();
+</script>
+</body>
+</html>
