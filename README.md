@@ -13,6 +13,13 @@ single-container Docker deployment.
 | `scripts/integration-check.sh` | image + ephemeral PostgreSQL end-to-end check |
 | [`docs/dev-environment.md`](docs/dev-environment.md) | pinned development tools and container rebuild instructions |
 
+## Run with Docker
+
+Follow the [Docker setup guide](deploy/README.md) to choose an image, configure PostgreSQL and
+Keycloak, create secrets, run migrations and grant your first household member.
+The application container includes both frontend and backend; you do not need Node or .NET on
+the Docker host. PostgreSQL, Keycloak and an HTTPS reverse proxy must be provided separately.
+
 ## Quick start (development)
 
 Prerequisites: .NET SDK 11.0.100, Node 24.22.2, PostgreSQL 18 (devcontainer `db` service),
@@ -34,7 +41,9 @@ Push a version tag such as `v0.1.0` to run CI, publish the Docker image to
 `ghcr.io/kimipsen/subscribed`, and create a GitHub Release with SPDX SBOMs, the source commit SHA,
 image SHA-256 digest and downloadable checksums. See the
 [release instructions](deploy/README.md#github-container-releases) for permissions, verification
-and digest-pinned deployment.
+and digest-pinned deployment. Images have version tags (both `v0.1.0` and `0.1.0`) and full-SHA
+tags; stable releases also update
+`ghcr.io/kimipsen/subscribed:latest`. Prereleases leave `latest` unchanged.
 
 ## Security model in one paragraph
 

@@ -63,6 +63,7 @@ def generate_assets(*, tag, commit, image, digest, repository, run_url, output_d
     (folder / "release-notes.md").write_text(
         f"## Container image\n\n```sh\ndocker pull {reference}\n```\n\n"
         f"- Version tag: `{image}:{tag}`\n"
+        f"- Plain version tag: `{image}:{tag[1:]}`\n"
         f"- Source commit: [`{commit}`](https://github.com/{repository}/commit/{commit})\n"
         f"- Image/index SHA-256: `{digest}`\n"
         f"- Platform: `linux/amd64`\n"
