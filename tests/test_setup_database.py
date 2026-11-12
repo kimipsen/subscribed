@@ -30,7 +30,8 @@ class DatabaseSetupTests(unittest.TestCase):
                 "PASSWORD='a $b $(touch /not-executed) # c'\n"
                 'OTHER="a;b=c" # trailing comment\nEMPTY=\n',
             )
-            values = setup.read_env(path)
+            with patch.object(setup, "ROOT", Path(folder)):
+                values = setup.read_env(path)
         self.assertEqual(values["POSTGRES_USER"], "admin")
         self.assertEqual(values["PASSWORD"], "a $b $(touch /not-executed) # c")
         self.assertEqual(values["OTHER"], "a;b=c")
@@ -41,9 +42,26 @@ class DatabaseSetupTests(unittest.TestCase):
             with self.subTest(content=content), tempfile.TemporaryDirectory() as folder:
                 path = Path(folder) / ".env"
                 path.write_text(content)
-                with self.assertRaises(ValueError) as error:
-                    setup.read_env(path)
+                with patch.object(setup, "ROOT", Path(folder)):
+                    with self.assertRaises(ValueError) as error:
+                        setup.read_env(path)
                 self.assertNotIn("secret", str(error.exception))
+
+    def test_dotenv_rejects_outside_paths_other_filenames_and_symlink_escapes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            repository = folder / "repository"
+            repository.mkdir()
+            outside = folder / ".env"
+            outside.write_text("PASSWORD=secret")
+            other = repository / "settings.txt"
+            other.write_text("PASSWORD=secret")
+            link = repository / ".env"
+            link.symlink_to(outside)
+            with patch.object(setup, "ROOT", repository):
+                for path in (outside, other, link, repository):
+                    with self.subTest(path=path), self.assertRaises(ValueError):
+                        setup.read_env(path)
 
     def test_connection_string_quotes_special_characters(self):
         self.assertIn('Password="a;""b\'c"', setup.connection_string("localhost", "5432", "db", "app", 'a;"b\'c'))

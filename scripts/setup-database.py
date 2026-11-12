@@ -16,8 +16,22 @@ PROJECT = ROOT / "backend/src/Subscribed.Api"
 IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]{0,62}\Z")
 
 
+def parse_env_value(value, number):
+    value = value.strip()
+    if value.startswith(("'", '"')):
+        match = re.fullmatch(r"""(['"])(.*?)\1\s*(?:#.*)?""", value)
+        if not match:
+            raise ValueError(f"Invalid quoted .env value on line {number}.")
+        return match[2]
+    comment = re.search(r"\s#", value)
+    return value[:comment.start()].rstrip() if comment else value
+
+
 def read_env(path):
     """Read literal dotenv values, without executing shell code or expanding variables."""
+    path = path.resolve(strict=True)
+    if not path.is_relative_to(ROOT.resolve()) or path.name != ".env" or not path.is_file():
+        raise ValueError("The environment file must be named .env and located inside this repository.")
     values = {}
     for number, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1):
         line = line.strip()
@@ -27,19 +41,11 @@ def read_env(path):
             line = line[7:].lstrip()
         key, separator, value = line.partition("=")
         key = key.strip()
-        if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+        if not separator or not re.fullmatch(r"[A-Za-z_]\w*", key, flags=re.ASCII):
             raise ValueError(f"Invalid .env assignment on line {number}.")
-        value = value.strip()
-        if value.startswith(("'", '"')):
-            match = re.fullmatch(r"""(['"])(.*?)\1\s*(?:#.*)?""", value)
-            if not match:
-                raise ValueError(f"Invalid quoted .env value on line {number}.")
-            value = match[2]
-        else:
-            value = re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
         if key in values:
             raise ValueError(f"Duplicate .env key: {key}.")
-        values[key] = value
+        values[key] = parse_env_value(value, number)
     return values
 
 
@@ -95,6 +101,28 @@ def run(command, environment, secrets, input_text=None):
     return result.stdout.strip()
 
 
+def check_existing_objects(sql, database, schema, app, migrator):
+    owner = sql(f"SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = {literal(database)};")
+    if owner and owner != migrator:
+        raise ValueError("Existing application database is not owned by the configured migrator; refusing to modify it.")
+    for role in (app, migrator):
+        unsafe = sql(
+            f"SELECT 1 FROM pg_roles WHERE rolname = {literal(role)} AND "
+            "(rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls "
+            "OR EXISTS (SELECT 1 FROM pg_auth_members WHERE member = pg_roles.oid));"
+        )
+        if unsafe:
+            raise ValueError(f"Existing role {role} has elevated privileges or memberships; refusing to modify it.")
+    if owner:
+        schema_owner = sql(
+            f"SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = {literal(schema)};",
+            database,
+        )
+        if schema_owner and schema_owner != migrator:
+            raise ValueError("Existing schema is not owned by the configured migrator; refusing to modify it.")
+    return bool(owner)
+
+
 def setup(values):
     admin = required(values, "POSTGRES_USER")
     admin_password = required(values, "POSTGRES_PASSWORD")
@@ -132,24 +160,7 @@ def setup(values):
         )
 
     run(["dotnet", "--version"], environment, secrets)
-    owner = sql(f"SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = {literal(database)};")
-    if owner and owner != migrator:
-        raise ValueError("Existing application database is not owned by the configured migrator; refusing to modify it.")
-    for role in (app, migrator):
-        unsafe = sql(
-            f"SELECT 1 FROM pg_roles WHERE rolname = {literal(role)} AND "
-            "(rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls "
-            "OR EXISTS (SELECT 1 FROM pg_auth_members WHERE member = pg_roles.oid));"
-        )
-        if unsafe:
-            raise ValueError(f"Existing role {role} has elevated privileges or memberships; refusing to modify it.")
-    if owner:
-        schema_owner = sql(
-            f"SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = {literal(schema)};",
-            database,
-        )
-        if schema_owner and schema_owner != migrator:
-            raise ValueError("Existing schema is not owned by the configured migrator; refusing to modify it.")
+    database_exists = check_existing_objects(sql, database, schema, app, migrator)
 
     for role, password in ((migrator, migrator_password), (app, app_password)):
         sql(
@@ -160,7 +171,7 @@ def setup(values):
     # PostgreSQL 16+ requires explicit SET membership for non-superuser administrators.
     quoted_admin = '"' + admin.replace('"', '""') + '"'
     sql(f"GRANT {migrator} TO {quoted_admin} WITH SET TRUE, INHERIT TRUE;")
-    if not owner:
+    if not database_exists:
         sql(f"CREATE DATABASE {database} OWNER {migrator} ENCODING 'UTF8' TEMPLATE template0;")
     sql(
         f"REVOKE ALL ON DATABASE {database} FROM PUBLIC;\n"

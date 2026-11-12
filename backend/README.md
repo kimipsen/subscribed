@@ -125,7 +125,7 @@ cp -n .devcontainer/.env.example .devcontainer/.env
 # Edit .devcontainer/.env: keep the existing POSTGRES_* administrator credentials,
 # and set distinct SUBSCRIBED_APP_PASSWORD and SUBSCRIBED_MIGRATOR_PASSWORD values.
 python3 scripts/setup-database.py
-# Or: python3 scripts/setup-database.py --env-file /absolute/path/to/.env
+# Or: python3 scripts/setup-database.py --env-file /absolute/path/to/this/repository/.env
 ```
 
 Install the PostgreSQL client if `psql` is missing (`sudo apt-get update && sudo
@@ -154,6 +154,8 @@ shared-server provisioner. No databases, tables, or roles are dropped.
 Dotenv values are literal `KEY=value`, optionally single/double quoted, with
 optional `export` and comments. There is no shell execution, variable expansion,
 escape processing, or multiline-value support. Never commit the real `.env`.
+The selected file must be named `.env` and resolve inside this repository;
+paths and symlinks escaping the repository are rejected.
 The migrator password stays in `.env`, not runtime user-secrets. For subsequent
 manual migrations, supply `ConnectionStrings__SubscribedMigrator` separately or
 rerun the setup script.
