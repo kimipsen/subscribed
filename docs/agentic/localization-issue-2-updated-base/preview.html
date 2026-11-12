@@ -52,6 +52,7 @@ input[aria-invalid=true]{border-color:#8a1c1c;border-width:2px}
 label.field{display:block;font-weight:600;margin-bottom:.25rem}
 code{background:#eef1f5;padding:.1rem .3rem;border-radius:.25rem}
 .skeleton{height:6rem;border-radius:.5rem;background:linear-gradient(90deg,#e3e7ee,#f1f3f7,#e3e7ee)}
+.status{display:block;margin:1em 0}
 .empty{border:2px dashed #c5cbd6;border-radius:.6rem;padding:1.5rem;text-align:center;background:#fff}
 ul.members{list-style:none;padding:0;margin:0}
 ul.members li{display:flex;justify-content:space-between;gap:1rem;padding:.5rem 0;border-bottom:1px solid #eef1f5}
@@ -145,7 +146,7 @@ ul.members li{display:flex;justify-content:space-between;gap:1rem;padding:.5rem 
   </header>
   <main><section aria-busy="true">
     <h1>Gør din husstand klar</h1>
-    <p role="status">Tjekker din session...</p>
+    <output class="status">Tjekker din session...</output>
     <div class="skeleton" aria-hidden="true"></div>
   </section></main>
 </div>
@@ -179,7 +180,7 @@ ul.members li{display:flex;justify-content:space-between;gap:1rem;padding:.5rem 
       <select id="l6"><option lang="en" selected>English</option><option lang="da">Dansk</option></select></div></div>
   </header>
   <main>
-    <div class="notice" role="status">Your language choice couldn't be saved in this browser. It applies until you reload the page. <button class="secondary">Dismiss</button></div>
+    <output class="notice">Your language choice couldn't be saved in this browser. It applies until you reload the page. <button class="secondary">Dismiss</button></output>
     <section class="panel">
       <h1>We couldn't reach your household</h1>
       <p role="alert">Your session could not be checked. This does not mean you are signed out.</p>
@@ -206,7 +207,7 @@ ul.members li{display:flex;justify-content:space-between;gap:1rem;padding:.5rem 
     <label class="field" for="r7">Din kontoreference</label>
     <input id="r7" readonly value="synthetic-subject-1234">
     <p><button>Kopiér reference</button></p>
-    <p role="status">Automatisk kopiering er ikke tilgængelig. Referencen er markeret; kopiér den manuelt.</p>
+    <output class="status">Automatisk kopiering er ikke tilgængelig. Referencen er markeret; kopiér den manuelt.</output>
     <button class="secondary">Tjek adgang igen</button>
   </section></main>
 </div>
