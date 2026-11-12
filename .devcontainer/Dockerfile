@@ -11,7 +11,7 @@ RUN test "${TARGETARCH:-$(dpkg --print-architecture)}" = amd64 \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates curl gnupg xz-utils libpython3.12-stdlib \
+        ca-certificates curl gnupg xz-utils libpython3.12-stdlib postgresql-client \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
     && gpg --show-keys --with-colons /etc/apt/keyrings/docker.asc \

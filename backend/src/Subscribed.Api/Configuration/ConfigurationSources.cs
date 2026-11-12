@@ -2,7 +2,7 @@ namespace Subscribed.Api.Configuration;
 
 /// <summary>
 /// Configuration sources shared by the web host and the admin CLI: appsettings (non-secret
-/// defaults), environment variables, then key-per-file secrets (Docker secrets). File names use
+/// defaults), development user-secrets, environment variables, then key-per-file secrets (Docker secrets). File names use
 /// "__" as the section separator, e.g. <c>/run/secrets/Oidc__ClientSecret</c>.
 /// </summary>
 public static class ConfigurationSources
@@ -34,8 +34,13 @@ public static class ConfigurationSources
         var builder = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-            .AddJsonFile($"appsettings.{environment}.json", optional: true, reloadOnChange: false)
-            .AddEnvironmentVariables();
+            .AddJsonFile($"appsettings.{environment}.json", optional: true, reloadOnChange: false);
+        if (string.Equals(environment, "Development", StringComparison.Ordinal))
+        {
+            builder.AddUserSecrets(typeof(ConfigurationSources).Assembly, optional: true);
+        }
+
+        builder.AddEnvironmentVariables();
         AddSecrets(builder);
         return (builder.Build(), string.Equals(environment, "Development", StringComparison.Ordinal));
     }

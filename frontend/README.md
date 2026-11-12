@@ -15,8 +15,18 @@ npm run build
 npm audit --omit=dev
 ```
 
-Development serves at `http://localhost:4200` and proxies `/api`, `/bff`,
-`/signin-oidc` and `/health` to the backend at `http://localhost:5080`.
+By default, build with `npm --prefix frontend run build` from the repository
+root, then run the backend and open `http://localhost:5080`. The backend serves
+the built frontend; login and logout callbacks use the same port. Rebuild after
+frontend changes (or use `npm --prefix frontend run watch`).
+
+For optional Angular hot reload, set the backend's `App__PublicOrigin` to
+`http://localhost:4200`, restart it, and run `npm --prefix frontend start`.
+Open port 4200 and keep both servers running. Angular proxies `/api`, `/bff`,
+`/signin-oidc` and `/health` to port 5080, including for direct `ng serve`
+and IDE launches. The local Keycloak client permits both explicit callback
+origins. Begin a fresh sign-in after switching origins; authorization codes are
+single-use.
 Production output is `dist/subscribed/browser`, served by the backend on the
 same origin. The backend replaces `__CSP_NONCE__` in the root element before
 serving HTML; do not serve production HTML without that substitution.

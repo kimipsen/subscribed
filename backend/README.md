@@ -115,17 +115,80 @@ The issuer stored with a member is `Oidc:Authority` without trailing slash; the 
 
 ## Local development
 
+### Database setup from `.env`
+
+Run this inside the Dev Container (or on a host with Python 3, the pinned .NET SDK,
+and PostgreSQL 16+ `psql` on `PATH`):
+
+```sh
+cp -n .devcontainer/.env.example .devcontainer/.env
+# Edit .devcontainer/.env: keep the existing POSTGRES_* administrator credentials,
+# and set distinct SUBSCRIBED_APP_PASSWORD and SUBSCRIBED_MIGRATOR_PASSWORD values.
+python3 scripts/setup-database.py
+# Or: python3 scripts/setup-database.py --env-file /absolute/path/to/this/repository/.env
+```
+
+Install the PostgreSQL client if `psql` is missing (`sudo apt-get update && sudo
+apt-get install postgresql-client` on Ubuntu). The server must already be running.
+`POSTGRES_USER` needs database/role creation privileges and permission to grant
+membership in the migrator role (the local PostgreSQL container administrator
+has these). `POSTGRES_HOST`/`POSTGRES_PORT` default to `localhost:5432`;
+`POSTGRES_DB` is the administrator connection database, **not** the application
+database. An existing volume retains its original administrator credentials.
+
+The script creates the dedicated `SUBSCRIBED_DB` (default `subscribed`), separate
+app/migrator roles, and the schema; runs `admin db migrate` including Data
+Protection key tables and grants; verifies app-role access; then saves the runtime
+connection and `App:PublicOrigin=http://localhost:5080` in .NET **development
+user-secrets**, outside the repository. Restart
+the debugger afterward. No connection-string edits to tracked appsettings are
+needed. Environment variables and key-per-file secrets still take precedence;
+remove stale connection overrides if they point at another database.
+
+Re-running preserves data, reapplies migrations/grants, and updates the two role
+passwords from `.env`. Stop the local backend before rotating passwords. Existing
+databases/schemas must be owned by the configured migrator; elevated roles or roles
+with memberships are rejected. This is a **local development** script, not a
+shared-server provisioner. No databases, tables, or roles are dropped.
+
+Dotenv values are literal `KEY=value`, optionally single/double quoted, with
+optional `export` and comments. There is no shell execution, variable expansion,
+escape processing, or multiline-value support. Never commit the real `.env`.
+The selected file must be named `.env` and resolve inside this repository;
+paths and symlinks escaping the repository are rejected.
+The migrator password stays in `.env`, not runtime user-secrets. For subsequent
+manual migrations, supply `ConnectionStrings__SubscribedMigrator` separately or
+rerun the setup script.
+
+### Starting the application
+
+The Dev Container starts a local Keycloak on port 8180; see
+[`docs/dev-environment.md`](../docs/dev-environment.md#keycloak-sign-in) for
+its bootstrap credentials and synthetic-user setup. The standalone Keycloak
+command below is an alternative, not an additional service.
+
 ```sh
 # PostgreSQL: any PG ≥ 16. Create the roles/schema once with deploy/postgres/provision.sql (local cluster only).
 export ConnectionStrings__SubscribedMigrator='Host=localhost;Database=subscribed;Username=subscribed_migrator;Password=…'
 export ConnectionStrings__Subscribed='Host=localhost;Database=subscribed;Username=subscribed_app;Password=…'
 export ASPNETCORE_ENVIRONMENT=Development
+export App__PublicOrigin=http://localhost:5080             # already saved by setup-database.py
 dotnet run --project backend/src/Subscribed.Api -- admin db migrate
-KC_DEV_ADMIN_PASSWORD="$(openssl rand -hex 16)" docker compose -f deploy/compose.dev.yml up -d keycloak   # optional
+export KC_DEV_ADMIN_PASSWORD="$(openssl rand -hex 16)"
+docker compose -f deploy/compose.dev.yml up -d keycloak     # optional
+bash scripts/dev-keycloak-users.sh                         # standalone Keycloak only; prints client secret and users
 export Oidc__ClientSecret='<printed by scripts/dev-keycloak-users.sh>'
-dotnet run --project backend/src/Subscribed.Api          # http://localhost:5080; PublicOrigin http://localhost:4200
-npm --prefix frontend start                               # proxies /api /bff /signin-oidc /health → 5080
+npm --prefix frontend run build
+dotnet run --project backend/src/Subscribed.Api          # frontend + backend at http://localhost:5080
 ```
+
+The default public origin and OIDC callback use port 5080; no Angular server is
+needed. For optional frontend hot reload, start the backend with
+`App__PublicOrigin=http://localhost:4200`, run `npm --prefix frontend start` in
+another terminal, and browse port 4200. The local Keycloak client permits both
+callback origins. Existing realms are not re-imported: re-run
+`scripts/dev-keycloak-users.sh` to update their callback registrations (this also
+resets synthetic user passwords).
 
 ## Tests
 

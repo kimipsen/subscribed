@@ -16,4 +16,4 @@ services:
     ports:
       - "127.0.0.1:8180:8180"
     volumes:
-      - ./keycloak/dev-realm.json:/opt/keycloak/data/import/dev-realm.json:ro
+      - ./keycloak/dev-realm.json:/opt/keycloak/data/import/subscribed-dev-realm.json:ro

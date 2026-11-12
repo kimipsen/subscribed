@@ -3,6 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Subscribed.Api</RootNamespace>
     <AssemblyName>Subscribed.Api</AssemblyName>
+    <UserSecretsId>subscribed-api-development</UserSecretsId>
     <!-- The SPA is copied into wwwroot by deploy/Dockerfile; nothing is bundled from the repo. -->
     <EnableDefaultContentItems>true</EnableDefaultContentItems>
   </PropertyGroup>
