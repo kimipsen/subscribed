@@ -1,0 +1,41 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "../home/vscode/.vscode-server/data/User/workspaceStorage/1ea1bb93d64d2941c2f5a5c757ee21d6/ms-dotnettools.csdevkit/subscribed.sln",
+                "/property:GenerateFullPaths=true",
+                "/consoleloggerparameters:NoSummary;ForceNoAlign"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "publish",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "publish",
+                "../home/vscode/.vscode-server/data/User/workspaceStorage/1ea1bb93d64d2941c2f5a5c757ee21d6/ms-dotnettools.csdevkit/subscribed.sln",
+                "/property:GenerateFullPaths=true",
+                "/consoleloggerparameters:NoSummary;ForceNoAlign"
+            ],
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "watch",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "watch",
+                "run",
+                "--project",
+                "${workspaceFolder}/backend/tests/Subscribed.Api.Tests/Subscribed.Api.Tests.csproj"
+            ],
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}

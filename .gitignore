@@ -489,3 +489,4 @@ deploy/secrets/
 *.patch.sql
 # Synthetic SPA fixture written by the API tests into their output directory
 **/spa-fixture/
+backend/src/Subscribed.Api/appsettings.Development.json
