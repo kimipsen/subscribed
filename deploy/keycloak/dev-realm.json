@@ -17,11 +17,11 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
-      "redirectUris": ["http://localhost:4200/signin-oidc"],
+      "redirectUris": ["http://localhost:5080/signin-oidc", "http://localhost:4200/signin-oidc"],
       "webOrigins": [],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:4200/signed-out"
+        "post.logout.redirect.uris": "http://localhost:5080/signed-out##http://localhost:4200/signed-out"
       }
     }
   ]

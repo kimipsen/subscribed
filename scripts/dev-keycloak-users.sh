@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# LOCAL DEVELOPMENT ONLY. Creates synthetic users in the dev realm of deploy/compose.dev.yml with
-# random passwords and prints them (and the generated client secret) to this terminal only.
+# LOCAL DEVELOPMENT ONLY. Creates synthetic users in the subscribed-dev realm with random passwords
+# and prints them (and the generated client secret) to this terminal only.
 # Nothing is written to disk. Requires KC_DEV_ADMIN_PASSWORD (the value used to start Keycloak).
 set -euo pipefail
 
-: "${KC_DEV_ADMIN_PASSWORD:?export the KC_DEV_ADMIN_PASSWORD used for compose.dev.yml}"
+: "${KC_DEV_ADMIN_PASSWORD:?export the Keycloak bootstrap administrator password as KC_DEV_ADMIN_PASSWORD}"
 cd "$(dirname "$0")/.."
-COMPOSE=(docker compose -f deploy/compose.dev.yml)
+COMPOSE=(docker compose -f "${KEYCLOAK_COMPOSE_FILE:-deploy/compose.dev.yml}")
 KCADM=("${COMPOSE[@]}" exec -T keycloak /opt/keycloak/bin/kcadm.sh)
 REALM=subscribed-dev
 
 "${KCADM[@]}" config credentials --server http://localhost:8180 --realm master \
-  --user dev-admin --password "$KC_DEV_ADMIN_PASSWORD" >/dev/null
+  --user "${KC_DEV_ADMIN_USERNAME:-dev-admin}" --password "$KC_DEV_ADMIN_PASSWORD" >/dev/null
 
 create_user() {
   local username="$1" name="$2" password
@@ -31,6 +31,9 @@ create_user synthetic-a "Synthetic User A"
 create_user synthetic-b "Synthetic User B"
 
 client_uuid="$("${KCADM[@]}" get clients -r "$REALM" -q clientId=subscribed-dev --fields id --format csv --noquotes | head -n1)"
+"${KCADM[@]}" update "clients/$client_uuid" -r "$REALM" \
+  -s 'redirectUris=["http://localhost:5080/signin-oidc","http://localhost:4200/signin-oidc"]' \
+  -s 'attributes."post.logout.redirect.uris"="http://localhost:5080/signed-out##http://localhost:4200/signed-out"' >/dev/null
 secret="$("${KCADM[@]}" get "clients/$client_uuid/client-secret" -r "$REALM" --fields value --format csv --noquotes)"
 echo
 echo "Client secret for Oidc:ClientSecret (pass via environment or user-secrets, never commit):"

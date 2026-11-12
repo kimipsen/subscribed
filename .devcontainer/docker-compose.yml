@@ -12,6 +12,9 @@ services:
 
     # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
     network_mode: service:db
+    depends_on:
+      keycloak:
+        condition: service_healthy
     
     # Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
     # user: root
@@ -27,8 +30,6 @@ services:
       # PostgreSQL 18+ images store data in a major-version subdirectory, so the
       # mount belongs at /var/lib/postgresql, not /var/lib/postgresql/data.
       - postgres-data:/var/lib/postgresql
-      # Optional and not mounted: Keycloak is external to this development stack.
-      # - ./postgres/init-keycloak-db.sh:/docker-entrypoint-initdb.d/init-keycloak-db.sh
     # Credentials live in .devcontainer/.env (gitignored). See .env.example.
     env_file:
       - .env
@@ -41,5 +42,66 @@ services:
     # Add "forwardPorts": ["5432"] to **devcontainer.json** to forward PostgreSQL locally.
     # (Adding the "ports" property to this file will not forward from a Codespace.)
 
+  keycloak-db:
+    image: postgres:18
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - keycloak-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_PORT: "5432"
+      KC_HOSTNAME: http://localhost:8180
+    entrypoint:
+      - /bin/bash
+      - -ec
+      - |
+        : "$${KC_BOOTSTRAP_ADMIN_USERNAME:?Set KC_BOOTSTRAP_ADMIN_USERNAME in .devcontainer/.env}"
+        : "$${KC_BOOTSTRAP_ADMIN_PASSWORD:?Set KC_BOOTSTRAP_ADMIN_PASSWORD in .devcontainer/.env}"
+        : "$${POSTGRES_USER:?Set POSTGRES_USER in .devcontainer/.env}"
+        : "$${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .devcontainer/.env}"
+        : "$${POSTGRES_DB:?Set POSTGRES_DB in .devcontainer/.env}"
+        export KC_DB_USERNAME="$$POSTGRES_USER"
+        export KC_DB_PASSWORD="$$POSTGRES_PASSWORD"
+        export KC_DB_URL_DATABASE="$$POSTGRES_DB"
+        exec /opt/keycloak/bin/kc.sh start-dev --import-realm --http-port=8180
+    # The backend also uses this network namespace, so localhost:8180 works there.
+    network_mode: service:db
+    depends_on:
+      db:
+        condition: service_healthy
+      keycloak-db:
+        condition: service_healthy
+    volumes:
+      - ../deploy/keycloak/dev-realm.json:/opt/keycloak/data/import/subscribed-dev-realm.json:ro
+    healthcheck:
+      test:
+        - CMD
+        - /bin/bash
+        - -ec
+        - |
+          exec 3<>/dev/tcp/127.0.0.1/8180
+          printf 'GET /realms/subscribed-dev/.well-known/openid-configuration HTTP/1.0\r\nHost: localhost:8180\r\n\r\n' >&3
+          IFS= read -r status <&3
+          [[ "$$status" == HTTP/1.[01]\ 200* ]]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
 volumes:
   postgres-data:
+  keycloak-postgres-data:

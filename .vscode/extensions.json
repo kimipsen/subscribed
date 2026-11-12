@@ -10,6 +10,7 @@
         "ms-vscode.vscode-typescript-next",
         "EditorConfig.EditorConfig",
         "SonarSource.sonarlint-vscode",
-        "humao.rest-client"
+        "humao.rest-client",
+        "ms-dotnettools.csdevkit"
     ]
 }
