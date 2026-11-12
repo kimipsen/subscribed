@@ -1,0 +1,259 @@
+version: '3'
+
+tasks:
+  check:devcontainer:
+    desc: "Check if devcontainer is properly configured"
+    summary: |
+      Validates that all required tools are installed and authenticated:
+      - claude (Claude Code CLI)
+      - codex (Codex CLI)
+      - copilot (GitHub Copilot CLI)
+      - gh (GitHub CLI)
+    cmds:
+      - task: check:tools
+      - task: check:auth
+
+  check:tools:
+    desc: "Check if all required tools are installed"
+    internal: true
+    cmds:
+      - cmd: |
+          echo "== Checking tool installations =="
+          echo ""
+          
+          errors=0
+          
+          # Check Claude
+          if command -v claude &> /dev/null; then
+            echo "✓ claude is installed"
+            claude --version
+          else
+            echo "✗ claude is not installed"
+            errors=$((errors + 1))
+          fi
+          
+          echo ""
+          
+          # Check Codex
+          if command -v codex &> /dev/null; then
+            echo "✓ codex is installed"
+            codex --version
+          else
+            echo "✗ codex is not installed"
+            errors=$((errors + 1))
+          fi
+          
+          echo ""
+          
+          # Check Copilot
+          if command -v copilot &> /dev/null; then
+            echo "✓ copilot is installed"
+            copilot --version
+          else
+            echo "✗ copilot is not installed"
+            errors=$((errors + 1))
+          fi
+          
+          echo ""
+          
+          # Check GitHub CLI
+          if command -v gh &> /dev/null; then
+            echo "✓ gh is installed"
+            gh --version
+          else
+            echo "✗ gh is not installed"
+            errors=$((errors + 1))
+          fi
+          
+          echo ""
+          
+          if [ $errors -gt 0 ]; then
+            echo "❌ $errors tool(s) missing. Run 'task setup:devcontainer' to help fix this."
+            exit 1
+          else
+            echo "✅ All tools are installed"
+            exit 0
+          fi
+
+  check:auth:
+    desc: "Check if all tools are authenticated"
+    internal: true
+    cmds:
+      - cmd: |
+          echo ""
+          echo "== Checking authentication =="
+          echo ""
+          
+          errors=0
+          
+          # Check Claude authentication
+          if command -v claude &> /dev/null; then
+            if claude whoami &> /dev/null; then
+              echo "✓ claude is authenticated"
+            else
+              echo "✗ claude is not authenticated"
+              errors=$((errors + 1))
+            fi
+          fi
+          
+          echo ""
+          
+          # Check Codex authentication
+          if command -v codex &> /dev/null; then
+            if codex whoami &> /dev/null; then
+              echo "✓ codex is authenticated"
+            else
+              echo "✗ codex is not authenticated"
+              errors=$((errors + 1))
+            fi
+          fi
+          
+          echo ""
+          
+          # Check Copilot authentication
+          if command -v copilot &> /dev/null; then
+            if copilot auth status &> /dev/null; then
+              echo "✓ copilot is authenticated"
+            else
+              echo "✗ copilot is not authenticated"
+              errors=$((errors + 1))
+            fi
+          fi
+          
+          echo ""
+          
+          # Check GitHub CLI authentication
+          if command -v gh &> /dev/null; then
+            if gh auth status &> /dev/null; then
+              echo "✓ gh is authenticated"
+            else
+              echo "✗ gh is not authenticated"
+              errors=$((errors + 1))
+            fi
+          fi
+          
+          echo ""
+          
+          if [ $errors -gt 0 ]; then
+            echo "⚠️  $errors tool(s) not authenticated. Run 'task setup:devcontainer' for instructions."
+            exit 1
+          else
+            echo "✅ All tools are authenticated"
+            exit 0
+          fi
+
+  setup:devcontainer:
+    desc: "Setup and fix devcontainer configuration issues"
+    summary: |
+      Guides you through setting up missing tools and authentication.
+      This is an interactive task that will help you:
+      - Install missing CLI tools
+      - Authenticate with required services
+    cmds:
+      - cmd: |
+          echo "== Devcontainer Setup Helper =="
+          echo ""
+          echo "This will guide you through setting up your devcontainer."
+          echo ""
+          
+          # Check each tool and provide setup guidance
+          {{.CLI_SETUP}}
+        vars:
+          CLI_SETUP: |
+            if ! command -v claude &> /dev/null; then
+              echo "📦 Claude Code CLI is not installed"
+              echo "   Install it by running: npm install -g @claude/cli"
+              echo "   Or via your package manager if available"
+              echo ""
+            fi
+            if ! command -v codex &> /dev/null; then
+              echo "📦 Codex CLI is not installed"
+              echo "   Install it by running: npm install -g @openai/codex"
+              echo "   Or via your package manager if available"
+              echo ""
+            fi
+            if ! command -v copilot &> /dev/null; then
+              echo "📦 GitHub Copilot CLI is not installed"
+              echo "   This should be included via the dev container feature:"
+              echo "   'ghcr.io/devcontainers/features/copilot-cli:1'"
+              echo "   Rebuild your dev container to install it"
+              echo ""
+            fi
+            if ! command -v gh &> /dev/null; then
+              echo "📦 GitHub CLI (gh) is not installed"
+              echo "   This should be included via the dev container feature:"
+              echo "   'ghcr.io/devcontainers/features/github-cli:1'"
+              echo "   Rebuild your dev container to install it"
+              echo ""
+            fi
+      - cmd: |
+          echo ""
+          echo "== Authentication Setup =="
+          echo ""
+          
+          # Claude authentication
+          if command -v claude &> /dev/null; then
+            if ! claude whoami &> /dev/null; then
+              echo "🔐 Claude needs authentication"
+              echo "   Run: claude auth login"
+              echo ""
+            fi
+          fi
+          
+          # Codex authentication
+          if command -v codex &> /dev/null; then
+            if ! codex whoami &> /dev/null; then
+              echo "🔐 Codex needs authentication"
+              echo "   Run: codex auth login"
+              echo ""
+            fi
+          fi
+          
+          # Copilot authentication
+          if command -v copilot &> /dev/null; then
+            if ! copilot auth status &> /dev/null; then
+              echo "🔐 Copilot needs authentication"
+              echo "   Run: copilot auth login"
+              echo ""
+            fi
+          fi
+          
+          # GitHub CLI authentication
+          if command -v gh &> /dev/null; then
+            if ! gh auth status &> /dev/null; then
+              echo "🔐 GitHub CLI needs authentication"
+              echo "   Run: gh auth login"
+              echo ""
+            fi
+          fi
+          
+          echo "After running the authentication commands above, run:"
+          echo "  task check:devcontainer"
+          echo ""
+          echo "to verify everything is working correctly."
+
+  rebuild:devcontainer:
+    desc: "Rebuild the dev container to install all features"
+    summary: |
+      Rebuilds the dev container from scratch.
+      This will:
+      - Re-initialize the container with all configured features
+      - Install all required CLI tools
+      - Preserve your local configuration and data
+      
+      ⚠️  WARNING: This may take several minutes and will restart
+      any running services in the container.
+    cmds:
+      - cmd: |
+          echo "⚠️  This will rebuild your dev container and may take several minutes."
+          echo ""
+          echo "To proceed, you need to manually:"
+          echo "1. Open the Dev Containers extension in VS Code"
+          echo "2. Click 'Dev Containers: Rebuild Container' from the command palette"
+          echo "   or right-click the 'Dev Container' indicator and select 'Rebuild'"
+          echo ""
+          echo "Alternatively, from the host machine, run:"
+          echo "  devcontainer build --workspace-folder ."
+          echo ""
+          echo "After rebuild, run:"
+          echo "  task check:devcontainer"
