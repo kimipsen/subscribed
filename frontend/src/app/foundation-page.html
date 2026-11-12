@@ -85,7 +85,7 @@
               <button type="submit" [disabled]="saving() || !validName(name)">
                 {{ (saving() ? 'household.saving' : 'household.save') | t }}
               </button>
-              @if (saved()) { <p role="status">{{ 'household.saved' | t }}</p> }
+              @if (saved()) { <output class="status">{{ 'household.saved' | t }}</output> }
             </form>
           </section>
           <section class="panel">

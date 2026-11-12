@@ -33,10 +33,10 @@
   }
   <main id="main" tabindex="-1">
     @if (i18n.persistFailed()) {
-      <div role="status" class="notice">
+      <output class="notice">
         {{ 'language.saveFailed' | t }}
         <button type="button" class="secondary" (click)="i18n.dismissPersistNotice()">{{ 'language.dismiss' | t }}</button>
-      </div>
+      </output>
     }
     @if (session.expired()) {
       <div role="alert" class="notice">{{ 'shell.sessionExpired' | t }}

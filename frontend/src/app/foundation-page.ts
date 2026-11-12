@@ -30,7 +30,8 @@ export class FoundationPage {
   });
   readonly authError = computed<MessageKey | null>(() => {
     const code = this.route.snapshot.queryParamMap.get('authError');
-    return code === 'cancelled' ? 'auth.cancelled' : code ? 'auth.failed' : null;
+    if (!code) return null;
+    return code === 'cancelled' ? 'auth.cancelled' : 'auth.failed';
   });
   readonly returnUrl = computed(() =>
     this.route.snapshot.queryParamMap.get('returnUrl') ?? (this.page() === 'household' ? '/household' : '/'));

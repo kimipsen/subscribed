@@ -105,11 +105,11 @@ describe('Language selector', () => {
     const fixture = await render();
     select(fixture, 'da');
     await fixture.whenStable();
-    const notice = fixture.nativeElement.querySelector('[role=status].notice') as HTMLElement;
+    const notice = fixture.nativeElement.querySelector('output.notice') as HTMLElement;
     expect(notice.textContent).toContain('Dit sprogvalg kunne ikke gemmes');
     notice.querySelector('button')?.click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('[role=status].notice')).toBeNull();
+    expect(fixture.nativeElement.querySelector('output.notice')).toBeNull();
     expect(TestBed.inject(LanguageService).language()).toBe('da');
   });
 });

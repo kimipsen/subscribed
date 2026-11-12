@@ -33,7 +33,8 @@ export const BROWSER_LANGUAGES = new InjectionToken<readonly string[]>('browser 
   providedIn: 'root',
   factory: () => {
     const browser = inject(DOCUMENT).defaultView?.navigator;
-    return browser?.languages.length ? browser.languages : browser?.language ? [browser.language] : [];
+    if (browser?.languages.length) return browser.languages;
+    return browser?.language ? [browser.language] : [];
   },
 });
 
