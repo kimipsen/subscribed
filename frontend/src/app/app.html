@@ -1,34 +1,50 @@
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#main">{{ 'shell.skipLink' | t }}</a>
 <header>
   <a class="brand" routerLink="/">Subscribed</a>
   @if (session.current().state === 'member') {
     <button class="menu" type="button" aria-controls="primary-nav"
-      [attr.aria-expanded]="menuOpen()" (click)="menuOpen.set(!menuOpen())">Menu</button>
+      [attr.aria-expanded]="menuOpen()" (click)="menuOpen.set(!menuOpen())">{{ 'shell.menu' | t }}</button>
   }
   <span class="spacer"></span>
-  @if (session.current().state === 'member' || session.current().state === 'not-member') {
-    <button type="button" (click)="session.signOut()" [disabled]="session.logoutPending()">
-      {{ session.logoutPending() ? 'Signing out...' : 'Sign out' }}
-    </button>
-  }
+  <div class="header-actions">
+    <div class="preferences">
+      <label for="language-select" class="pref-label">{{ 'language.label' | t }}</label>
+      <select id="language-select" [ngModel]="i18n.language()" (ngModelChange)="onLanguage($event)">
+        @for (language of languages; track language.code) {
+          <option [value]="language.code" [attr.lang]="language.code">{{ language.endonym }}</option>
+        }
+      </select>
+    </div>
+    @if (session.current().state === 'member' || session.current().state === 'not-member') {
+      <button type="button" (click)="session.signOut()" [disabled]="session.logoutPending()">
+        {{ (session.logoutPending() ? 'shell.signingOut' : 'shell.signOut') | t }}
+      </button>
+    }
+  </div>
 </header>
 <div class="layout" [class.member]="session.current().state === 'member'">
   @if (session.current().state === 'member') {
-    <nav id="primary-nav" aria-label="Primary" [class.open]="menuOpen()" tabindex="-1"
+    <nav id="primary-nav" [attr.aria-label]="'shell.primaryNav' | t" [class.open]="menuOpen()" tabindex="-1"
       (keydown.escape)="menuOpen.set(false)">
       <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}"
-        ariaCurrentWhenActive="page">Home</a>
-      <a routerLink="/household" routerLinkActive="active" ariaCurrentWhenActive="page">Household</a>
+        ariaCurrentWhenActive="page">{{ 'shell.nav.home' | t }}</a>
+      <a routerLink="/household" routerLinkActive="active" ariaCurrentWhenActive="page">{{ 'shell.nav.household' | t }}</a>
     </nav>
   }
   <main id="main" tabindex="-1">
+    @if (i18n.persistFailed()) {
+      <div role="status" class="notice">
+        {{ 'language.saveFailed' | t }}
+        <button type="button" class="secondary" (click)="i18n.dismissPersistNotice()">{{ 'language.dismiss' | t }}</button>
+      </div>
+    }
     @if (session.expired()) {
-      <div role="alert" class="notice">Your session expired.
-        <button type="button" (click)="session.signIn(router.url)">Sign in again</button>
+      <div role="alert" class="notice">{{ 'shell.sessionExpired' | t }}
+        <button type="button" (click)="session.signIn(router.url)">{{ 'shell.signInAgain' | t }}</button>
       </div>
     }
     @if (session.logoutError(); as error) {
-      <div class="error" role="alert">{{ error }}</div>
+      <div class="error" role="alert">{{ i18n.message(error) }}</div>
     }
     <router-outlet />
   </main>

@@ -1,109 +1,115 @@
 @if (page() === 'signed-out') {
   <section class="panel">
-    <h1 tabindex="-1">You are signed out</h1>
+    <h1 tabindex="-1">{{ 'signedOut.heading' | t }}</h1>
     @if (route.snapshot.queryParamMap.get('idp') === '0') {
-      <p>Your organisation sign-in may still be active. You have been signed out of Subscribed.</p>
+      <p>{{ 'signedOut.idpActive' | t }}</p>
     }
-    <button type="button" (click)="session.signIn()">Sign in</button>
+    <button type="button" (click)="session.signIn()">{{ 'common.signIn' | t }}</button>
   </section>
 } @else {
   @switch (session.current().state) {
     @case ('loading') {
       <section aria-busy="true">
-        <h1 tabindex="-1">Getting your household ready</h1>
-        <p role="status">Checking your session...</p>
+        <h1 tabindex="-1">{{ 'loading.heading' | t }}</h1>
+        <p role="status">{{ 'loading.status' | t }}</p>
         <div class="skeleton" aria-hidden="true"></div>
       </section>
     }
     @case ('unavailable') {
       <section class="panel">
-        <h1 tabindex="-1">We couldn't reach your household</h1>
-        <p role="alert">Your session could not be checked. This does not mean you are signed out.</p>
+        <h1 tabindex="-1">{{ 'unavailable.heading' | t }}</h1>
+        <p role="alert">{{ 'unavailable.message' | t }}</p>
         @if (session.unavailableReference()) {
-          <p>Reference: <code>{{ session.unavailableReference() }}</code></p>
+          <p>{{ 'common.referenceLabel' | t }} <code>{{ session.unavailableReference() }}</code></p>
         }
-        <button type="button" (click)="session.load()">Retry</button>
+        <button type="button" (click)="session.load()">{{ 'common.retry' | t }}</button>
       </section>
     }
     @case ('anonymous') {
       <section class="panel">
-        <p class="eyebrow">YOUR HOUSEHOLD, IN ONE PLACE</p>
-        <h1 tabindex="-1">Welcome to Subscribed</h1>
-        <p>Keep a clear view of your household's subscription expenses.</p>
-        @if (authError()) { <p class="error" role="alert">{{ authError() }}</p> }
+        <p class="eyebrow">{{ 'anonymous.eyebrow' | t }}</p>
+        <h1 tabindex="-1">{{ 'anonymous.heading' | t }}</h1>
+        <p>{{ 'anonymous.intro' | t }}</p>
+        @if (authError(); as error) { <p class="error" role="alert">{{ error | t }}</p> }
         <button type="button" (click)="session.signIn(returnUrl())">
-          Sign in with your organisation
+          {{ 'anonymous.signIn' | t }}
         </button>
-        <p class="muted">Sign in is managed by your existing identity provider.</p>
+        <p class="muted">{{ 'anonymous.idpNote' | t }}</p>
       </section>
     }
     @case ('not-member') {
       <section class="panel">
-        <h1 tabindex="-1">Household access needed</h1>
-        <p>You are signed in, but haven't been granted access to this household.</p>
-        <p>Ask the household administrator to grant access using your reference.</p>
-        <label for="reference">Your account reference</label>
+        <h1 tabindex="-1">{{ 'access.heading' | t }}</h1>
+        <p>{{ 'access.notGranted' | t }}</p>
+        <p>{{ 'access.askAdmin' | t }}</p>
+        <label for="reference">{{ 'access.referenceLabel' | t }}</label>
         <input id="reference" #refInput readonly [value]="reference()">
-        <button type="button" (click)="copy(refInput)">Copy reference</button>
-        <p role="status">{{ copyMessage() }}</p>
-        <button class="secondary" type="button" (click)="session.load()">Check access again</button>
+        <button type="button" (click)="copy(refInput)">{{ 'access.copy' | t }}</button>
+        <p role="status">{{ i18n.message(copyMessage()) }}</p>
+        <button class="secondary" type="button" (click)="session.load()">{{ 'access.checkAgain' | t }}</button>
       </section>
     }
     @case ('member') {
       @if (page() === 'household') {
-        <h1 tabindex="-1">Household settings</h1>
-        @if (loading()) { <p role="status">Loading household...</p> }
+        <h1 tabindex="-1">{{ 'household.heading' | t }}</h1>
+        @if (loading()) { <p role="status">{{ 'household.loading' | t }}</p> }
         @if (problem()) {
           <div class="error" role="alert">
-            {{ problem() }}
-            @if (traceId()) { <p>Reference: <code>{{ traceId() }}</code></p> }
-            <button type="button" (click)="load()">Reload household</button>
+            {{ i18n.message(problem()) }}
+            @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+            <button type="button" (click)="load()">{{ 'household.reload' | t }}</button>
           </div>
         }
         @if (household(); as household) {
           <section class="panel">
-            <h2>Household name</h2>
+            <h2>{{ 'household.nameHeading' | t }}</h2>
             <form (ngSubmit)="save()" novalidate>
-              <label for="household-name">Name</label>
+              <label for="household-name">{{ 'household.nameLabel' | t }}</label>
               <input id="household-name" name="householdName" [(ngModel)]="name"
                 maxlength="80" required [attr.aria-invalid]="fieldError() ? 'true' : null"
                 aria-describedby="name-hint name-error" [disabled]="saving()">
-              <p id="name-hint" class="muted">1-80 characters. Visible to everyone in your household.</p>
-              <p id="name-error" class="error" role="alert">{{ fieldError() }}</p>
+              <p id="name-hint" class="muted">{{ 'household.nameHint' | t }}</p>
+              <div id="name-error" class="error" role="alert">
+                @if (fieldError()) {
+                  <p>{{ i18n.message(fieldError()) }}</p>
+                  @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+                }
+              </div>
               @if (conflict()) {
                 <div class="notice" role="alert">
-                  Someone else changed this household. Your input has been kept.
-                  <button type="button" (click)="load()">Reload latest</button>
+                  {{ 'household.conflict' | t }}
+                  @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+                  <button type="button" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
                 </div>
               }
               <button type="submit" [disabled]="saving() || !validName(name)">
-                {{ saving() ? 'Saving...' : 'Save name' }}
+                {{ (saving() ? 'household.saving' : 'household.save') | t }}
               </button>
-              @if (saved()) { <p role="status">Household name saved.</p> }
+              @if (saved()) { <p role="status">{{ 'household.saved' | t }}</p> }
             </form>
           </section>
           <section class="panel">
-            <h2>Household members</h2>
+            <h2>{{ 'household.membersHeading' | t }}</h2>
             <ul class="members">
               @for (member of household.members; track member.memberId) {
                 <li><strong>{{ member.displayLabel }}</strong>
-                  <span class="muted">Joined {{ member.grantedAt | date:'mediumDate' }}</span>
+                  <span class="muted">{{ 'household.joined' | t: { date: (member.grantedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</span>
                 </li>
               }
             </ul>
-            <p class="muted">Membership is managed by the household administrator.</p>
+            <p class="muted">{{ 'household.membersManaged' | t }}</p>
           </section>
         }
       } @else if (page() === 'not-found') {
-        <h1 tabindex="-1">Page not found</h1>
-        <a routerLink="/">Return home</a>
+        <h1 tabindex="-1">{{ 'notFound.heading' | t }}</h1>
+        <a routerLink="/">{{ 'notFound.home' | t }}</a>
       } @else {
-        <h1 tabindex="-1">Welcome, {{ user()?.displayName }}</h1>
-        <p class="muted">Your household is ready.</p>
+        <h1 tabindex="-1">{{ 'home.welcome' | t: { name: user()?.displayName ?? '' } }}</h1>
+        <p class="muted">{{ 'home.ready' | t }}</p>
         <section class="empty">
-          <h2>A fresh start for your household</h2>
-          <p>Subscription tracking is coming in the next milestone.</p>
-          <a class="button" routerLink="/household">View household settings</a>
+          <h2>{{ 'home.emptyHeading' | t }}</h2>
+          <p>{{ 'home.emptyBody' | t }}</p>
+          <a class="button" routerLink="/household">{{ 'home.viewHousehold' | t }}</a>
         </section>
       }
     }
