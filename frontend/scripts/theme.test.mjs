@@ -1,37 +1,29 @@
 // Dependency-free theme checks run by `npm run test:ci`:
-// T-I init script behaviour, T-C WCAG contrast of the token palette, T-H no hard-coded colours.
+// T-I static init-script contract, T-C WCAG contrast of the token palette, T-H no hard-coded colours.
+// Theme resolution behaviour is covered by src/app/theme/theme.spec.ts; the init script is only read as text.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { THROWS, runInit } from './theme-harness.mjs';
+import { initContractChecks, readThemeContract } from './theme-init-contract.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const initSource = read('public/theme-init.js');
+const themeContract = readThemeContract(read('src/app/theme/theme.ts'));
 const styles = read('src/styles.scss');
 const appStyles = read('src/app/app.scss');
 
-// ---------- T-I: public/theme-init.js ----------
+// ---------- T-I: public/theme-init.js (static contract, never executed) ----------
 
-const initCases = [
-  ['nothing stored, system light', { stored: null, systemDark: false }, 'light'],
-  ['nothing stored, system dark', { stored: null, systemDark: true }, 'dark'],
-  ['light stored overrides system dark', { stored: 'light', systemDark: true }, 'light'],
-  ['dark stored overrides system light', { stored: 'dark', systemDark: false }, 'dark'],
-  ['system stored follows system dark', { stored: 'system', systemDark: true }, 'dark'],
-  ["invalid 'Dark' acts as system", { stored: 'Dark', systemDark: true }, 'dark'],
-  ["invalid 'auto' acts as system", { stored: 'auto', systemDark: true }, 'dark'],
-  ["invalid '' acts as system", { stored: '', systemDark: true }, 'dark'],
-  ['throwing getItem acts as system', { stored: THROWS, systemDark: true }, 'dark'],
-  ['missing matchMedia falls back to light', { stored: null, noMatchMedia: true }, 'light'],
-  ['throwing matchMedia falls back to light', { stored: null, systemDark: THROWS }, 'light'],
-  ['throwing storage and matchMedia fall back to light', { stored: THROWS, systemDark: THROWS }, 'light'],
-];
+test('T-I theme.ts exposes the constants the init script mirrors', () => {
+  assert.equal(themeContract.storageKey, 'subscribed.theme');
+  assert.deepEqual([...themeContract.modes].sort(), ['dark', 'light', 'system']);
+  assert.equal(themeContract.defaultMode, 'system');
+  assert.equal(themeContract.darkQuery, '(prefers-color-scheme: dark)');
+});
 
-for (const [name, options, expected] of initCases) {
-  test(`T-I theme-init.js: ${name} -> ${expected}`, () => {
-    let calls;
-    assert.doesNotThrow(() => { calls = runInit(initSource, options); });
-    assert.deepEqual(calls, [['data-theme', expected]]);
+for (const { name, ok, detail } of initContractChecks(initSource, themeContract)) {
+  test(`T-I theme-init.js: ${name}`, () => {
+    assert.ok(ok, detail);
   });
 }
 

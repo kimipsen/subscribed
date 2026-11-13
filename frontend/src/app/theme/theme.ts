@@ -1,7 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { DestroyRef, Injectable, InjectionToken, computed, effect, inject, signal } from '@angular/core';
 
-// Keep isThemeMode/resolveTheme in sync with public/theme-init.js (tested by scripts/theme.test.mjs).
+// Keep isThemeMode/resolveTheme in sync with public/theme-init.js (checked statically by scripts/theme.test.mjs).
 export const THEME_MODES = ['system', 'light', 'dark'] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
 export type Theme = 'light' | 'dark';
@@ -71,7 +71,9 @@ export class ThemeService {
       inject(DestroyRef).onDestroy(() => query.removeEventListener('change', listener));
     }
 
-    effect(() => this.document.documentElement.setAttribute('data-theme', this.theme()));
+    effect(() => {
+      this.document.documentElement.dataset['theme'] = this.theme();
+    });
   }
 
   setMode(mode: ThemeMode): void {

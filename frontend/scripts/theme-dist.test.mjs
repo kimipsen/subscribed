@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { runInit } from './theme-harness.mjs';
+import { initContractChecks, readThemeContract } from './theme-init-contract.mjs';
 
 const dist = new URL('../dist/subscribed/browser/', import.meta.url);
 const indexUrl = new URL('index.html', dist);
@@ -34,9 +34,12 @@ test('T-D production output keeps the external, render-blocking theme script', (
   );
 });
 
-test('T-D dist theme-init.js is byte-identical to public/ and behaves', () => {
+test('T-D dist theme-init.js is byte-identical to public/ and meets the static contract', () => {
   const built = readFileSync(new URL('theme-init.js', dist));
   const source = readFileSync(new URL('../public/theme-init.js', import.meta.url));
   assert.ok(built.equals(source), 'dist theme-init.js differs from public/theme-init.js');
-  assert.deepEqual(runInit(built.toString('utf8'), { stored: 'dark', systemDark: false }), [['data-theme', 'dark']]);
+
+  const contract = readThemeContract(readFileSync(new URL('../src/app/theme/theme.ts', import.meta.url), 'utf8'));
+  const failed = initContractChecks(built.toString('utf8'), contract).filter(({ ok }) => !ok);
+  assert.deepEqual(failed.map(({ name }) => name), [], failed.map(({ detail }) => detail).join('; '));
 });
