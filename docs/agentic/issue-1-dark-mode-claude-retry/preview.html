@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOCKUP – Subscribed theme selector (issue-1-dark-mode)</title>
+<style>
+/* Tokens exactly as proposed in design.md §5.4 */
+.t-light { color-scheme: light; --bg:#f4f5f7; --surface:#fff; --text:#1d2330; --muted:#505a6b; --border:#d6dae1; --control:#667080;
+  --primary:#2453a6; --on-primary:#fff; --nav-bg:#e7eefb; --nav-text:#2453a6; --focus:#876000; --error:#8d201d; --invalid:#a3231f;
+  --notice-bg:#fff4dc; --notice-border:#c4943b; --skeleton:#e3e6eb; --empty-border:#b6bdc7; }
+.t-dark { color-scheme: dark; --bg:#12151b; --surface:#1b2029; --text:#e6e9ef; --muted:#aab2c0; --border:#343b48; --control:#8a94a6;
+  --primary:#8ab0ff; --on-primary:#0b1630; --nav-bg:#24324d; --nav-text:#b9cfff; --focus:#f5c451; --error:#ff9e97; --invalid:#ff8a80;
+  --notice-bg:#352a12; --notice-border:#c99a3e; --skeleton:#2b313c; --empty-border:#6b7486; }
+* { box-sizing: border-box; }
+body { margin:0; font:1rem/1.5 system-ui,sans-serif; background:#e9ebef; color:#1d2330; }
+.banner { background:#5b2d8e; color:#fff; padding:.75rem 1.25rem; font-weight:700; }
+.doc { padding:1rem 1.25rem; max-width:90rem; }
+.doc h2 { margin:2rem 0 .25rem; font-size:1.2rem; }
+.doc > p { margin:.25rem 0 1rem; max-width:60rem; }
+.row { display:flex; flex-wrap:wrap; gap:1.25rem; align-items:flex-start; }
+.cap { font:600 .8rem/1.4 system-ui; color:#3a3f4a; margin:.2rem 0; }
+.frame { border:1px solid #9aa1ad; border-radius:.5rem; overflow:hidden; }
+.desk { width:min(42rem,100%); }
+.mob { width:320px; }
+/* App mock */
+.app { background:var(--bg); color:var(--text); font-size:.9rem; min-height:16rem; }
+.app header { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; padding:.5rem 1rem; min-height:3.5rem; background:var(--surface); border-bottom:1px solid var(--border); }
+.brand { color:var(--primary); font-weight:750; font-size:1.1rem; text-decoration:none; }
+.spacer { flex:1; }
+.acts { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; justify-content:flex-end; }
+.pref { display:flex; align-items:center; gap:.35rem; }
+.pref label { font-size:.8rem; font-weight:650; }
+.mob .pref label { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.mob .acts { flex-basis:100%; }
+select, input { font:inherit; min-height:40px; padding:.3rem .5rem; border:1px solid var(--control); border-radius:.4rem; background:var(--surface); color:var(--text); }
+input { width:100%; }
+input[aria-invalid=true] { border:2px solid var(--invalid); }
+.btn { display:inline-flex; align-items:center; min-height:40px; padding:.4rem .9rem; border-radius:.4rem; border:1px solid var(--primary); background:var(--primary); color:var(--on-primary); font:inherit; cursor:pointer; }
+.btn.sec { background:var(--surface); color:var(--primary); }
+.btn:disabled { opacity:.6; cursor:not-allowed; }
+:focus-visible, .ring { outline:3px solid var(--focus); outline-offset:3px; }
+.layout { display:grid; grid-template-columns:9rem 1fr; }
+.mob .layout { display:block; }
+nav { background:var(--surface); border-right:1px solid var(--border); padding:.6rem .4rem; }
+nav a { display:block; padding:.5rem .7rem; color:var(--text); text-decoration:none; border-radius:.4rem; }
+nav a[aria-current] { background:var(--nav-bg); color:var(--nav-text); font-weight:700; }
+.mob nav { display:none; }
+main { padding:1rem; min-width:0; }
+main h1 { font-size:1.25rem; margin:.2rem 0 .5rem; }
+.panel { background:var(--surface); border:1px solid var(--border); border-radius:.6rem; padding:1rem; margin:.6rem 0; }
+.muted { color:var(--muted); }
+.error { color:var(--error); }
+.notice { display:block; background:var(--notice-bg); border:1px solid var(--notice-border); border-radius:.5rem; padding:.6rem .8rem; margin-bottom:.6rem; }
+.skel { height:3.5rem; border-radius:.6rem; background:var(--skeleton); margin-top:.5rem; }
+.empty { text-align:center; padding:1.5rem .75rem; border:2px dashed var(--empty-border); border-radius:.6rem; background:var(--surface); }
+a.link { color:var(--primary); }
+label.f { display:block; font-weight:650; margin-bottom:.2rem; }
+.tools { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div class="banner" role="note">MOCKUP: static HTML with synthetic data. This is not the working Subscribed application.</div>
+<div class="doc">
+  <p>Proposed theme selector and palette from <code>design.md</code> (tokens per §5.4), each state in <strong>Light</strong> and <strong>Dark</strong>. Choosing a theme in a frame re-themes it, simulating the immediate no-reload switch.</p>
+  <div class="tools">
+    <label for="lang">Mock copy language</label>
+    <select id="lang"><option value="en">English</option><option value="da" lang="da">Dansk</option></select>
+  </div>
+
+  <h2>1. Member home, empty state (desktop 1280 px, scaled)</h2>
+  <div class="row" data-state="empty"></div>
+
+  <h2>2. Household form, validation error and focus ring (desktop)</h2>
+  <div class="row" data-state="validation"></div>
+
+  <h2>3. Loading (anonymous session check, desktop)</h2>
+  <div class="row" data-state="loading"></div>
+
+  <h2>4. Error: session unavailable, plus storage-failure notice (mobile 320 px)</h2>
+  <div class="row" data-state="error" data-mobile></div>
+
+  <h2>5. Anonymous welcome (mobile 320 px; labels visually hidden, still programmatic)</h2>
+  <div class="row" data-state="anonymous" data-mobile></div>
+
+  <h2>Palette and contrast</h2>
+  <p class="cap">The token values and contrast pairs are listed in design.md §5.4–§5.5. The ratios were hand-computed during design. The implementation's automated contrast test (T-C) checks them and fails the build on any pair below 4.5:1 for text or 3:1 for UI and focus.</p>
+  <p class="cap">Accessibility: native labelled <code>&lt;select&gt;</code>; 44 px targets in the real app; the notice is an <code>&lt;output&gt;</code> with Dismiss; switching never moves focus.</p>
+</div>
+
+<template id="app">
+  <div class="app">
+    <header>
+      <a class="brand" href="#">Subscribed</a>
+      <span class="spacer"></span>
+      <div class="acts">
+        <div class="pref"><label data-k="langLabel"></label><select class="lsel"><option>English</option><option lang="da">Dansk</option></select></div>
+        <div class="pref"><label data-k="themeLabel"></label><select class="tsel"><option value="system" data-k="system"></option><option value="light" data-k="light"></option><option value="dark" data-k="dark"></option></select></div>
+        <button class="btn signout" type="button" data-k="signOut"></button>
+      </div>
+    </header>
+    <div class="layout">
+      <nav aria-label="Primary"><a href="#" data-k="home"></a><a href="#" data-k="household"></a></nav>
+      <main></main>
+    </div>
+  </div>
+</template>
+
+<template id="s-empty">
+  <h1 data-k="welcome"></h1><p class="muted" data-k="ready"></p>
+  <section class="empty"><h2 data-k="emptyH"></h2><p data-k="emptyB"></p><a class="btn" href="#" data-k="viewHousehold"></a></section>
+</template>
+<template id="s-validation">
+  <h1 data-k="settings"></h1>
+  <section class="panel">
+    <label class="f" data-k="name"></label>
+    <input aria-invalid="true" value="" class="ring" aria-label="Name">
+    <p class="muted" data-k="hint"></p>
+    <p class="error" role="alert" data-k="invalid"></p>
+    <button class="btn" type="button" disabled data-k="save"></button>
+  </section>
+</template>
+<template id="s-loading">
+  <section aria-busy="true"><h1 data-k="loadingH"></h1><p role="status" data-k="loadingS"></p><div class="skel" aria-hidden="true"></div></section>
+</template>
+<template id="s-error">
+  <output class="notice"><span data-k="themeFail"></span> <button class="btn sec" type="button" data-k="dismiss"></button></output>
+  <section class="panel"><h1 data-k="unavailH"></h1><p class="error" role="alert" data-k="unavailM"></p>
+    <p><span data-k="ref"></span> <code>0HN-SYNTH-0001</code></p><button class="btn" type="button" data-k="retry"></button></section>
+</template>
+<template id="s-anonymous">
+  <section class="panel"><p class="muted" data-k="eyebrow"></p><h1 data-k="welcomeAnon"></h1><p data-k="intro"></p>
+    <button class="btn" type="button" data-k="signInOrg"></button><p class="muted" data-k="idp"></p></section>
+</template>
+
+<script>
+const COPY = {
+  en: { langLabel:'Language', themeLabel:'Theme', system:'System', light:'Light', dark:'Dark', signOut:'Sign out', home:'Home', household:'Household',
+    welcome:'Welcome, Alex Example', ready:'Your household is ready.', emptyH:'A fresh start for your household', emptyB:'Subscription tracking is coming in the next milestone.',
+    viewHousehold:'View household settings', settings:'Household settings', name:'Name', hint:'1-80 characters. Visible to everyone in your household.',
+    invalid:'Enter 1-80 characters, without control characters.', save:'Save name', loadingH:'Getting your household ready', loadingS:'Checking your session...',
+    themeFail:"Your theme choice couldn't be saved in this browser. It applies until you reload the page.", dismiss:'Dismiss',
+    unavailH:"We couldn't reach your household", unavailM:'Your session could not be checked. This does not mean you are signed out.', ref:'Reference:', retry:'Retry',
+    eyebrow:'YOUR HOUSEHOLD, IN ONE PLACE', welcomeAnon:'Welcome to Subscribed', intro:"Keep a clear view of your household's subscription expenses.",
+    signInOrg:'Sign in with your organisation', idp:'Sign in is managed by your existing identity provider.' },
+  da: { langLabel:'Sprog', themeLabel:'Tema', system:'System', light:'Lys', dark:'Mørk', signOut:'Log ud', home:'Forside', household:'Husstand',
+    welcome:'Velkommen, Alex Example', ready:'Din husstand er klar.', emptyH:'En frisk start for din husstand', emptyB:'Overblik over abonnementer kommer i næste milepæl.',
+    viewHousehold:'Se indstillinger for husstand', settings:'Indstillinger for husstand', name:'Navn', hint:'1-80 tegn. Synligt for alle i din husstand.',
+    invalid:'Indtast 1-80 tegn uden kontroltegn.', save:'Gem navn', loadingH:'Gør din husstand klar', loadingS:'Tjekker din session...',
+    themeFail:'Dit valg af tema kunne ikke gemmes i denne browser. Det gælder, indtil du genindlæser siden.', dismiss:'Luk',
+    unavailH:'Vi kunne ikke få forbindelse til din husstand', unavailM:'Din session kunne ikke kontrolleres. Det betyder ikke, at du er logget ud.', ref:'Reference:', retry:'Prøv igen',
+    eyebrow:'HELE DIN HUSSTAND ÉT STED', welcomeAnon:'Velkommen til Subscribed', intro:'Bevar overblikket over din husstands udgifter til abonnementer.',
+    signInOrg:'Log ind med din organisation', idp:'Login håndteres af din eksisterende identitetsudbyder.' },
+};
+let lang = 'en', uid = 0;
+function translate(root) {
+  root.querySelectorAll('[data-k]').forEach((el) => { el.textContent = COPY[lang][el.dataset.k]; });
+  root.querySelectorAll('.lsel').forEach((s) => { s.selectedIndex = lang === 'da' ? 1 : 0; });
+}
+function build(row) {
+  const state = row.dataset.state, mobile = row.hasAttribute('data-mobile');
+  ['light', 'dark'].forEach((theme) => {
+    const wrap = document.createElement('div');
+    const cap = document.createElement('p'); cap.className = 'cap';
+    cap.textContent = (state === 'empty' ? 'System mode, simulated OS ' + theme : (theme === 'light' ? 'Light' : 'Dark'))
+      + (mobile ? ' · mobile 320 px' : ' · desktop');
+    const frame = document.createElement('div'); frame.className = 'frame ' + (mobile ? 'mob' : 'desk');
+    frame.appendChild(document.getElementById('app').content.cloneNode(true));
+    const app = frame.querySelector('.app'); app.classList.add('t-' + theme);
+    app.querySelector('main').appendChild(document.getElementById('s-' + state).content.cloneNode(true));
+    if (state === 'loading' || state === 'anonymous' || state === 'error') {
+      app.querySelector('nav').remove(); app.querySelector('.layout').style.display = 'block';
+      app.querySelector('.signout').remove(); // sign-out shows only for member / not-member sessions
+    }
+    if (state !== 'empty') app.querySelectorAll('nav a')[1]?.setAttribute('aria-current', 'page');
+    else app.querySelector('nav a').setAttribute('aria-current', 'page');
+    app.querySelectorAll('.pref').forEach((p) => {
+      const id = 'm' + (++uid); p.querySelector('label').htmlFor = id; p.querySelector('select').id = id;
+    });
+    const tsel = app.querySelector('.tsel'); tsel.value = state === 'empty' ? 'system' : theme;
+    tsel.addEventListener('change', () => {
+      const t = tsel.value === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : tsel.value;
+      app.classList.remove('t-light', 't-dark'); app.classList.add('t-' + t);
+    });
+    app.querySelector('.notice .btn')?.addEventListener('click', (e) => e.target.closest('.notice').remove());
+    wrap.append(cap, frame); row.appendChild(wrap);
+  });
+}
+document.querySelectorAll('.row').forEach(build);
+translate(document);
+document.getElementById('lang').addEventListener('change', (e) => { lang = e.target.value; translate(document); });
+</script>
+</body>
+</html>
