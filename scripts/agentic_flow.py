@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resumable, worktree-isolated Claude/Codex/Copilot workflow."""
+"""Resumable, worktree-isolated Claude/Copilot workflow."""
 
 import argparse
 from contextlib import contextmanager
@@ -99,7 +99,7 @@ def initialize(args, root, directory, state_path):
         "frontend": ["frontend"],
         "backend": ["backend"],
     }[args.scope]
-    require_tools(["claude", "copilot"] + (["codex"] if "frontend" in roles else []))
+    require_tools(["claude", "copilot"])
     git(root, "var", "GIT_AUTHOR_IDENT")
     git(root, "var", "GIT_COMMITTER_IDENT")
     stage = new_stage(root, args.name, "design", base_sha)
@@ -156,15 +156,14 @@ def run_agent(provider, prompt, stage, directory, label):
             "--allowedTools", "WebFetch,WebSearch",
         ]
         input_text = prompt
-    elif provider == "codex":
-        argv = ["codex", "exec", "--sandbox", "workspace-write", "-"]
-        input_text = prompt
-    else:
+    elif provider == "copilot":
         argv = [
             "copilot", "-p", prompt, "--silent", "--no-ask-user",
             "--available-tools=view,glob,grep", "--deny-tool=write,shell",
         ]
         input_text = None
+    else:
+        raise FlowError(f"Unknown provider: {provider}")
     (directory / f"{label}.prompt.txt").write_text(prompt)
     try:
         output = command(argv, stage["worktree"], input_text=input_text)
@@ -214,7 +213,7 @@ def review_stage(state, role, directory, state_path):
     assert_stage(stage)
     if stage["approved"]:
         return
-    provider = "codex" if role == "frontend" else "claude"
+    provider = "claude"
     while stage["rounds"] < MAX_ROUNDS:
         stage["rounds"] += 1
         save(state_path, state)
