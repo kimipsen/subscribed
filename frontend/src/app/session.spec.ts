@@ -91,7 +91,7 @@ describe('Session foundation', () => {
   it('retains explicit sign-out failure and enables retry', () => {
     service.signOut();
     http.expectOne('/bff/logout').flush({}, { status: 503, statusText: 'Unavailable' });
-    expect(service.logoutError()).toContain('may still be active');
+    expect(service.logoutError()).toEqual({ key: 'shell.signOutFailed' });
     expect(service.logoutPending()).toBe(false);
     expect(navigate).not.toHaveBeenCalled();
     service.signOut();

@@ -44,3 +44,30 @@ Vitest 4.1.12 within the same major releases. Exact dependencies and the npm
 lockfile are tracked. Production dependency audit passes without findings.
 Development-only lint/build dependencies still have moderate audit findings;
 do not expose the development server publicly.
+
+## Languages
+
+**English** and **Dansk** switch live from the header, including before sign-in
+and on mobile, preserving routes, sessions, and input.
+
+Precedence: explicit `subscribed.language` in `localStorage` (`en`/`da`), first
+supported browser language (regional variants included), then English. Only
+explicit choices persist. This browser-local setting survives sign-out and
+does not affect other members. Storage failures show a dismissible notice;
+selection still works until reload.
+
+Bundled, typed catalogs in `src/app/i18n/` use the `t` pipe and message descriptors
+for live status/error translation. No extra dependencies, network loading, or
+HTML interpolation; CSP is unchanged. Missing messages fall back to English
+with development warnings. Document language follows selection; dates use
+`en-GB`/`da-DK` with unchanged timezone behavior. User content and references
+stay verbatim. API errors map status/type/field keys, never backend prose.
+
+To add a language:
+
+1. Add its code, native name, and date locale to `SUPPORTED_LANGUAGES`.
+2. Add a catalog typed as `Catalog` and register it in `CATALOGS`.
+3. Register its Angular date locale in `app.config.ts`.
+4. Translate messages/accessibility labels with matching `{named}` parameters.
+5. Run `npm run test:ci`, `npm run lint`, `npm run build` (catalog parity,
+   interpolation, switching, errors, storage failure, and locale coverage).

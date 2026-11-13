@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { Injectable, InjectionToken, computed, inject, isDevMode, signal } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
+import { Message } from './i18n/i18n';
 
 export interface User {
   displayName: string;
@@ -14,6 +15,7 @@ export type Session =
   | { state: 'unavailable'; traceId?: string };
 
 export interface Problem {
+  type?: string;
   traceId?: string;
   errors?: { name?: string[] };
   currentVersion?: number;
@@ -78,7 +80,7 @@ export class SessionService {
   readonly current = signal<Session>({ state: 'loading' });
   readonly expired = signal(false);
   readonly logoutPending = signal(false);
-  readonly logoutError = signal<string | null>(null);
+  readonly logoutError = signal<Message | null>(null);
   readonly unavailableReference = computed(() => {
     const session = this.current();
     return session.state === 'unavailable' ? session.traceId : undefined;
@@ -120,7 +122,7 @@ export class SessionService {
       next: ({ redirectUrl }) => this.navigate(logoutDestination(redirectUrl, isDevMode())),
       error: () => {
         this.logoutPending.set(false);
-        this.logoutError.set('Sign out failed. Your session may still be active. Please retry.');
+        this.logoutError.set({ key: 'shell.signOutFailed' });
       },
     });
   }
