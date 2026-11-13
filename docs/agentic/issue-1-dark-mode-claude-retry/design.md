@@ -6,8 +6,9 @@ Companion mockup: [`preview.html`](preview.html). It is a static HTML mockup wit
 ## 0. Provenance and review-stage boundary
 
 - This run implements the design and preview the owner approved in run `issue-1-dark-mode-approved`. That run's frontend stage used all three attempts on one failing check: `i18n.spec.ts` requires every Danish string to differ from its English one, and Danish `theme.system` was `System`. The earlier runs keep their worktrees, state, feedback and counters, and this run does not touch them.
-- **Carried forward unchanged:** the architecture, tokens, contrast pairs, all contracts, the test plan and the UI. `preview.html` is the approved file, **byte-for-byte** (check with `cmp`).
-- **Changed in this run:** Danish `theme.system` becomes **`Følg systemet`** (§7). This is a copy change only, which approved assumption 5 allows. The preview still shows `System`, because it must stay byte-identical. **Where they differ, §7 wins.** Also new: the provider note (§5.7(e), §8) and risk R5.
+- **Carried forward unchanged:** the architecture, tokens, contrast pairs, runtime feature contracts and visual design. `preview.html` is still the approved visual mockup. The test plan was revised after publication to avoid dynamic execution (§4, §9).
+- **Post-publication Sonar remediation of `preview.html`:** its source now contains **semantic-only accessibility fixes**, so it **differs in bytes** from the approved file and a `cmp` against it is no longer expected to match. These fixes have **no intended visual change**: layout, colours, copy and states are as approved. Any visual difference counts as a regression, not as a design change.
+- **Changed in this run:** Danish `theme.system` becomes **`Følg systemet`** (§7). This is a copy change only, which approved assumption 5 allows. The preview still shows `System`, because its visible content stays as approved. **Where they differ, §7 wins.** Also new: the provider note (§5.7(e), §8) and risk R5.
 - **This review covers** `design.md` and `preview.html`. Implementation files, tests and build evidence come in the implementation stage, so their absence here is not a defect.
 - **If anything is still unresolved after three rounds,** keep the run and its feedback and show the owner the working preview. Do not infer approval. Any change to the UI or a contract needs the owner's input.
 
@@ -45,14 +46,15 @@ There are three modes: `system` (the default), `light` and `dark`. The user pick
 | | Radios or a toggle | Rejected. Radios are too wide at 320 px, and a toggle cannot express System. |
 | Danish `theme.system` | **`Følg systemet`** | **Chosen.** Natural Danish with the same meaning, and it passes the differs-from-English rule. |
 | | `System` plus a spec exemption | Rejected. It weakens a localization guard. `Automatisk` was also rejected because it changes the meaning. |
-| Init test | **`node:test` + `node:vm`** | **Chosen.** Tests the shipped bytes, no dependency ([S8], [S9]). Vitest cannot bundle `public/`, and Playwright adds a dependency. |
+| Init test | **`node:test` + static text checks (`scripts/theme-init-contract.mjs`)** | **Chosen.** Checks the shipped source text with no dependency and no `node:vm` or other dynamic execution ([S8]). Runtime mode and persistence behaviour is tested in `theme.spec.ts`. Vitest cannot bundle `public/`, and Playwright adds a dependency. |
+| | `node:test` + `node:vm` fake-global harness | Replaced after publication (Sonar remediation). It executed the script dynamically. |
 
 ## 5. Architecture
 
 ### 5.1 Files (all under `frontend/`)
 
 ```
-public/theme-init.js            NEW  pre-render IIFE (plain ES5/ES2017, no imports)
+public/theme-init.js            NEW  pre-render IIFE (plain classic script, let/const, no imports)
 src/index.html                  EDIT <script src="theme-init.js"></script> after <base>
 src/app/theme/theme.ts          NEW  types, constants, tokens, helpers, ThemeService
 src/app/theme/theme.spec.ts     NEW  service unit tests (Vitest)
@@ -61,7 +63,8 @@ src/app/app.scss                EDIT use tokens; .preferences layout
 src/app/app.html / app.ts       EDIT theme <select>, notice, onTheme()
 src/app/app.spec.ts             EDIT shell theme tests; provide theme tokens
 src/app/i18n/catalog.{en,da}.ts EDIT theme.* keys (§7)
-scripts/theme.test.mjs          NEW  node:test – init script, contrast, no hex literals
+scripts/theme-init-contract.mjs NEW  shared static text checks for theme-init.js (T-I, T-D)
+scripts/theme.test.mjs          NEW  node:test – init script contract, contrast, no hex literals
 scripts/theme-dist.test.mjs     NEW  node:test – production dist checks
 package.json                    EDIT test:ci and build chain the node tests (§9)
 README.md                       EDIT "Themes" section
@@ -72,20 +75,23 @@ README.md                       EDIT "Themes" section
 ### 5.2 Pre-render script contract (`public/theme-init.js`)
 
 ```js
-// Keep in sync with src/app/theme/theme.ts (isThemeMode/resolveTheme). Tested by scripts/theme.test.mjs.
+// Keep in sync with src/app/theme/theme.ts (isThemeMode/resolveTheme). Checked statically by scripts/theme.test.mjs.
 (function () {
-  var theme = 'light', mode = 'system';
+  let mode = 'system';
   try {
-    var stored = window.localStorage.getItem('subscribed.theme');
+    const stored = window.localStorage.getItem('subscribed.theme');
     if (stored === 'light' || stored === 'dark' || stored === 'system') mode = stored;
-  } catch (e) { /* storage unavailable: behave as system */ }
+  } catch { /* storage unavailable: behave as system */ }
+  let theme = mode;
   if (mode === 'system') {
     try { theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
-    catch (e) { theme = 'light'; }
-  } else { theme = mode; }
-  document.documentElement.setAttribute('data-theme', theme);
+    catch { theme = 'light'; }
+  }
+  document.documentElement.dataset.theme = theme;
 })();
 ```
+
+This sample matches the shipped `public/theme-init.js`. The DOM result remains the `data-theme` attribute on `<html>`.
 
 - In `index.html`, the script tag goes directly after `<base href="/">`, with no `defer`, `async` or `type="module"`. Because of `<base>`, deep links resolve it to `/theme-init.js`.
 - The script sets that one attribute and never throws. It never writes storage or inline `style`.
@@ -123,7 +129,7 @@ export class ThemeService {
 | Storage token is `null`, or `getItem` throws | `mode` = `system`, and `persistFailed` = true. |
 | `setMode(m)` | Sets `mode` first, then calls `setItem`. A successful write clears `persistFailed`. A `null` token or a throw sets it. The choice applies either way. |
 | System `change` event | Updates `systemDark`. `theme` changes only while the mode is `system`. |
-| `effect` | Writes `document.documentElement.setAttribute('data-theme', theme())`. |
+| `effect` | Writes `document.documentElement.dataset['theme'] = theme()`, which sets the `data-theme` attribute. |
 
 - The listener uses `addEventListener('change', …)` ([S7]) and is removed through `DestroyRef`. The service makes no HTTP calls and does not depend on the language, session or account.
 
@@ -274,13 +280,13 @@ The unchanged `i18n.spec.ts` (parity and differs-from-English) must pass. This i
 
 ### Node (`scripts/theme.test.mjs`, part of `test:ci`)
 
-- **T-I, init script:** runs `public/theme-init.js` once per case with `vm.runInNewContext(src, ctx)` ([S9]). `ctx` fakes storage and `matchMedia` and records `setAttribute`. Cases (stored value + system → expected `data-theme`): none + light → light; none + dark → dark; `light` + dark → light; `dark` + light → dark; `system` + dark → dark; `'Dark'`, `'auto'` or `''` + dark → dark; `getItem` throws + dark → dark; `matchMedia` undefined or throwing → light; both throwing → light. Every case also asserts that `setAttribute` is called exactly once, that nothing throws, and that `setItem` is never called (the fake throws if it is). `node:vm` is used only as a fake-global harness here, not as a security boundary ([S9]).
+- **T-I, init script contract:** reads `public/theme-init.js` as text and applies the static checks exported by `scripts/theme-init-contract.mjs`. The checks compare source text against the §5.2 contract: the storage key `subscribed.theme`, strict comparison against exactly `system`, `light` and `dark`, the `(prefers-color-scheme: dark)` query with a light fallback, storage and `matchMedia` access guarded by `try`/`catch`, one `dataset.theme` write, and no storage write, inline `style`, `import` or `export`. **No `node:vm`, `eval`, `Function` or other dynamic execution is used.** Runtime mode resolution and persistence behaviour (stored, missing and invalid values, system changes, storage failures) is tested in `theme.spec.ts` (tests 1–9), not by executing the init script.
 - **T-C, contrast:** the test extracts each `--color-*: #rrggbb` from both mixins, asserts that the two mixins define the same token set and cover every token in §5.4, computes WCAG 2.x relative luminance and contrast ([S5]), and checks every §5.5 pair in both themes. A failure message names the token, the theme and the ratio.
 - **T-H, no hard-coded colours:** `src/app/app.scss` contains no `#[0-9a-fA-F]{3,8}\b`, `white` or `black` colour value. The same holds for `src/styles.scss` once the two mixin bodies are removed.
 
 ### Node (`scripts/theme-dist.test.mjs`, part of `build`)
 
-- **T-D, build output:** runs against `dist/subscribed/browser/` and fails clearly if `index.html` is missing. It asserts that (1) there is exactly one `<script src="theme-init.js">`, it is inside `<head>`, and it has no `async`, `defer` or `type="module"`; (2) every `<script>` has a `src`, so there is no inline script; (3) `ngCspNonce="__CSP_NONCE__"` is still present; (4) `theme-init.js` is byte-identical to `public/theme-init.js`; and (5) the dist copy, run through the T-I harness with `dark` stored, gives `dark`.
+- **T-D, build output:** runs against `dist/subscribed/browser/` and fails clearly if `index.html` is missing. It asserts that (1) there is exactly one `<script src="theme-init.js">`, it is inside `<head>`, and it has no `async`, `defer` or `type="module"`; (2) every `<script>` has a `src`, so there is no inline script; (3) `ngCspNonce="__CSP_NONCE__"` is still present; (4) `theme-init.js` is byte-identical to `public/theme-init.js`; and (5) the dist copy's text passes the same static checks from `scripts/theme-init-contract.mjs` as T-I. Like T-I, T-D never executes the script.
 
 **Workflow docs (§5.7):** `python3 -m unittest discover -s tests -p 'test_agentic_flow.py'` still passes. Copilot checks the diff for (a) to (e).
 
@@ -289,22 +295,22 @@ The unchanged `i18n.spec.ts` (parity and differs-from-English) must pass. This i
 ## 10. Acceptance criteria (measurable)
 
 1. A labelled theme `<select>` with System, Light and Dark is visible in the header in every session state and at 320, 480, 900 and 1280 px, and it works with the keyboard (tests 10 and 11).
-2. With no stored value, the theme follows `prefers-color-scheme` live. Without `matchMedia`, it is Light (tests 1–3 and T-I).
+2. With no stored value, the theme follows `prefers-color-scheme` live. Without `matchMedia`, it is Light (tests 1–3; T-I checks that the init script has the same fallback in its source).
 3. Light and Dark override the system setting and apply immediately, with no reload, navigation or session reload, and no lost input or focus (tests 4 and 11).
 4. `subscribed.theme` ∈ {`system`, `light`, `dark`}. Invalid values are ignored and left as they are. If storage fails, the selector keeps working and a dismissible, localized `<output>` appears (tests 5–7 and 12).
-5. The first paint after a reload matches the stored mode, using only `/theme-init.js` from `'self'`. The backend files and the CSP are unchanged (T-I and T-D).
+5. The first paint after a reload matches the stored mode, using only `/theme-init.js` from `'self'`. The backend files and the CSP are unchanged. T-I and T-D check the script's source and its placement statically; first paint itself is confirmed by the manual check in §9.
 6. Every app-owned colour comes from a token (T-H). Every §5.5 pair meets its threshold in both themes (T-C), and focus is visible in both themes.
 7. The theme is independent of the account, sign-out and the language (test 13).
 8. The en and da catalogs contain the §7 keys with Danish `theme.system` = `Følg systemet`. `i18n.spec.ts` passes unmodified.
 9. The README "Themes" section covers the modes and their precedence, `subscribed.theme`, the notice, `theme-init.js` and the CSP, adding a token, and the node checks.
 10. `npm run lint`, `npm run test:ci` and `npm run build` pass locally and in CI, and the PR reports their actual results. The `anyComponentStyle` budget (4 kB warning) holds.
 11. Both workflow docs contain elements (a) to (e) from §5.7, and the agentic-flow unit tests pass.
-12. `preview.html` is byte-identical to the approved preview.
+12. `preview.html` looks the same as the approved preview. Its source carries only the post-publication semantic accessibility fixes (§0), so it differs in bytes but has no intended visual change.
 
 ## 11. Risks
 
 - **R1, the build strips the head script:** T-D fails. Report a blocker and never inline the script.
-- **R2, the init script and the service drift apart:** T-I and tests 1–7 cover the same cases.
+- **R2, the init script and the service drift apart:** tests 1–7 cover runtime behaviour in the service. T-I statically checks that the init script's source keeps the same key, mode values and fallbacks, but does not execute it, so keep the "Keep in sync" comment and review both files together.
 - **R3, a contrast value is wrong:** T-C gates it. Change dark values only.
 - **R4, a reviewer asks for UI changes:** get the owner's approval again first (§0).
 - **R5, a Danish string matches English again:** run `test:ci` before review and never extend the exemption. The preview's Danish `System` is explained in §0.
@@ -323,6 +329,6 @@ Backend, CSP and CI changes; the orchestrator and its counters; account sync; ex
 - [S6] Angular workspace config: assets are copied "as-is"; `scripts` timing is not defined. https://angular.dev/reference/configs/workspace-config
 - [S7] MDN `MediaQueryList` `change`: "Baseline: Widely available" since September 2020. https://developer.mozilla.org/en-US/docs/Web/API/MediaQueryList/change_event
 - [S8] Node test runner: "Stability: 2 - Stable". https://nodejs.org/api/test.html
-- [S9] Node VM: Stable; "not a security mechanism". https://nodejs.org/api/vm.html
+- [S9] Node VM: Stable; "not a security mechanism". https://nodejs.org/api/vm.html (No longer used: T-I and T-D are static text checks. Kept for history.)
 
 **Versions:** no dependency is added. Angular `21.2.26`, build `21.2.29` and Vitest `4.1.12` come from `frontend/package.json`, and Node `24.22.2` from `ci.yml`. The pages for [S8] and [S9] showed **v26.13.1**, not v24. Their behaviour on Node 24.22.2 is declared, not runtime-tested here; CI at the implementation stage is the runtime test. [S4]–[S7] and [S9] were re-fetched today. [S1]–[S3] and [S8] were verified in the approved run on the same day.
