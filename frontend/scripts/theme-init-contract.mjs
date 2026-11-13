@@ -2,7 +2,7 @@
 // text and matched against the constants in src/app/theme/theme.ts; it is never
 // executed here. Runtime behaviour is covered by src/app/theme/theme.spec.ts.
 
-const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 function capture(source, pattern, what) {
   const match = source.match(pattern);
@@ -22,7 +22,7 @@ export function readThemeContract(themeTs) {
 }
 
 const withoutComments = (source) =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/[^\n]*$/gm, '');
+  source.replace(/\/\*[^*\r\n]*\*\//g, '').replace(/^\s*\/\/[^\r\n]*$/gm, '');
 
 const count = (code, pattern) => [...code.matchAll(new RegExp(pattern.source, 'g'))].length;
 
@@ -33,6 +33,7 @@ const count = (code, pattern) => [...code.matchAll(new RegExp(pattern.source, 'g
  */
 export function initContractChecks(source, { storageKey, modes, defaultMode, darkQuery }) {
   const code = withoutComments(source);
+  const trimmed = code.trim();
   const guarded = [...code.matchAll(/stored\s*===\s*'([^']*)'/g)].map((match) => match[1]);
   const getItemAt = code.search(/\.getItem\(/);
   const matchMediaAt = code.search(/\.matchMedia\(/);
@@ -41,7 +42,10 @@ export function initContractChecks(source, { storageKey, modes, defaultMode, dar
   return [
     {
       name: 'is a self-contained classic script (IIFE, no import/export)',
-      ok: /^\s*\(function\s*\(\)\s*\{[\s\S]*\}\)\(\);\s*$/.test(code) && !/^\s*(?:import|export)\b/m.test(code),
+      ok:
+        trimmed.startsWith('(function () {') &&
+        trimmed.endsWith('})();') &&
+        !/^\s*(?:import|export)\b/m.test(code),
       detail: 'theme-init.js must stay a classic, render-blocking IIFE',
     },
     {
@@ -61,16 +65,14 @@ export function initContractChecks(source, { storageKey, modes, defaultMode, dar
     },
     {
       name: `starts in the default '${defaultMode}' mode`,
-      ok: new RegExp(`\\blet\\s+mode\\s*=\\s*'${escape(defaultMode)}'\\s*;`).test(code),
+      ok: new RegExp(String.raw`\blet\s+mode\s*=\s*'${escape(defaultMode)}'\s*;`).test(code),
       detail: `mode must start as DEFAULT_THEME_MODE '${defaultMode}'`,
     },
     {
       name: `reads '${storageKey}' once, inside try/catch`,
       ok:
         count(code, /\.getItem\(/) === 1 &&
-        new RegExp(
-          `try\\s*\\{\\s*const\\s+stored\\s*=\\s*window\\.localStorage\\.getItem\\(\\s*'${escape(storageKey)}'\\s*\\)\\s*;`,
-        ).test(code) &&
+        new RegExp(String.raw`try\s*\{\s*const\s+stored\s*=\s*window\.localStorage\.getItem\(\s*'${escape(storageKey)}'\s*\)\s*;`).test(code) &&
         /\}\s*catch\s*(?:\(\s*\w+\s*\)\s*)?\{\s*\}/.test(code),
       detail: `storage must be read from THEME_STORAGE_KEY '${storageKey}' and failures ignored`,
     },
