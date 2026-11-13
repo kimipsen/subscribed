@@ -22,7 +22,7 @@ export function readThemeContract(themeTs) {
 }
 
 const withoutComments = (source) =>
-  source.replace(/\/\*[^*\r\n]*\*\//g, '').replace(/^\s*\/\/[^\r\n]*$/gm, '');
+  source.replace(/\/\*[^*\r\n]*\*\//g, '').replace(/^[ \t]*\/\/[^\r\n]*$/gm, '');
 
 const count = (code, pattern) => [...code.matchAll(new RegExp(pattern.source, 'g'))].length;
 
@@ -45,7 +45,7 @@ export function initContractChecks(source, { storageKey, modes, defaultMode, dar
       ok:
         trimmed.startsWith('(function () {') &&
         trimmed.endsWith('})();') &&
-        !/^\s*(?:import|export)\b/m.test(code),
+        !/^[ \t]*(?:import|export)\b/m.test(code),
       detail: 'theme-init.js must stay a classic, render-blocking IIFE',
     },
     {
