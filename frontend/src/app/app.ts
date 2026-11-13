@@ -4,9 +4,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { SessionService } from './session';
-import { LanguageService } from './i18n/i18n';
+import { LanguageService, MessageKey } from './i18n/i18n';
 import { SUPPORTED_LANGUAGES, isLanguage } from './i18n/languages';
 import { TranslatePipe } from './i18n/translate.pipe';
+import { THEME_MODES, ThemeMode, ThemeService, isThemeMode } from './theme/theme';
 
 @Component({
   selector: 'app-root',
@@ -18,6 +19,13 @@ import { TranslatePipe } from './i18n/translate.pipe';
 export class App {
   readonly i18n = inject(LanguageService);
   readonly languages = SUPPORTED_LANGUAGES;
+  readonly theme = inject(ThemeService);
+  readonly themeModes = THEME_MODES;
+  readonly themeLabels: Record<ThemeMode, MessageKey> = {
+    system: 'theme.system',
+    light: 'theme.light',
+    dark: 'theme.dark',
+  };
   readonly session = inject(SessionService);
   readonly router = inject(Router);
   readonly menuOpen = signal(false);
@@ -25,6 +33,10 @@ export class App {
 
   onLanguage(value: string): void {
     if (isLanguage(value)) this.i18n.setLanguage(value);
+  }
+
+  onTheme(value: string): void {
+    if (isThemeMode(value)) this.theme.setMode(value);
   }
 
   constructor() {

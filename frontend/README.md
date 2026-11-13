@@ -45,6 +45,43 @@ lockfile are tracked. Production dependency audit passes without findings.
 Development-only lint/build dependencies still have moderate audit findings;
 do not expose the development server publicly.
 
+## Themes
+
+The header's **Theme** selector offers **System** (the default; Danish
+*Følg systemet*), **Light** and **Dark**. It is visible in every session state
+and at every width, and switching applies immediately without navigation,
+session reload, or lost input and focus.
+
+Precedence: an explicit `light` or `dark` choice wins. `system` (or no stored
+value) follows `prefers-color-scheme` live; without `matchMedia` support, or
+with no expressed preference, the app is Light. The choice is stored in
+`localStorage` as `subscribed.theme` (`system`/`light`/`dark`). Invalid values
+are ignored and left untouched. The preference is browser-local, survives
+sign-out, and is independent of the account and of `subscribed.language`. If
+storage fails, the choice still applies until reload and a dismissible,
+localized notice is shown.
+
+`public/theme-init.js` is a render-blocking, same-origin script loaded from
+`<head>`. It sets `<html data-theme="light|dark">` before first paint, never
+throws and never writes storage. `script-src 'self'` already allows it, so the
+CSP is unchanged; do **not** inline it. If it fails to load, the CSS
+`prefers-color-scheme` fallback applies until `ThemeService`
+(`src/app/theme/theme.ts`) starts. Keep the script's logic in sync with
+`isThemeMode`/`resolveTheme`.
+
+Colours are semantic tokens in `src/styles.scss`. To add one, add a
+`--color-<name>: #rrggbb;` line (lowercase 6-digit hex, one per line) to
+**both** the `light-tokens` and `dark-tokens` mixins, use `var(--color-<name>)`,
+and add the token and any text/UI contrast pair to `scripts/theme.test.mjs`.
+Hex, `white` or `black` literals outside the mixins fail the checks.
+
+Dependency-free `node:test` checks run as part of the npm scripts:
+`npm run test:ci` runs `scripts/theme.test.mjs` (init-script behaviour, WCAG
+contrast of 4.5:1 for text and 3:1 for UI/focus in both themes, no hard-coded
+colours), and `npm run build` runs `scripts/theme-dist.test.mjs` (the built
+`index.html` keeps one blocking `theme-init.js` in `<head>`, no inline
+scripts, the CSP nonce placeholder, and a byte-identical script copy).
+
 ## Languages
 
 **English** and **Dansk** switch live from the header, including before sign-in

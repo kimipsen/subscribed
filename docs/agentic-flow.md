@@ -85,6 +85,12 @@ tools are available, render the HTML. A screenshot is only needed if the HTML
 cannot be viewed or the owner asks for one. Otherwise, present the working HTML
 preview directly. A backend-only task has no UI preview requirement.
 
+If a UI design is unresolved after three review rounds, the run stops. Keep the
+run state and all feedback. Show the owner the working `preview.html` and the
+open feedback. Use a screenshot only if the HTML cannot render or the owner asks
+for one. Do not infer approval, and do not reset or bypass the limit. Only
+explicit owner approval, or a genuinely revised new run, moves the work forward.
+
 Set checks appropriate to the approved design. The following commands are
 examples, not assumed project tooling; this repository does not yet contain an
 application:
