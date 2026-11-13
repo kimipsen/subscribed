@@ -128,7 +128,7 @@ class FlowTests(unittest.TestCase):
             [(provider, label) for provider, label, _ in self.calls],
             [
                 ("claude", "design-1-author"), ("copilot", "design-1-review"),
-                ("codex", "frontend-1-author"), ("copilot", "frontend-1-review"),
+                ("claude", "frontend-1-author"), ("copilot", "frontend-1-review"),
                 ("claude", "backend-1-author"), ("copilot", "backend-1-review"),
             ],
         )
@@ -147,6 +147,10 @@ class FlowTests(unittest.TestCase):
         for stage in state["stages"].values():
             message = flow.git(stage["worktree"], "log", "-1", "--format=%B")
             self.assertIn(flow.TRAILER, message)
+
+    def test_frontend_does_not_require_codex_cli(self):
+        self.init("frontend")
+        self.assertEqual(flow.require_tools.call_args.args[0], ["claude", "copilot"])
 
     def test_design_never_exceeds_three_reviews(self):
         self.init()
@@ -200,13 +204,13 @@ class FlowTests(unittest.TestCase):
         self.assertFalse(self.state()["stages"]["design"]["approved"])
         self.invoke("approve", "example", "--design-and-preview", expected=1)
 
-    def test_backend_only_has_no_ui_or_codex(self):
+    def test_backend_only_has_no_ui(self):
         self.init("backend")
         self.invoke("advance", "example")
         self.approve(("backend",))
         self.invoke("advance", "example")
         self.assertEqual(self.state()["phase"], "ready")
-        self.assertFalse(any(provider == "codex" for provider, _, _ in self.calls))
+        self.assertTrue(all(provider in ("claude", "copilot") for provider, _, _ in self.calls))
         self.assertFalse((Path(self.state()["stages"]["design"]["worktree"]) / "docs/agentic/example/preview.html").exists())
 
     def test_failed_checks_block_review_and_publication(self):
@@ -271,7 +275,7 @@ class FlowTests(unittest.TestCase):
 
         def changed_design(*args):
             result = original(*args)
-            if args[0] == "codex":
+            if args[4] == "frontend-1-author":
                 (Path(args[2]["worktree"]) / "docs/agentic/example/design.md").write_text("changed")
             return result
 
@@ -371,8 +375,9 @@ class FlowTests(unittest.TestCase):
 
         def conflict(*args):
             result = original(*args)
-            if args[0] in ("claude", "codex"):
-                (Path(args[2]["worktree"]) / "shared.txt").write_text(args[0] + "\n")
+            if args[4] in ("frontend-1-author", "backend-1-author"):
+                role = args[4].split("-")[0]
+                (Path(args[2]["worktree"]) / "shared.txt").write_text(role + "\n")
             return result
 
         with mock.patch.object(flow, "run_agent", side_effect=conflict):
@@ -481,15 +486,14 @@ class FlowTests(unittest.TestCase):
         stage = {"worktree": str(self.repo)}
         with mock.patch.object(flow, "command", return_value="result") as execute:
             self.agents.stop()
-            for provider in ("claude", "codex", "copilot"):
+            for provider in ("claude", "copilot"):
                 flow.run_agent(provider, "task", stage, self.folder, provider)
             args = [call.args[0] for call in execute.call_args_list]
             self.assertIn("acceptEdits", args[0])
             self.assertEqual(args[0][args[0].index("--allowedTools") + 1], "WebFetch,WebSearch")
             self.assertFalse(any("Bash" in item for item in args[0]))
-            self.assertIn("workspace-write", args[1])
-            self.assertIn("--available-tools=view,glob,grep", args[2])
-            self.assertIn("--deny-tool=write,shell", args[2])
+            self.assertIn("--available-tools=view,glob,grep", args[1])
+            self.assertIn("--deny-tool=write,shell", args[1])
             self.assertFalse(any("dangerously" in item for argv in args for item in argv))
 
     def test_skill_discovery_and_frontmatter(self):

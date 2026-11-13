@@ -1,4 +1,4 @@
-# Claude + Codex + Copilot workflow
+# Claude + Copilot workflow
 
 This repository provides four reusable skills and a resumable Python CLI:
 
@@ -6,31 +6,36 @@ This repository provides four reusable skills and a resumable Python CLI:
 | --- | --- | --- |
 | Architecture, task ownership, API contracts | Claude Code | Copilot, at most 3 rounds |
 | UI preview | Claude, self-contained HTML mockup | Human views and approves design + preview |
-| Frontend | Codex CLI, separate worktree | Project checks + Copilot, at most 3 rounds |
+| Frontend | Claude Code, separate worktree | Project checks + Copilot, at most 3 rounds |
 | Backend | Claude Code, separate worktree | Project checks + Copilot, at most 3 rounds |
 | Combined integration | Local integration worktree | Both roles' configured checks |
 | Publication | Explicit `publish` command | Draft GitHub PRs, never auto-merged |
 | Post-publication verification | Coordinator, with role authors fixing findings | Latest-commit Actions/checks complete; PR feedback and Sonar findings addressed |
 
-Codex implements frontend work. The owner may direct a distinct retry run to use
-Claude as the frontend implementation provider. Codex remains the default.
-
 The three-round limit includes the first review. Exhaustion, malformed feedback,
 failed checks, missing artifacts, and CLI errors block progress rather than imply
 success. Attempts interrupted by errors conservatively consume a round.
 
+If a UI design still has no Copilot agreement after all three rounds, preserve
+the failed run and its feedback, then escalate to the owner: open and present the
+actual `preview.html` in a browser. Use a screenshot if the HTML preview cannot
+be rendered or the owner requests one; a working HTML preview is sufficient.
+The owner may request revisions or a revised/split requirement for a new run.
+This handoff is not an approval and does not reset the review counter or waive
+implementation review.
+
 ## Setup
 
 Requires Linux/macOS, Python 3.10+, Git with worktree support, authenticated
-`claude`, `codex`, `copilot`, and `gh` CLIs, and Git author/committer identity.
-Backend-only runs do not require Codex. There are no Python package dependencies.
+`claude`, `copilot`, and `gh` CLIs, and Git author/committer identity.
+There are no Python package dependencies.
 Agent subscriptions, availability, permissions, and charges remain those of your
 installed CLIs; this is not a provider SDK or an included subscription.
 
 Skills live in [`.agents/skills`](../.agents/skills/). Claude discovers the same
-skills through the [`.claude/skills`](../.claude/skills) symlink. Copilot and Codex
-can discover `.agents/skills` directly. Restart the relevant session after setup
-if it has already cached skill discovery.
+skills through the [`.claude/skills`](../.claude/skills) symlink. Copilot can
+discover `.agents/skills` directly. Restart the relevant session after setup if
+it has already cached skill discovery.
 
 Commit this setup before starting real work: worktrees see **committed** content,
 not uncommitted changes in the main checkout. The orchestrator never commits or
@@ -44,9 +49,9 @@ Never send private repository content, credentials, or personal data to these
 tools. Shell commands still need narrowly scoped permissions in your Claude
 configuration; no blanket shell access is granted. Report permission denials
 rather than trying alternate commands to evade them.
-Codex uses `exec --sandbox workspace-write`, not unrestricted
-execution. Copilot has only `view`, `glob`, and `grep` tools and cannot use shell
-or write tools. Model selection comes from each CLI's configuration.
+Claude authors both frontend and backend roles in separate worktrees. Copilot
+has only `view`, `glob`, and `grep` tools and cannot use shell or write tools.
+Model selection comes from each CLI's configuration.
 If a CLI rejects a new worktree as untrusted, inspect its repository configuration
 and explicitly trust that directory using the CLI's interactive mode before
 resuming. The orchestrator does not automatically bypass workspace trust.
@@ -70,11 +75,15 @@ python3 scripts/agentic_flow.py advance billing-page
 `--base` defaults to the current branch; it must name a local branch also present
 on `origin`. Use `--scope frontend` or `--scope backend` for single-role work.
 The first `advance` runs Claude/Copilot design rounds and then **stops**.
+If design review exhausts its three rounds, inspect the preserved feedback and
+present the UI preview to the owner as described above; do not retry or rename
+the exhausted run.
 
 Open the reported `design.md` and `preview.html` in the design worktree. The
 preview is a visual HTML mockup, not implemented application code. When browser
-tools are available, render it and capture screenshots; otherwise view the HTML
-directly. A backend-only task has no UI preview requirement.
+tools are available, render the HTML. A screenshot is only needed if the HTML
+cannot be viewed or the owner asks for one. Otherwise, present the working HTML
+preview directly. A backend-only task has no UI preview requirement.
 
 If a UI design is unresolved after three review rounds, the run stops. Keep the
 run state and all feedback. Show the owner the working `preview.html` and the
@@ -210,9 +219,11 @@ without permission or count missing analysis as successful verification.
   that would publish code not reviewed by Copilot. Integration checks are not a
   replacement for review.
 - Three unsuccessful attempts require human intervention. Preserve the blocked
-  run's feedback; revise/split requirements before creating a genuinely new run.
-  Do not simply rename the task to evade the cap. For UI designs, follow the
-  escalation in *Run a feature*.
+  run's feedback; for a UI design, present its working HTML preview to the owner
+  (or a screenshot if the HTML cannot be viewed or the owner requests one).
+  Wait for owner direction, then revise/split requirements before creating a
+  genuinely new run. This does not imply design approval or waive later reviews.
+  Do not simply rename the task to evade the cap.
 - No cleanup is automatic. After PRs are merged, use `git worktree remove` on
   specific clean worktrees, then delete only the corresponding obsolete branches.
   Never recursively remove the repository or Git state.
@@ -228,5 +239,4 @@ subscriptions, launch real model calls, push branches, or create real PRs.
 
 CLI references:
 [Claude Code](https://code.claude.com/docs/en/cli-reference),
-[Codex non-interactive mode](https://developers.openai.com/codex/noninteractive),
 [Copilot programmatic reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference).
