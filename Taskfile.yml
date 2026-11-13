@@ -100,7 +100,7 @@ tasks:
           
           # Check Codex authentication
           if command -v codex &> /dev/null; then
-            if codex whoami &> /dev/null; then
+            if codex login status &> /dev/null; then
               echo "✓ codex is authenticated"
             else
               echo "✗ codex is not authenticated"
@@ -112,7 +112,7 @@ tasks:
           
           # Check Copilot authentication
           if command -v copilot &> /dev/null; then
-            if copilot auth status &> /dev/null; then
+            if { [ -n "${COPILOT_GITHUB_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" ] || grep -v "^//" "${COPILOT_HOME:-$HOME/.copilot}/config.json" 2>/dev/null | jq -e ".loggedInUsers | length > 0" &> /dev/null; }; then
               echo "✓ copilot is authenticated"
             else
               echo "✗ copilot is not authenticated"
@@ -202,18 +202,18 @@ tasks:
           
           # Codex authentication
           if command -v codex &> /dev/null; then
-            if ! codex whoami &> /dev/null; then
+            if ! codex login status &> /dev/null; then
               echo "🔐 Codex needs authentication"
-              echo "   Run: codex auth login"
+              echo "   Run: codex login"
               echo ""
             fi
           fi
           
           # Copilot authentication
           if command -v copilot &> /dev/null; then
-            if ! copilot auth status &> /dev/null; then
+            if ! { [ -n "${COPILOT_GITHUB_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" ] || grep -v "^//" "${COPILOT_HOME:-$HOME/.copilot}/config.json" 2>/dev/null | jq -e ".loggedInUsers | length > 0" &> /dev/null; }; then
               echo "🔐 Copilot needs authentication"
-              echo "   Run: copilot auth login"
+              echo "   Run: copilot login"
               echo ""
             fi
           fi
