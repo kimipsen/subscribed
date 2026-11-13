@@ -79,7 +79,8 @@ export function initContractChecks(source, { storageKey, modes, defaultMode, dar
     {
       name: `accepts exactly the modes ${modes.join('/')}`,
       ok:
-        JSON.stringify([...guarded].sort()) === JSON.stringify([...modes].sort()) &&
+        guarded.length === modes.length &&
+        modes.every((mode) => guarded.includes(mode)) &&
         /\)\s*mode\s*=\s*stored\s*;/.test(code),
       detail: `stored values must be validated against THEME_MODES (found ${guarded.join(', ') || 'none'})`,
     },
