@@ -1,6 +1,6 @@
 ---
 name: copilot-review
-description: 'Use when Copilot independently reviews Claude designs or Claude/Codex implementation diffs and returns a strict approve-or-revise verdict without editing files.'
+description: 'Use when Copilot independently reviews Claude designs or implementation diffs and returns a strict approve-or-revise verdict without editing files.'
 ---
 
 # Independent Copilot review
