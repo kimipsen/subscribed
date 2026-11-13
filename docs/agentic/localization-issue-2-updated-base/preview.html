@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOCKUP – Subscribed localization (en/da)</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#1d2330;background:#eef1f5}
+.banner{background:#8a1c1c;color:#fff;padding:.6rem 1rem;font-weight:700;text-align:center}
+.wrap{max-width:1200px;margin:0 auto;padding:1.5rem}
+h2.case{font-size:1rem;margin:2rem 0 .5rem;color:#454d5c}
+.note{font-size:.85rem;color:#596173;margin:.25rem 0 .75rem}
+.frame{background:#f6f7f9;border:1px solid #c5cbd6;border-radius:.5rem;overflow:hidden}
+.desktop{width:100%}
+.mobile{width:360px}
+.mobile.w320{width:320px}
+.row{display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start}
+header{min-height:4rem;display:flex;align-items:center;gap:1rem;padding:0 1.5rem;background:#fff;border-bottom:1px solid #d6dae1}
+.header-actions{display:flex;align-items:center;gap:1rem}
+/* <=479px (360 and 320 frames): row 1 brand+Menu, row 2 language+sign-out */
+.mobile header{flex-wrap:wrap;min-height:4rem;padding:.5rem 1rem;gap:.5rem .6rem}
+.mobile .header-actions{flex-basis:100%;justify-content:flex-end;gap:.6rem;flex-wrap:wrap}
+.brand{color:#2453a6;font-size:1.25rem;font-weight:750;text-decoration:none}
+.spacer{flex:1}
+.preferences{display:flex;align-items:center;gap:.5rem}
+.preferences label{font-size:.85rem;color:#454d5c}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+select{font:inherit;padding:.35rem 1.8rem .35rem .6rem;border:1px solid #8a93a3;border-radius:.4rem;background:#fff}
+select:focus,button:focus,input:focus{outline:3px solid #2453a6;outline-offset:2px}
+button,.button{font:inherit;padding:.5rem .9rem;border-radius:.4rem;border:1px solid #2453a6;background:#2453a6;color:#fff;cursor:pointer;text-decoration:none;display:inline-block}
+button.secondary,button.ghost{background:#fff;color:#2453a6}
+button[disabled]{opacity:.6;cursor:default}
+.layout{display:grid;grid-template-columns:14rem 1fr}
+.mobile .layout{display:block}
+nav{background:#fff;padding:1rem .75rem;border-right:1px solid #d6dae1}
+.mobile nav{border-right:0;border-bottom:1px solid #d6dae1}
+nav a{display:block;padding:.7rem 1rem;color:#1d2330;text-decoration:none;border-radius:.4rem}
+nav a.active{background:#e7eefb;color:#2453a6;font-weight:700}
+main{padding:2rem;min-width:0}
+.mobile main{padding:1rem}
+h1{font-size:1.6rem;margin:0 0 .75rem}
+h3{margin:0 0 .5rem}
+.panel{background:#fff;border:1px solid #d6dae1;border-radius:.6rem;padding:1.25rem;margin-bottom:1rem;max-width:40rem}
+.muted{color:#596173}
+.eyebrow{font-size:.8rem;letter-spacing:.08em;color:#2453a6;font-weight:700}
+.error{color:#8a1c1c}
+.alert{background:#fdecec;border:1px solid #e3a5a5;border-radius:.5rem;padding:.75rem 1rem;margin-bottom:1rem}
+.notice{background:#fff7e0;border:1px solid #e5c76b;border-radius:.5rem;padding:.75rem 1rem;margin-bottom:1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+input{font:inherit;width:100%;padding:.5rem .6rem;border:1px solid #8a93a3;border-radius:.4rem}
+input[aria-invalid=true]{border-color:#8a1c1c;border-width:2px}
+label.field{display:block;font-weight:600;margin-bottom:.25rem}
+code{background:#eef1f5;padding:.1rem .3rem;border-radius:.25rem}
+.skeleton{height:6rem;border-radius:.5rem;background:linear-gradient(90deg,#e3e7ee,#f1f3f7,#e3e7ee)}
+.status{display:block;margin:1em 0}
+.empty{border:2px dashed #c5cbd6;border-radius:.6rem;padding:1.5rem;text-align:center;background:#fff}
+ul.members{list-style:none;padding:0;margin:0}
+ul.members li{display:flex;justify-content:space-between;gap:1rem;padding:.5rem 0;border-bottom:1px solid #eef1f5}
+.callout{font-size:.8rem;background:#fffbe6;border-left:4px solid #e5c76b;padding:.35rem .6rem;margin:.5rem 0}
+</style>
+</head>
+<body>
+<div class="banner" role="note">MOCKUP – static visual preview with synthetic data. Not the working application.</div>
+<div class="wrap">
+<h1 style="margin-top:1rem">Localization preview: English / Dansk</h1>
+<p class="note">Native <code>&lt;select&gt;</code> labelled "Language"/"Sprog" (label sr-only on mobile). Synthetic data.</p>
+
+<h2 class="case">1. Desktop · anonymous · English · sign-in cancelled (error state)</h2>
+<div class="frame desktop" lang="en">
+  <header><a class="brand" href="#">Subscribed</a><span class="spacer"></span>
+    <div class="preferences"><label for="l1">Language</label>
+      <select id="l1"><option lang="en" selected>English</option><option lang="da">Dansk</option></select></div>
+  </header>
+  <main><section class="panel">
+    <p class="eyebrow">YOUR HOUSEHOLD, IN ONE PLACE</p>
+    <h1>Welcome to Subscribed</h1>
+    <p>Keep a clear view of your household's subscription expenses.</p>
+    <p class="error" role="alert">Sign in was cancelled. You can try again.</p>
+    <button>Sign in with your organisation</button>
+    <p class="muted">Sign in is managed by your existing identity provider.</p>
+  </section></main>
+</div>
+
+<h2 class="case">2. Desktop · member · Dansk · household settings · server validation error</h2>
+<div class="frame desktop" lang="da">
+  <header><a class="brand" href="#">Subscribed</a><span class="spacer"></span>
+    <div class="preferences"><label for="l2">Sprog</label>
+      <select id="l2"><option lang="en">English</option><option lang="da" selected>Dansk</option></select></div>
+    <button class="ghost">Log ud</button>
+  </header>
+  <div class="layout">
+    <nav aria-label="Primær"><a href="#">Forside</a><a class="active" aria-current="page" href="#">Husstand</a></nav>
+    <main>
+      <h1>Indstillinger for husstand</h1>
+      <section class="panel"><h3>Husstandens navn</h3>
+        <label class="field" for="n2">Navn</label>
+        <input id="n2" aria-invalid="true" value="   ">
+        <p class="muted">1-80 tegn. Synligt for alle i din husstand.</p>
+        <div class="error" role="alert"><p>Indtast 1-80 tegn uden kontroltegn.</p><p>Fejlreference: <code>00-7c1e0a52d9f04b11-9e2d4c13-01</code></p></div>
+        <div class="callout">400 <code>validation-failed</code> + <code>errors.name</code> → translated message; no backend prose; reference verbatim.</div>
+        <button disabled>Gem navn</button>
+      </section>
+      <section class="panel"><h3>Medlemmer af husstanden</h3>
+        <ul class="members">
+          <li><strong>Åse Ørnsø</strong><span class="muted">Medlem siden 5. mar. 2026</span></li>
+          <li><strong>Test Member B</strong><span class="muted">Medlem siden 14. okt. 2026</span></li>
+        </ul>
+        <p class="muted">Medlemskab administreres af husstandens administrator.</p>
+      </section>
+    </main>
+  </div>
+</div>
+
+<h2 class="case">3. Same household in English (after switching): input kept, concurrency conflict, date locale en-GB</h2>
+<div class="frame desktop" lang="en">
+  <header><a class="brand" href="#">Subscribed</a><span class="spacer"></span>
+    <div class="preferences"><label for="l3">Language</label>
+      <select id="l3"><option lang="en" selected>English</option><option lang="da">Dansk</option></select></div>
+    <button class="ghost">Sign out</button>
+  </header>
+  <div class="layout">
+    <nav aria-label="Primary"><a href="#">Home</a><a class="active" aria-current="page" href="#">Household</a></nav>
+    <main>
+      <h1>Household settings</h1>
+      <section class="panel"><h3>Household name</h3>
+        <label class="field" for="n3">Name</label>
+        <input id="n3" value="Sample Household Øst">
+        <p class="muted">1-80 characters. Visible to everyone in your household.</p>
+        <div class="notice" role="alert">Someone else changed this household. Your input has been kept.<p>Reference: <code>00-3f9b6d20a1c84e77-5a0b8f2e-01</code></p><button class="secondary">Reload latest</button></div>
+        <button>Save name</button>
+      </section>
+      <section class="panel"><h3>Household members</h3>
+        <ul class="members"><li><strong>Åse Ørnsø</strong><span class="muted">Joined 5 Mar 2026</span></li></ul>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="row">
+<div>
+<h2 class="case">4. Mobile 360 px · Dansk · loading</h2>
+<div class="frame mobile" lang="da">
+  <header><a class="brand" href="#">Subscribed</a><span class="spacer"></span>
+    <div class="header-actions"><div class="preferences"><label for="l4" class="sr-only">Sprog</label>
+      <select id="l4"><option lang="en">English</option><option lang="da" selected>Dansk</option></select></div></div>
+  </header>
+  <main><section aria-busy="true">
+    <h1>Gør din husstand klar</h1>
+    <output class="status">Tjekker din session...</output>
+    <div class="skeleton" aria-hidden="true"></div>
+  </section></main>
+</div>
+</div>
+
+<div>
+<h2 class="case">5. Mobile 360 px · Dansk · member home (empty) · menu open</h2>
+<p class="note" style="max-width:360px">≤479 px wrap: row 1 brand + Menu; row 2 language + sign-out (room for “Logger ud...”). Nothing clipped.</p>
+<div class="frame mobile" lang="da">
+  <header><a class="brand" href="#">Subscribed</a><button class="secondary" aria-expanded="true">Menu</button><span class="spacer"></span>
+    <div class="header-actions"><div class="preferences"><label for="l5" class="sr-only">Sprog</label>
+      <select id="l5"><option lang="en">English</option><option lang="da" selected>Dansk</option></select></div>
+    <button class="ghost">Log ud</button></div>
+  </header>
+  <nav aria-label="Primær"><a class="active" aria-current="page" href="#">Forside</a><a href="#">Husstand</a></nav>
+  <main>
+    <h1>Velkommen, Åse Ørnsø</h1>
+    <p class="muted">Din husstand er klar.</p>
+    <section class="empty"><h3>En frisk start for din husstand</h3>
+      <p>Overblik over abonnementer kommer i næste milepæl.</p>
+      <a class="button" href="#">Se indstillinger for husstand</a></section>
+  </main>
+</div>
+</div>
+
+<div>
+<h2 class="case">6. Mobile 320 px · English · unavailable + storage notice (same ≤479 px wrap)</h2>
+<div class="frame mobile w320" lang="en">
+  <header><a class="brand" href="#">Subscribed</a><span class="spacer"></span>
+    <div class="header-actions"><div class="preferences"><label for="l6" class="sr-only">Language</label>
+      <select id="l6"><option lang="en" selected>English</option><option lang="da">Dansk</option></select></div></div>
+  </header>
+  <main>
+    <output class="notice">Your language choice couldn't be saved in this browser. It applies until you reload the page. <button class="secondary">Dismiss</button></output>
+    <section class="panel">
+      <h1>We couldn't reach your household</h1>
+      <p role="alert">Your session could not be checked. This does not mean you are signed out.</p>
+      <p>Reference: <code>00-0af7651916cd43dd-b7ad6b71-01</code></p>
+      <button>Retry</button>
+    </section>
+  </main>
+</div>
+</div>
+</div>
+
+<h2 class="case">7. Desktop · Dansk · access needed + unknown save error (generic fallback with reference)</h2>
+<div class="row">
+<div class="frame" style="flex:1;min-width:320px" lang="da">
+  <header><a class="brand" href="#">Subscribed</a><span class="spacer"></span>
+    <div class="preferences"><label for="l7">Sprog</label>
+      <select id="l7"><option lang="en">English</option><option lang="da" selected>Dansk</option></select></div>
+    <button class="ghost">Log ud</button>
+  </header>
+  <main><section class="panel">
+    <h1>Du mangler adgang til husstanden</h1>
+    <p>Du er logget ind, men har ikke fået adgang til denne husstand.</p>
+    <p>Bed husstandens administrator om at give dig adgang med din reference.</p>
+    <label class="field" for="r7">Din kontoreference</label>
+    <input id="r7" readonly value="synthetic-subject-1234">
+    <p><button>Kopiér reference</button></p>
+    <output class="status">Automatisk kopiering er ikke tilgængelig. Referencen er markeret; kopiér den manuelt.</output>
+    <button class="secondary">Tjek adgang igen</button>
+  </section></main>
+</div>
+<div class="frame" style="flex:1;min-width:320px" lang="da">
+  <main>
+    <h1>Indstillinger for husstand</h1>
+    <div class="alert error" role="alert">Ændringen kunne ikke gemmes. Prøv igen.
+      <p>Fejlreference: <code>00-4bf92f3577b34da6-a3ce929d-01</code></p>
+      <button>Genindlæs husstand</button></div>
+    <div class="alert" role="alert">Udlogningen mislykkedes. Din session kan stadig være aktiv. Prøv igen.</div>
+  </main>
+</div>
+</div>
+
+<p class="note">Frame <code>lang</code> mirrors document <code>lang</code>. A11y: design §5.8.</p>
+</div>
+</body>
+</html>
