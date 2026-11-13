@@ -12,6 +12,9 @@ This repository provides four reusable skills and a resumable Python CLI:
 | Publication | Explicit `publish` command | Draft GitHub PRs, never auto-merged |
 | Post-publication verification | Coordinator, with role authors fixing findings | Latest-commit Actions/checks complete; PR feedback and Sonar findings addressed |
 
+Codex implements frontend work. The owner may direct a distinct retry run to use
+Claude as the frontend implementation provider. Codex remains the default.
+
 The three-round limit includes the first review. Exhaustion, malformed feedback,
 failed checks, missing artifacts, and CLI errors block progress rather than imply
 success. Attempts interrupted by errors conservatively consume a round.
@@ -72,6 +75,12 @@ Open the reported `design.md` and `preview.html` in the design worktree. The
 preview is a visual HTML mockup, not implemented application code. When browser
 tools are available, render it and capture screenshots; otherwise view the HTML
 directly. A backend-only task has no UI preview requirement.
+
+If a UI design is unresolved after three review rounds, the run stops. Keep the
+run state and all feedback. Show the owner the working `preview.html` and the
+open feedback. Use a screenshot only if the HTML cannot render or the owner asks
+for one. Do not infer approval, and do not reset or bypass the limit. Only
+explicit owner approval, or a genuinely revised new run, moves the work forward.
 
 Set checks appropriate to the approved design. The following commands are
 examples, not assumed project tooling; this repository does not yet contain an
@@ -202,7 +211,8 @@ without permission or count missing analysis as successful verification.
   replacement for review.
 - Three unsuccessful attempts require human intervention. Preserve the blocked
   run's feedback; revise/split requirements before creating a genuinely new run.
-  Do not simply rename the task to evade the cap.
+  Do not simply rename the task to evade the cap. For UI designs, follow the
+  escalation in *Run a feature*.
 - No cleanup is automatic. After PRs are merged, use `git worktree remove` on
   specific clean worktrees, then delete only the corresponding obsolete branches.
   Never recursively remove the repository or Git state.

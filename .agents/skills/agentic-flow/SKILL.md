@@ -17,13 +17,17 @@ Use the repository's [workflow guide](../../../docs/agentic-flow.md) and
 4. Run `advance`. Claude creates the design and, for UI work, a self-contained
    HTML mockup. Copilot reviews it. Claude addresses feedback, with at most three
    review rounds total. Unresolved or malformed reviews stop the workflow.
+   After three unresolved UI-design rounds, keep the run and feedback, show the
+   owner the working HTML preview (a screenshot only if it cannot render or the
+   owner asks), and never infer approval or reset the limit.
 5. Present the actual mockup or screenshot to the user, not just its description.
    An HTML mockup is not an implemented or tested UI. Open it in a browser when
    available; otherwise provide its path and wait for the user to view it.
 6. Configure real project checks with `checks`. Obtain explicit user approval of
    the reviewed design and preview before running `approve`; never self-approve.
 7. Run `advance` again. Codex implements frontend work; Claude implements backend
-   work. Copilot reviews each role's changes. Checks must pass before review.
+   work. The owner may direct a distinct retry run to use Claude as the frontend
+   implementation provider. Codex remains the default. Copilot reviews each role's changes. Checks must pass before review.
    Each role has a separate worktree and a three-round review limit.
 8. The orchestrator merges both roles into a local integration worktree and runs
    the configured checks together. Resolve any conflicts explicitly; never

@@ -15,6 +15,14 @@
         }
       </select>
     </div>
+    <div class="preferences">
+      <label for="theme-select" class="pref-label">{{ 'theme.label' | t }}</label>
+      <select id="theme-select" [ngModel]="theme.mode()" (ngModelChange)="onTheme($event)">
+        @for (mode of themeModes; track mode) {
+          <option [value]="mode">{{ themeLabels[mode] | t }}</option>
+        }
+      </select>
+    </div>
     @if (session.current().state === 'member' || session.current().state === 'not-member') {
       <button type="button" (click)="session.signOut()" [disabled]="session.logoutPending()">
         {{ (session.logoutPending() ? 'shell.signingOut' : 'shell.signOut') | t }}
@@ -36,6 +44,12 @@
       <output class="notice">
         {{ 'language.saveFailed' | t }}
         <button type="button" class="secondary" (click)="i18n.dismissPersistNotice()">{{ 'language.dismiss' | t }}</button>
+      </output>
+    }
+    @if (theme.persistFailed()) {
+      <output class="notice">
+        {{ 'theme.saveFailed' | t }}
+        <button type="button" class="secondary" (click)="theme.dismissPersistNotice()">{{ 'theme.dismiss' | t }}</button>
       </output>
     }
     @if (session.expired()) {

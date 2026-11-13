@@ -4,9 +4,9 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
-    "build": "ng build --configuration production",
+    "build": "ng build --configuration production && node --test scripts/theme-dist.test.mjs",
     "lint": "eslint src",
-    "test:ci": "ng test --watch=false",
+    "test:ci": "ng test --watch=false && node --test scripts/theme.test.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
