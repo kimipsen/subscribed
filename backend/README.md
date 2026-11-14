@@ -1,6 +1,7 @@
 # Subscribed backend (net11.0)
 
-Modular monolith: `Subscribed.Api` (host, BFF, static SPA, admin CLI) → `Subscribed.Household`
+Modular monolith: `Subscribed.Api` (host, BFF, static SPA, admin CLI) → `Subscribed.Subscriptions`
+(subscription events, state, calculator, service, endpoints) and `Subscribed.Household`
 (aggregate, events, inline view, endpoints, membership) → `Subscribed.Platform` (event store
 configuration, error mapping, grants, schema versioning, Data Protection keys, readiness, problems).
 Design: [foundation draft](https://github.com/kimipsen/subscribed/blob/agentic/project-foundation/design/docs/agentic/project-foundation/design.md)
@@ -54,10 +55,19 @@ Npgsql store of §5.1 was therefore **not** implemented. If the approver rejects
 library-aware code to change besides `SubscribedStore`.
 
 Marten-specific consequences: `grants.sql` names Marten's tables (`mt_events`, `mt_streams`,
-`mt_events_sequence`, `mt_doc_household_view`, `mt_doc_dp_key`) instead of §5.1's
+`mt_events_sequence`, `mt_doc_household_view`, `mt_doc_subscription_view`, `mt_doc_dp_key`) instead of §5.1's
 `events/streams/views/dp_keys`; Marten 9 supports only asynchronous data access, so the synchronous
 `IXmlRepository` bridges with `Task.Run(...).GetAwaiter().GetResult()` (no synchronization context
 in ASP.NET Core; the key ring is cached).
+
+The `mt_doc_subscription_view` grant (`SELECT, INSERT, UPDATE`) mirrors `mt_doc_household_view`: both
+are inline single-stream snapshots written through the same append-and-save path, so the privilege set
+shown necessary and sufficient for the household view applies unchanged. The subscription tests run
+as the same least-privilege role, readiness verifies the new grant, and the app role still has no
+`DELETE` on any table (a removed subscription is flagged `removed = true`, never deleted).
+
+Schema version 2 (`SchemaVersion.Current`) adds that document table and grant; `admin db migrate`
+creates the table, records version 2 and re-applies `grants.sql`, and readiness stays at 503 until it has run.
 
 ## Projects
 
@@ -65,6 +75,7 @@ in ASP.NET Core; the key ring is cached).
 | --- | --- |
 | `src/Subscribed.Platform` | `SubscribedStore` (only Marten configuration), `EventStoreErrors.Map` (only library-aware error code), `Database/grants.sql` (embedded, single source), `SchemaMigrator` + `SchemaVersion`, `ReadinessProbe`, `MartenXmlRepository` (DP keys), RFC 9457 `Problem`, `MemberIdentity`, `SecurityLog` |
 | `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler |
+| `src/Subscribed.Subscriptions` | eight `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, DTOs and `/api/subscriptions` endpoints |
 | `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli` |
 | `tests/Subscribed.UnitTests` | invariants (AC7), golden event fixtures + unknown alias (AC6), validators, error map |
 | `tests/Subscribed.Persistence.Tests` | AC1–AC5, AC19, AC20 on PostgreSQL 18 as the least-privilege role |
@@ -104,7 +115,7 @@ configuration, 2 usage/domain error, 3 conflict (e.g. already initialized), 4 da
 | --- | --- | --- |
 | `db migrate` | migrator | Marten DDL (diff, never drops), `schema_migrations` version, then re-applies `grants.sql` |
 | `db patch --output <file>` | migrator | writes pending DDL for DBA review; executes nothing |
-| `projections rebuild` | migrator | deletes the view documents and reprojects from events in one transaction |
+| `projections rebuild` | migrator | deletes the household and subscription view documents and reprojects each from events in one transaction (prints both counts) |
 | `household init --name <n> --owner-subject <sub> --owner-label <l>` | app | creates the household and grants the first member |
 | `household grant --subject <sub> --label <l>` | app | grants membership (no self-registration exists anywhere) |
 | `household revoke --member-id <id>` | app | revokes; effective on the member's next request; the last member cannot be revoked |

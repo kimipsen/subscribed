@@ -1,8 +1,18 @@
 # Subscribed frontend
 
-Angular standalone application for the foundation milestone: OIDC session
-states, shared household settings, membership visibility and optimistic rename.
-Subscription management is intentionally not implemented.
+Angular standalone application: OIDC session states, shared household settings, membership
+visibility and optimistic rename, and the subscription screens. The member home page is the
+subscription overview, with per-currency monthly and yearly totals and a list. Lazy-loaded routes
+add, edit and show a subscription (`/subscriptions/new`, `/subscriptions/:id/edit`,
+`/subscriptions/:id`); the detail page shows the price history and manages price entries, and ends,
+reinstates or removes a subscription.
+
+Money is text in the browser. Amounts arrive from the API as exact decimal strings and are formatted
+with `Intl.NumberFormat` from the string, never through `Number` or `parseFloat`. Amount input accepts
+only the active language's decimal separator and is sent to the API as a canonical decimal string. The
+server computes every derived value; the browser does no money arithmetic. The shared golden
+fixtures in `src/app/subscriptions/testing/` are flushed by the specs and compared with the live API
+responses by the backend tests.
 
 Use Node 24.22.2 and npm 11.19.1:
 

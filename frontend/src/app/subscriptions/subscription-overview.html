@@ -1,0 +1,74 @@
+<section aria-labelledby="subscriptions-heading">
+  <h2 id="subscriptions-heading">{{ 'subscriptions.heading' | t }}</h2>
+  @if (notice(); as message) { <p class="status" role="status">{{ message.key | t: message.params }}</p> }
+  @if (loading()) {
+    <p role="status">{{ 'subscriptions.loading' | t }}</p>
+    <div class="skeleton" aria-hidden="true"></div>
+  } @else if (failed()) {
+    <div class="notice" role="alert">
+      <p>{{ 'subscriptions.loadFailed' | t }}</p>
+      @if (reference()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ reference() }}</code></p> }
+      <button type="button" (click)="load()">{{ 'common.retry' | t }}</button>
+    </div>
+  } @else if (overview(); as data) {
+    @if (rows().length === 0) {
+      <div class="empty">
+        <h3>{{ 'subscriptions.emptyHeading' | t }}</h3>
+        <p>{{ 'subscriptions.emptyBody' | t }}</p>
+        <a class="button" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a>
+      </div>
+    } @else {
+      <section class="totals-panel" aria-labelledby="totals-heading">
+        <h3 id="totals-heading">{{ 'subscriptions.totalsHeading' | t }}</h3>
+        @if (data.totals.length === 0) {
+          <p class="muted">{{ 'subscriptions.totalsNone' | t }}</p>
+        } @else {
+          <ul class="totals">
+            @for (total of data.totals; track total.currency) {
+              <li>
+                {{ 'subscriptions.totalsLine' | t: {
+                  monthly: money(total.monthly, total.currency, total.minorUnit),
+                  yearly: money(total.yearly, total.currency, total.minorUnit)
+                } }}
+                <span class="muted">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+      <p class="actions"><a class="button" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a></p>
+      <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <table class="data">
+          <caption>{{ 'subscriptions.tableCaption' | t }}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{{ 'subscriptions.col.name' | t }}</th>
+              <th scope="col">{{ 'subscriptions.col.category' | t }}</th>
+              <th scope="col">{{ 'subscriptions.col.status' | t }}</th>
+              <th scope="col">{{ 'subscriptions.col.price' | t }}</th>
+              <th scope="col">{{ 'subscriptions.col.perMonth' | t }}</th>
+              <th scope="col">{{ 'subscriptions.col.perYear' | t }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of rows(); track row.id) {
+              <tr>
+                <th scope="row"><a [routerLink]="['/subscriptions', row.id]">{{ row.name }}</a></th>
+                <td>{{ row.category ?? '—' }}</td>
+                <td><span class="badge" [class]="'badge status-' + row.status">{{ statusKey(row.status) | t }}</span></td>
+                <td>
+                  {{ price(row) }} · {{ cadence(row.currentPrice) }}
+                  @if (row.upcomingPriceChange) {
+                    <span class="badge upcoming">{{ 'subscriptions.priceChangeScheduled' | t }}</span>
+                  }
+                </td>
+                <td>{{ money(row.normalizedMonthly, row.currency, row.minorUnit) }}</td>
+                <td>{{ money(row.normalizedYearly, row.currency, row.minorUnit) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+</section>

@@ -40,7 +40,13 @@ describe('Language selector', () => {
     }
     await TestBed.inject(Router).navigateByUrl('/');
     await fixture.whenStable();
+    if (session.state === 'member') await flushOverview(fixture);
     return fixture;
+  }
+
+  async function flushOverview(fixture: ComponentFixture<App>) {
+    http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+    await fixture.whenStable();
   }
 
   function select(fixture: ComponentFixture<App>, value: string) {
@@ -158,6 +164,10 @@ describe('Theme selector', () => {
     if (session.state !== 'loading') http.expectOne('/bff/session').flush(session);
     await TestBed.inject(Router).navigateByUrl(url);
     await fixture.whenStable();
+    if (session.state === 'member' && url === '/') {
+      http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+      await fixture.whenStable();
+    }
     return fixture;
   }
 

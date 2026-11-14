@@ -1,0 +1,14 @@
+{
+  "type": "urn:subscribed:problem:validation-failed",
+  "title": "Validation failed",
+  "status": 400,
+  "traceId": "00-5a16fd6f41ceeb366fdaf9b7f96fe28b-681f3ff61d6ac5f2-02",
+  "errors": {
+    "name": [
+      "Name must be 1\u201380 characters with no control characters."
+    ],
+    "amount": [
+      "The amount must be a decimal with a dot, from 0 to 999999999.999."
+    ]
+  }
+}

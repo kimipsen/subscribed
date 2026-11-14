@@ -46,11 +46,14 @@ describe('Foundation UI', () => {
     expect(harness.routeNativeElement?.textContent).toContain('Household access needed');
   });
 
-  it('renders empty member home without subscription controls', async () => {
+  it('renders the subscription overview on member home', async () => {
     session.current.set({ state: 'member', user: { displayName: 'Synthetic' }, expiresAt: '' });
     const harness = await RouterTestingHarness.create('/');
-    expect(harness.routeNativeElement?.textContent).toContain('next milestone');
-    expect(harness.routeNativeElement?.querySelector('a[href="/household"]')).toBeTruthy();
+    http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+    harness.detectChanges();
+    expect(harness.routeNativeElement?.textContent).toContain('No subscriptions yet');
+    expect(harness.routeNativeElement?.querySelector('a[href="/subscriptions/new"]')).toBeTruthy();
+    expect(harness.routeNativeElement?.textContent).not.toContain('next milestone');
   });
 
   it('guards household routes while preserving the sign-in return path', async () => {
@@ -240,7 +243,7 @@ describe('Foundation UI', () => {
     { state: { state: 'not-member', user: { displayName: 'Test', subject: 'ref' }, expiresAt: '' },
       url: '/access-denied', key: 'access.heading' },
     { state: { state: 'member', user: { displayName: 'Test' }, expiresAt: '' },
-      url: '/', key: 'home.emptyHeading' },
+      url: '/', key: 'subscriptions.emptyHeading' },
     { state: { state: 'member', user: { displayName: 'Test' }, expiresAt: '' },
       url: '/missing', key: 'notFound.heading' },
     { state: { state: 'anonymous' }, url: '/signed-out?idp=0', key: 'signedOut.idpActive' },
@@ -249,6 +252,10 @@ describe('Foundation UI', () => {
       session.current.set(state);
       TestBed.inject(LanguageService).setLanguage('da');
       const harness = await RouterTestingHarness.create(url);
+      if (state.state === 'member' && url === '/') {
+        http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+        harness.detectChanges();
+      }
       const text = harness.routeNativeElement?.textContent ?? '';
       expect(text).toContain(da[key]);
       for (const value of Object.values(en)) {

@@ -150,7 +150,7 @@ public sealed class DomainTests
     {
         var files = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Fixtures", "events"), "*.json")
             .Select(f => Path.GetFileNameWithoutExtension(f)).Order().ToList();
-        Assert.Equal(HouseholdEventTypes.ByAlias.Keys.Order().ToList(), files);
+        Assert.Equal(HouseholdEventTypes.ByAlias.Keys.Concat(Subscribed.Subscriptions.Domain.SubscriptionEventTypes.ByAlias.Keys).Order().ToList(), files);
     }
 
     [Fact]

@@ -1,0 +1,205 @@
+@switch (session.current().state) {
+  @case ('unavailable') { <app-session-unavailable /> }
+  @case ('member') {
+    @if (loading()) {
+      <h1 tabindex="-1">{{ 'subscriptions.heading' | t }}</h1>
+      <p role="status">{{ 'detail.loading' | t }}</p>
+      <div class="skeleton" aria-hidden="true"></div>
+    } @else if (notFound()) {
+      <h1 tabindex="-1">{{ 'subscriptions.notFound' | t }}</h1>
+      <a routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
+    } @else if (loadFailed()) {
+      <h1 tabindex="-1">{{ 'subscriptions.heading' | t }}</h1>
+      <div class="notice" role="alert">
+        <p>{{ 'detail.loadFailed' | t }}</p>
+        @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+        <button type="button" (click)="load()">{{ 'common.retry' | t }}</button>
+      </div>
+    } @else if (detail(); as d) {
+      <h1 tabindex="-1">{{ d.name }}</h1>
+      <p class="actions">
+        <a routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
+        <a class="button secondary" [routerLink]="['/subscriptions', d.id, 'edit']">{{ 'detail.edit' | t }}</a>
+      </p>
+
+      @if (conflict()) {
+        <div class="notice" role="alert">
+          <p>{{ 'subscriptions.form.conflict' | t }}</p>
+          <button type="button" class="secondary" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
+        </div>
+      }
+      @if (problem(); as message) { <p class="error" role="alert">{{ message.key | t: message.params }}</p> }
+      @if (traceId() && (conflict() || problem())) {
+        <p class="muted">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p>
+      }
+
+      <section class="panel" aria-labelledby="summary-heading">
+        <h2 id="summary-heading">{{ 'detail.summaryHeading' | t }}</h2>
+        <dl class="summary">
+          <dt>{{ 'subscriptions.col.status' | t }}</dt>
+          <dd><span class="badge" [class]="'badge status-' + d.status">{{ statusKey(d.status) | t }}</span></dd>
+          <dt>{{ 'detail.period' | t }}</dt>
+          <dd>
+            @if (d.endDate) { {{ 'detail.periodClosed' | t: { from: date(d.startDate), to: date(d.endDate) } }} }
+            @else { {{ 'detail.periodOpen' | t: { from: date(d.startDate) } }} }
+          </dd>
+          <dt>{{ 'detail.currency' | t }}</dt>
+          <dd>{{ d.currency }}</dd>
+          <dt>{{ 'detail.currentPrice' | t }}</dt>
+          <dd>{{ money(d.currentPrice.amount) }} · {{ cadence(d.currentPrice.cadenceUnit, d.currentPrice.cadenceCount) }}</dd>
+          <dt>{{ 'subscriptions.col.perMonth' | t }}</dt>
+          <dd>{{ money(d.normalizedMonthly) }}</dd>
+          <dt>{{ 'subscriptions.col.perYear' | t }}</dt>
+          <dd>{{ money(d.normalizedYearly) }}</dd>
+          @if (d.notes) {
+            <dt>{{ 'detail.notes' | t }}</dt>
+            <dd class="notes">{{ d.notes }}</dd>
+          }
+        </dl>
+      </section>
+
+      <section class="panel" aria-labelledby="history-heading">
+        <h2 id="history-heading">{{ 'detail.historyHeading' | t }}</h2>
+        <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'subscriptions.scrollRegion' | t">
+          <table class="data">
+            <caption>{{ 'detail.historyCaption' | t }}</caption>
+            <thead>
+              <tr>
+                <th scope="col">{{ 'detail.col.period' | t }}</th>
+                <th scope="col">{{ 'detail.col.price' | t }}</th>
+                <th scope="col">{{ 'detail.col.perMonth' | t }}</th>
+                <th scope="col">{{ 'detail.col.change' | t }}</th>
+                <th scope="col">{{ 'detail.col.actions' | t }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of d.priceHistory; track row.entryId) {
+                <tr>
+                  <th scope="row">
+                    @if (row.effectiveTo) { {{ 'detail.periodClosed' | t: { from: date(row.effectiveFrom), to: date(row.effectiveTo) } }} }
+                    @else { {{ 'detail.periodOpen' | t: { from: date(row.effectiveFrom) } }} }
+                    @if (row.initial) { <span class="muted history-note">{{ 'detail.initialPrice' | t }}</span> }
+                    @if (row.current) { <span class="badge current">{{ 'detail.badge.current' | t }}</span> }
+                    @if (row.upcoming) { <span class="badge upcoming">{{ 'detail.badge.upcoming' | t }}</span> }
+                  </th>
+                  <td>{{ money(row.amount) }} · {{ cadence(row.cadenceUnit, row.cadenceCount) }}</td>
+                  <td>{{ money(row.normalizedMonthly) }}</td>
+                  <td>
+                    @if (row.change; as change) {
+                      {{ signed(change.amount) }}@if (change.percent !== null) { ({{ percent(change.percent) }}) }
+                    } @else {
+                      <span class="muted">{{ 'detail.noPreviousPrice' | t }}</span>
+                    }
+                  </td>
+                  <td>
+                    <button type="button" class="secondary" [id]="'correct-' + row.entryId" (click)="openEntry({ mode: 'correct', entry: row })">{{ 'detail.entry.correct' | t }}</button>
+                    @if (!row.initial) {
+                      <button type="button" class="secondary" [id]="'remove-' + row.entryId" (click)="askRemoveEntry(row)">{{ 'detail.entry.remove' | t }}</button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (confirmEntry(); as entry) {
+          <div class="notice" role="alertdialog" aria-labelledby="confirm-entry">
+            <p id="confirm-entry" tabindex="-1">{{ 'detail.entry.removeConfirm' | t: { date: date(entry.effectiveFrom) } }}</p>
+            <button type="button" [disabled]="saving()" (click)="removeEntry()">{{ 'detail.entry.removeYes' | t }}</button>
+            <button type="button" class="secondary" (click)="cancelRemoveEntry()">{{ 'detail.keep' | t }}</button>
+          </div>
+        }
+
+        @if (!entryForm()) {
+          <p class="actions"><button type="button" id="add-entry" (click)="openEntry({ mode: 'add' })">{{ 'detail.entry.add' | t }}</button></p>
+        } @else {
+          <form class="entry-form form" (ngSubmit)="saveEntry()" novalidate>
+            <h3 id="entry-form-heading" tabindex="-1">{{ (entryForm()?.mode === 'correct' ? 'detail.entry.correctHeading' : 'detail.entry.addHeading') | t }}</h3>
+            <div class="field">
+              <label for="entry-effectiveFrom">{{ 'detail.entry.effectiveFrom' | t }}</label>
+              <input id="entry-effectiveFrom" name="entryDate" type="date" [(ngModel)]="entryDate" [disabled]="initialCorrection()"
+                [attr.aria-invalid]="entryError('effectiveFrom') ? 'true' : null"
+                [attr.aria-describedby]="describedBy('effectiveFrom', initialCorrection() ? 'entry-date-hint' : undefined)" />
+              @if (initialCorrection()) { <p class="muted" id="entry-date-hint">{{ 'detail.entry.initialDateHint' | t }}</p> }
+              @if (entryError('effectiveFrom'); as e) { <p class="field-error" id="entry-effectiveFrom-error">{{ e.key | t: e.params }}</p> }
+            </div>
+            <div class="field">
+              <label for="entry-amount">{{ 'subscriptions.field.amount' | t }}</label>
+              <input id="entry-amount" name="entryAmount" type="text" inputmode="decimal" autocomplete="off" [ngModel]="entryAmountText"
+                (ngModelChange)="onEntryAmountInput($event)"
+                [attr.aria-invalid]="entryError('amount') ? 'true' : null" [attr.aria-describedby]="describedBy('amount', 'entry-amount-hint')" />
+              <p class="muted" id="entry-amount-hint">{{ 'subscriptions.field.amountHint' | t: { example: amountExample(), separator: separator() } }}</p>
+              @if (entryError('amount'); as e) { <p class="field-error" id="entry-amount-error">{{ e.key | t: e.params }}</p> }
+            </div>
+            <fieldset>
+              <legend>{{ 'subscriptions.field.cadence' | t }}</legend>
+              <div class="choice"><input id="entry-cadence-week" type="radio" name="entryPreset" value="week" [(ngModel)]="entryPreset" />
+                <label for="entry-cadence-week">{{ 'cadence.weekly' | t }}</label></div>
+              <div class="choice"><input id="entry-cadence-month" type="radio" name="entryPreset" value="month" [(ngModel)]="entryPreset" />
+                <label for="entry-cadence-month">{{ 'cadence.monthly' | t }}</label></div>
+              <div class="choice"><input id="entry-cadence-year" type="radio" name="entryPreset" value="year" [(ngModel)]="entryPreset" />
+                <label for="entry-cadence-year">{{ 'cadence.yearly' | t }}</label></div>
+              <div class="choice"><input id="entry-cadence-custom" type="radio" name="entryPreset" value="custom" [(ngModel)]="entryPreset" />
+                <label for="entry-cadence-custom">{{ 'cadence.custom' | t }}</label></div>
+              @if (entryPreset === 'custom') {
+                <div class="custom-cadence">
+                  <label for="entry-cadence-count">{{ 'cadence.every' | t }} {{ 'cadence.number' | t }}</label>
+                  <input id="entry-cadence-count" name="entryCustomCount" type="text" inputmode="numeric" [(ngModel)]="entryCustomCount"
+                    [attr.aria-invalid]="entryError('cadenceCount') ? 'true' : null" [attr.aria-describedby]="describedBy('cadenceCount')" />
+                  <label for="entry-cadence-unit">{{ 'cadence.unit' | t }}</label>
+                  <select id="entry-cadence-unit" name="entryCustomUnit" [(ngModel)]="entryCustomUnit">
+                    <option value="week">{{ 'cadence.unit.week' | t }}</option>
+                    <option value="month">{{ 'cadence.unit.month' | t }}</option>
+                    <option value="year">{{ 'cadence.unit.year' | t }}</option>
+                  </select>
+                  @if (entryError('cadenceCount'); as e) { <p class="field-error" id="entry-cadenceCount-error">{{ e.key | t: e.params }}</p> }
+                </div>
+              }
+            </fieldset>
+            <div class="actions">
+              <button type="submit" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'detail.entry.save') | t }}</button>
+              <button type="button" class="secondary" (click)="closeEntry()">{{ 'subscriptions.form.cancel' | t }}</button>
+            </div>
+          </form>
+        }
+      </section>
+
+      <section class="panel" aria-labelledby="manage-heading">
+        <h2 id="manage-heading">{{ 'subscriptions.form.editHeading' | t }}</h2>
+        <div class="actions">
+          @if (d.endDate) {
+            <button type="button" class="secondary" [disabled]="saving()" (click)="reinstate()">{{ 'detail.reinstate' | t }}</button>
+          }
+          @if (!endOpen()) {
+            <button type="button" class="secondary" id="end-open" (click)="openEnd()">{{ 'detail.end' | t }}</button>
+          }
+          @if (!confirmRemove()) {
+            <button type="button" class="secondary" id="remove-open" (click)="askRemove()">{{ 'detail.remove' | t }}</button>
+          }
+        </div>
+        @if (endOpen()) {
+          <form class="form" (ngSubmit)="saveEnd()" novalidate>
+            <div class="field">
+              <label for="end-date">{{ 'detail.end.heading' | t }}</label>
+              <input id="end-date" name="endDateValue" type="date" [(ngModel)]="endDateValue"
+                [attr.aria-invalid]="endError() ? 'true' : null" [attr.aria-describedby]="endError() ? 'end-date-error' : null" />
+              @if (endError(); as e) { <p class="field-error" id="end-date-error">{{ e.key | t: e.params }}</p> }
+            </div>
+            <div class="actions">
+              <button type="submit" [disabled]="saving()">{{ 'detail.end.save' | t }}</button>
+              <button type="button" class="secondary" (click)="closeEnd()">{{ 'subscriptions.form.cancel' | t }}</button>
+            </div>
+          </form>
+        }
+        @if (confirmRemove()) {
+          <div class="notice" role="alertdialog" aria-labelledby="confirm-remove">
+            <p id="confirm-remove" tabindex="-1">{{ 'detail.remove.confirm' | t: { name: d.name } }}</p>
+            <button type="button" [disabled]="saving()" (click)="remove()">{{ 'detail.remove.yes' | t }}</button>
+            <button type="button" class="secondary" (click)="cancelRemove()">{{ 'detail.keep' | t }}</button>
+          </div>
+        }
+      </section>
+    }
+  }
+}

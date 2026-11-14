@@ -529,7 +529,8 @@
           "Microsoft.AspNetCore.Authentication.OpenIdConnect": "[11.0.0, 11.0.0]",
           "Microsoft.Extensions.Configuration.KeyPerFile": "[11.0.0, 11.0.0]",
           "Subscribed.Household": "[1.0.0, )",
-          "Subscribed.Platform": "[1.0.0, )"
+          "Subscribed.Platform": "[1.0.0, )",
+          "Subscribed.Subscriptions": "[1.0.0, )"
         }
       },
       "subscribed.household": {
@@ -543,6 +544,13 @@
         "dependencies": {
           "Marten": "[9.59.0, 9.59.0]",
           "Npgsql": "[9.0.4, 9.0.4]"
+        }
+      },
+      "subscribed.subscriptions": {
+        "type": "Project",
+        "dependencies": {
+          "Subscribed.Household": "[1.0.0, )",
+          "Subscribed.Platform": "[1.0.0, )"
         }
       },
       "Marten": {

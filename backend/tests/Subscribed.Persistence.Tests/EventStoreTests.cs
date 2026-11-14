@@ -2,6 +2,7 @@ using System.Xml.Linq;
 using Marten;
 using Npgsql;
 using Subscribed.Household;
+using Subscribed.Subscriptions;
 using Subscribed.Household.Domain;
 using Subscribed.Platform.Database;
 using Subscribed.Platform.DataProtection;
@@ -16,7 +17,7 @@ namespace Subscribed.Persistence.Tests;
 public sealed class EventStoreTests(PostgresFixture pg)
 {
     private const string Issuer = "https://idp.example.invalid/realms/synthetic";
-    private static readonly IReadOnlyList<IEventStoreModule> Modules = [new HouseholdModule()];
+    private static readonly IReadOnlyList<IEventStoreModule> Modules = [new HouseholdModule(), new SubscriptionsModule()];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 

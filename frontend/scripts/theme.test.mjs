@@ -2,7 +2,7 @@
 // T-I static init-script contract, T-C WCAG contrast of the token palette, T-H no hard-coded colours.
 // Theme resolution behaviour is covered by src/app/theme/theme.spec.ts; the init script is only read as text.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { initContractChecks, readThemeContract } from './theme-init-contract.mjs';
 
@@ -114,6 +114,18 @@ function offending(source) {
 
 test('T-H src/app/app.scss uses only tokens', () => {
   assert.deepEqual(offending(appStyles), []);
+});
+
+function scssFiles(directory) {
+  return readdirSync(new URL(`../${directory}`, import.meta.url), { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? scssFiles(`${directory}/${entry.name}`) :
+      entry.name.endsWith('.scss') ? [`${directory}/${entry.name}`] : []);
+}
+
+test('T-H every src/app/**/*.scss uses only tokens', () => {
+  const files = scssFiles('src/app');
+  assert.ok(files.includes('src/app/app.scss'));
+  for (const file of files) assert.deepEqual(offending(read(file)), [], file);
 });
 
 test('T-H src/styles.scss uses only tokens outside the two mixins', () => {

@@ -150,7 +150,12 @@ public sealed class ValidationTests
         Assert.Contains(new ExpectedGrant(GrantObjectKind.Schema, "subscribed", "USAGE"), expected);
         Assert.DoesNotContain(expected, g => g.ObjectName == "subscribed.mt_events" && g.Privilege is "UPDATE" or "DELETE" or "TRUNCATE");
         Assert.DoesNotContain(expected, g => g.Privilege is "DELETE" or "TRUNCATE" or "REFERENCES" or "TRIGGER" or "CREATE");
-        Assert.Equal(11, expected.Count(g => g.Kind != GrantObjectKind.Schema && g.ObjectName.StartsWith("subscribed.mt_", StringComparison.Ordinal)));
+        foreach (var privilege in new[] { "SELECT", "INSERT", "UPDATE" })
+        {
+            Assert.Contains(new ExpectedGrant(GrantObjectKind.Table, "subscribed.mt_doc_subscription_view", privilege), expected);
+        }
+
+        Assert.Equal(14, expected.Count(g => g.Kind != GrantObjectKind.Schema && g.ObjectName.StartsWith("subscribed.mt_", StringComparison.Ordinal)));
     }
 
     [Fact]

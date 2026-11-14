@@ -2,8 +2,9 @@
 
 One container serves the Angular SPA and the API/BFF from one origin, behind a TLS-terminating
 reverse proxy. PostgreSQL (≥ 16) and Keycloak (≥ 18) are **external**: the Compose file starts only
-Subscribed, not a database or identity provider. Subscription CRUD is not yet implemented;
-this foundation includes sign-in, household membership and household naming.
+Subscribed, not a database or identity provider. Subscribed includes sign-in, household membership
+and household naming, and household subscription tracking: add, edit, end, reinstate and remove
+subscriptions, with price history and per-currency monthly and yearly totals.
 
 ## Before you start
 
@@ -237,6 +238,10 @@ docker compose --env-file deploy/.env -f deploy/compose.yml up -d --force-recrea
 2. Set `SUBSCRIBED_IMAGE` to the new release digest in `deploy/.env`.
 3. Pull the image, stop `subscribed`, and run `migrate` using the step 5 commands.
 4. Start `subscribed`; verify readiness, sign-in, household access and sign-out.
+
+The release that adds subscription tracking moves the schema from version 1 to **version 2** (one new
+document table, `mt_doc_subscription_view`, and one new grant). `migrate` must run before the app
+starts: readiness returns 503 until the database is at schema version 2.
 
 Do not assume an older image can run against a newer schema. Test database restoration before
 relying on rollback.
