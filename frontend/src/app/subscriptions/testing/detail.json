@@ -1,0 +1,89 @@
+{
+  "id": "01a1d9eef53f7bdeb478f493bb1f22da",
+  "version": 4,
+  "asOf": "2026-11-14",
+  "name": "FilmPlus",
+  "category": "Streaming",
+  "notes": "Family plan",
+  "status": "active",
+  "startDate": "2024-02-18",
+  "endDate": null,
+  "currency": "DKK",
+  "minorUnit": 2,
+  "currentPrice": {
+    "entryId": "01a1d9eef53f77e9bd9fb70505dc307a",
+    "effectiveFrom": "2026-01-18",
+    "amount": "79.00",
+    "cadenceUnit": "month",
+    "cadenceCount": 1
+  },
+  "normalizedMonthly": "79.00",
+  "normalizedYearly": "948.00",
+  "priceHistory": [
+    {
+      "entryId": "01a1d9eef53f7c7f839c4b5c89823d7a",
+      "initial": true,
+      "effectiveFrom": "2024-02-18",
+      "effectiveTo": "2024-12-13",
+      "amount": "59.00",
+      "cadenceUnit": "month",
+      "cadenceCount": 1,
+      "normalizedMonthly": "59.00",
+      "normalizedYearly": "708.00",
+      "change": null,
+      "current": false,
+      "upcoming": false
+    },
+    {
+      "entryId": "01a1d9eef53f7e219cb7368e07c6e679",
+      "initial": false,
+      "effectiveFrom": "2024-12-14",
+      "effectiveTo": "2026-01-17",
+      "amount": "69.00",
+      "cadenceUnit": "month",
+      "cadenceCount": 1,
+      "normalizedMonthly": "69.00",
+      "normalizedYearly": "828.00",
+      "change": {
+        "amount": "10.00",
+        "percent": "16.9"
+      },
+      "current": false,
+      "upcoming": false
+    },
+    {
+      "entryId": "01a1d9eef53f77e9bd9fb70505dc307a",
+      "initial": false,
+      "effectiveFrom": "2026-01-18",
+      "effectiveTo": "2026-12-13",
+      "amount": "79.00",
+      "cadenceUnit": "month",
+      "cadenceCount": 1,
+      "normalizedMonthly": "79.00",
+      "normalizedYearly": "948.00",
+      "change": {
+        "amount": "10.00",
+        "percent": "14.5"
+      },
+      "current": true,
+      "upcoming": false
+    },
+    {
+      "entryId": "01a1d9eef53f7651ba51bb1d58f2fd5a",
+      "initial": false,
+      "effectiveFrom": "2026-12-14",
+      "effectiveTo": null,
+      "amount": "89.00",
+      "cadenceUnit": "month",
+      "cadenceCount": 1,
+      "normalizedMonthly": "89.00",
+      "normalizedYearly": "1068.00",
+      "change": {
+        "amount": "10.00",
+        "percent": "12.7"
+      },
+      "current": false,
+      "upcoming": true
+    }
+  ]
+}

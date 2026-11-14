@@ -1,0 +1,121 @@
+{
+  "asOf": "2026-11-14",
+  "subscriptions": [
+    {
+      "id": "01a1d9eef53f7bdeb478f493bb1f22da",
+      "name": "FilmPlus",
+      "category": "Streaming",
+      "status": "active",
+      "startDate": "2024-02-18",
+      "endDate": null,
+      "currency": "DKK",
+      "minorUnit": 2,
+      "currentPrice": {
+        "entryId": "01a1d9eef53f77e9bd9fb70505dc307a",
+        "effectiveFrom": "2026-01-18",
+        "amount": "79.00",
+        "cadenceUnit": "month",
+        "cadenceCount": 1
+      },
+      "normalizedMonthly": "79.00",
+      "normalizedYearly": "948.00",
+      "upcomingPriceChange": true
+    },
+    {
+      "id": "01a1d9eef53f74adb4fc16fad6ab5f57",
+      "name": "KidsClub",
+      "category": null,
+      "status": "not-started",
+      "startDate": "2026-12-02",
+      "endDate": null,
+      "currency": "DKK",
+      "minorUnit": 2,
+      "currentPrice": {
+        "entryId": "01a1d9eef53f7cfcab8c475a83c3bcda",
+        "effectiveFrom": "2026-12-02",
+        "amount": "60.00",
+        "cadenceUnit": "month",
+        "cadenceCount": 1
+      },
+      "normalizedMonthly": "60.00",
+      "normalizedYearly": "720.00",
+      "upcomingPriceChange": false
+    },
+    {
+      "id": "01a1d9eef53f7ffd9b2445cc56e2b63f",
+      "name": "SportsLive",
+      "category": null,
+      "status": "ended",
+      "startDate": "2025-10-10",
+      "endDate": "2026-10-15",
+      "currency": "DKK",
+      "minorUnit": 2,
+      "currentPrice": {
+        "entryId": "01a1d9eef53f745595080216ce791c12",
+        "effectiveFrom": "2025-10-10",
+        "amount": "149.00",
+        "cadenceUnit": "month",
+        "cadenceCount": 1
+      },
+      "normalizedMonthly": "149.00",
+      "normalizedYearly": "1788.00",
+      "upcomingPriceChange": false
+    },
+    {
+      "id": "01a1d9eef53f73a48a2510448819ee33",
+      "name": "StreamCo",
+      "category": "Streaming",
+      "status": "active",
+      "startDate": "2026-01-18",
+      "endDate": null,
+      "currency": "DKK",
+      "minorUnit": 2,
+      "currentPrice": {
+        "entryId": "01a1d9eef53f727e9c5b1a0be576631e",
+        "effectiveFrom": "2026-01-18",
+        "amount": "129.00",
+        "cadenceUnit": "month",
+        "cadenceCount": 1
+      },
+      "normalizedMonthly": "129.00",
+      "normalizedYearly": "1548.00",
+      "upcomingPriceChange": true
+    },
+    {
+      "id": "01a1d9eef53f776db3f7dd0f2bfccc6c",
+      "name": "VideoTube",
+      "category": null,
+      "status": "active",
+      "startDate": "2026-04-28",
+      "endDate": null,
+      "currency": "EUR",
+      "minorUnit": 2,
+      "currentPrice": {
+        "entryId": "01a1d9eef53f7258b299e2bdd850bc90",
+        "effectiveFrom": "2026-04-28",
+        "amount": "11.99",
+        "cadenceUnit": "month",
+        "cadenceCount": 1
+      },
+      "normalizedMonthly": "11.99",
+      "normalizedYearly": "143.88",
+      "upcomingPriceChange": false
+    }
+  ],
+  "totals": [
+    {
+      "currency": "DKK",
+      "minorUnit": 2,
+      "monthly": "208.00",
+      "yearly": "2496.00",
+      "activeCount": 2
+    },
+    {
+      "currency": "EUR",
+      "minorUnit": 2,
+      "monthly": "11.99",
+      "yearly": "143.88",
+      "activeCount": 1
+    }
+  ]
+}

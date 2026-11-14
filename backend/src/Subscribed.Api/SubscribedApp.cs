@@ -157,6 +157,7 @@ public static class SubscribedApp
         app.MapHealthEndpoints();
         app.MapBffEndpoints();
         app.MapHouseholdEndpoints();
+        app.MapSubscriptionEndpoints();
         app.Map("/api/{**rest}", (HttpContext ctx) => Problem.Result(404, ProblemCodes.NotFound, "Not found."))
             .AllowAnonymous().WithMetadata(new ApiNotFoundMarker()).WithOrder(int.MaxValue);
         app.Map("/api", (HttpContext ctx) => Problem.Result(404, ProblemCodes.NotFound, "Not found."))

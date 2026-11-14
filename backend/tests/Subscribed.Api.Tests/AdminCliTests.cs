@@ -1,5 +1,9 @@
 using Microsoft.Extensions.Configuration;
+using Subscribed.Household;
 using Subscribed.Api.Admin;
+using Subscribed.Platform.EventStore;
+using Subscribed.Subscriptions;
+using Subscribed.Subscriptions.Domain;
 using Subscribed.TestSupport;
 using Xunit;
 
@@ -89,5 +93,37 @@ public sealed class AdminCliTests(PostgresFixture pg)
         // The app role cannot run the migrator commands.
         var asApp = new Dictionary<string, string?>(config) { ["ConnectionStrings:SubscribedMigrator"] = db.AppConnectionString };
         Assert.Equal(AdminCli.DatabaseError, (await RunAsync(asApp, "projections", "rebuild")).Exit);
+    }
+
+    [Fact]
+    public async Task Rebuild_restores_active_and_removed_subscription_documents_byte_identical_and_reports_both_counts()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        var config = Config(db);
+        Assert.Equal(AdminCli.Ok, (await RunAsync(config, "household", "init", "--name", "Home", "--owner-subject", "subject-a", "--owner-label", "Owner")).Exit);
+
+        await using (var store = SubscribedStore.Create(db.AppConnectionString, PostgresFixture.Schema, StoreRole.App, SubscribedApp.Modules))
+        {
+            var service = new SubscriptionService(store, TimeProvider.System);
+            var context = new WriteContext(WriteContext.AdminCli, null);
+            NewSubscription Sub(string name) => SubscriptionDecisions.ParseAdd(new AddInput(name, "Streaming", "Notes", "DKK", "2024-03-01", null, "129.00", "month", 1));
+            var active = await service.AddAsync(Sub("Active"), context, TestContext.Current.CancellationToken);
+            await service.AddPriceEntryAsync(SubscriptionIds.Bare(active.Id), active.Version, SubscriptionDecisions.ParsePriceEntry(new PriceInput("2025-01-01", "139.00", "month", 1)), context, TestContext.Current.CancellationToken);
+            var removed = await service.AddAsync(Sub("Removed"), context, TestContext.Current.CancellationToken);
+            await service.RemoveAsync(SubscriptionIds.Bare(removed.Id), removed.Version, context, TestContext.Current.CancellationToken);
+        }
+
+        const string sql = "SELECT string_agg(id || ':' || data::text, '|' ORDER BY id) FROM subscribed.mt_doc_subscription_view";
+        var before = await db.ScalarAsMigratorAsync<string>(sql);
+        Assert.NotNull(before);
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
+        Assert.Null(await db.ScalarAsMigratorAsync<string>(sql));
+
+        var rebuild = await RunAsync(config, "projections", "rebuild");
+
+        Assert.True(rebuild.Exit == AdminCli.Ok, rebuild.Err);
+        Assert.Equal(before, await db.ScalarAsMigratorAsync<string>(sql));
+        Assert.Contains("Rebuilt 1 household view document(s).", rebuild.Out, StringComparison.Ordinal);
+        Assert.Contains("Rebuilt 2 subscription view document(s).", rebuild.Out, StringComparison.Ordinal);
     }
 }
