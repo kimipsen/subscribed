@@ -5,7 +5,6 @@ header { height: 4rem; display: flex; align-items: center; gap: 1rem; padding: 0
 .header-actions { display: flex; align-items: center; gap: 1rem; }
 .preferences { display: flex; align-items: center; gap: .5rem; }
 .pref-label { margin: 0; font-size: .85rem; }
-select { font: inherit; min-height: 44px; padding: .35rem .6rem; border: 1px solid var(--color-control-border); border-radius: .4rem; background: var(--color-surface); color: var(--color-text); }
 .layout.member { display: grid; grid-template-columns: 14rem 1fr; min-height: calc(100dvh - 4rem); }
 nav { background: var(--color-surface); padding: 1rem .75rem; border-right: 1px solid var(--color-border); }
 nav a { display: block; padding: .8rem 1rem; color: var(--color-text); text-decoration: none; border-radius: .4rem; }

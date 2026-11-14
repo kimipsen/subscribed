@@ -1,0 +1,115 @@
+@switch (session.current().state) {
+  @case ('unavailable') { <app-session-unavailable /> }
+  @case ('member') {
+    <h1 tabindex="-1">{{ (editing ? 'subscriptions.form.editHeading' : 'subscriptions.form.addHeading') | t }}</h1>
+    @if (loading()) {
+      <p role="status">{{ 'subscriptions.form.loading' | t }}</p>
+      <div class="skeleton" aria-hidden="true"></div>
+    } @else if (notFound()) {
+      <p role="alert">{{ 'subscriptions.notFound' | t }}</p>
+      <a routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
+    } @else if (loadFailed()) {
+      <div class="notice" role="alert">
+        <p>{{ 'subscriptions.form.loadFailed' | t }}</p>
+        @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+        <button type="button" (click)="load()">{{ 'common.retry' | t }}</button>
+      </div>
+    } @else if (options()) {
+      @if (conflict()) {
+        <div class="notice" role="alert">
+          <p>{{ 'subscriptions.form.conflict' | t }}</p>
+          <button type="button" class="secondary" (click)="reloadLatest()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
+        </div>
+      }
+      @if (problem(); as message) {
+        <p class="error" role="alert">{{ message.key | t: message.params }}</p>
+      }
+      @if (traceId() && (conflict() || problem())) {
+        <p class="muted">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p>
+      }
+      <form class="panel form" (ngSubmit)="save()" novalidate>
+        <div class="field">
+          <label for="name">{{ 'subscriptions.field.name' | t }}</label>
+          <input id="name" name="name" type="text" autocomplete="off" [(ngModel)]="name"
+            [attr.aria-invalid]="err('name') ? 'true' : null" [attr.aria-describedby]="describedBy('name')" />
+          @if (err('name'); as e) { <p class="field-error" id="name-error">{{ e.key | t: e.params }}</p> }
+        </div>
+        <div class="field">
+          <label for="category">{{ 'subscriptions.field.category' | t }}</label>
+          <input id="category" name="category" type="text" autocomplete="off" [(ngModel)]="category"
+            [attr.aria-invalid]="err('category') ? 'true' : null" [attr.aria-describedby]="describedBy('category')" />
+          @if (err('category'); as e) { <p class="field-error" id="category-error">{{ e.key | t: e.params }}</p> }
+        </div>
+        <div class="field">
+          <label for="notes">{{ 'subscriptions.field.notes' | t }}</label>
+          <textarea id="notes" name="notes" rows="3" [(ngModel)]="notes"
+            [attr.aria-invalid]="err('notes') ? 'true' : null" [attr.aria-describedby]="describedBy('notes', 'notes-hint')"></textarea>
+          <p class="muted" id="notes-hint">{{ 'subscriptions.field.notesHint' | t }}</p>
+          @if (err('notes'); as e) { <p class="field-error" id="notes-error">{{ e.key | t: e.params }}</p> }
+        </div>
+        <div class="field">
+          <label for="currency">{{ 'subscriptions.field.currency' | t }}</label>
+          <select id="currency" name="currency" [(ngModel)]="currency"
+            [attr.aria-invalid]="err('currency') ? 'true' : null" [attr.aria-describedby]="describedBy('currency')">
+            @if (!currency) { <option value="">{{ 'subscriptions.field.chooseCurrency' | t }}</option> }
+            @for (c of currencyLabels(); track c.code) { <option [value]="c.code">{{ c.label }}</option> }
+          </select>
+          @if (err('currency'); as e) { <p class="field-error" id="currency-error">{{ e.key | t: e.params }}</p> }
+        </div>
+        <div class="field">
+          <label for="startDate">{{ 'subscriptions.field.startDate' | t }}</label>
+          <input id="startDate" name="startDate" type="date" [(ngModel)]="startDate"
+            [attr.aria-invalid]="err('startDate') ? 'true' : null" [attr.aria-describedby]="describedBy('startDate')" />
+          @if (err('startDate'); as e) { <p class="field-error" id="startDate-error">{{ e.key | t: e.params }}</p> }
+        </div>
+        <div class="field">
+          <label for="endDate">{{ 'subscriptions.field.endDate' | t }}</label>
+          <input id="endDate" name="endDate" type="date" [(ngModel)]="endDate"
+            [attr.aria-invalid]="err('endDate') ? 'true' : null" [attr.aria-describedby]="describedBy('endDate')" />
+          @if (err('endDate'); as e) { <p class="field-error" id="endDate-error">{{ e.key | t: e.params }}</p> }
+        </div>
+        @if (!editing) {
+          <div class="field">
+            <label for="amount">{{ 'subscriptions.field.amount' | t }}</label>
+            <input id="amount" name="amount" type="text" inputmode="decimal" autocomplete="off" [ngModel]="amountText"
+              (ngModelChange)="onAmountInput($event)"
+              [attr.aria-invalid]="err('amount') ? 'true' : null" [attr.aria-describedby]="describedBy('amount', 'amount-hint')" />
+            <p class="muted" id="amount-hint">{{ 'subscriptions.field.amountHint' | t: { example: amountExample(), separator: separator() } }}</p>
+            @if (err('amount'); as e) { <p class="field-error" id="amount-error">{{ e.key | t: e.params }}</p> }
+          </div>
+          <fieldset>
+            <legend>{{ 'subscriptions.field.cadence' | t }}</legend>
+            <div class="choice"><input id="cadence-week" type="radio" name="cadencePreset" value="week" [(ngModel)]="cadencePreset" />
+              <label for="cadence-week">{{ 'cadence.weekly' | t }}</label></div>
+            <div class="choice"><input id="cadence-month" type="radio" name="cadencePreset" value="month" [(ngModel)]="cadencePreset" />
+              <label for="cadence-month">{{ 'cadence.monthly' | t }}</label></div>
+            <div class="choice"><input id="cadence-year" type="radio" name="cadencePreset" value="year" [(ngModel)]="cadencePreset" />
+              <label for="cadence-year">{{ 'cadence.yearly' | t }}</label></div>
+            <div class="choice"><input id="cadence-custom" type="radio" name="cadencePreset" value="custom" [(ngModel)]="cadencePreset" />
+              <label for="cadence-custom">{{ 'cadence.custom' | t }}</label></div>
+            @if (cadencePreset === 'custom') {
+              <div class="custom-cadence">
+                <label for="cadence-count">{{ 'cadence.every' | t }} {{ 'cadence.number' | t }}</label>
+                <input id="cadence-count" name="customCount" type="text" inputmode="numeric" [(ngModel)]="customCount"
+                  [attr.aria-invalid]="err('cadenceCount') ? 'true' : null" [attr.aria-describedby]="describedBy('cadenceCount')" />
+                <label for="cadence-unit">{{ 'cadence.unit' | t }}</label>
+                <select id="cadence-unit" name="customUnit" [(ngModel)]="customUnit">
+                  <option value="week">{{ 'cadence.unit.week' | t }}</option>
+                  <option value="month">{{ 'cadence.unit.month' | t }}</option>
+                  <option value="year">{{ 'cadence.unit.year' | t }}</option>
+                </select>
+                @if (err('cadenceCount'); as e) { <p class="field-error" id="cadenceCount-error">{{ e.key | t: e.params }}</p> }
+              </div>
+            }
+          </fieldset>
+        }
+        <div class="actions">
+          <button type="submit" [disabled]="saving()">
+            {{ (saving() ? 'subscriptions.form.saving' : 'subscriptions.form.save') | t }}
+          </button>
+          <a class="button secondary" [routerLink]="editing ? ['/subscriptions', id] : ['/']">{{ 'subscriptions.form.cancel' | t }}</a>
+        </div>
+      </form>
+    }
+  }
+}

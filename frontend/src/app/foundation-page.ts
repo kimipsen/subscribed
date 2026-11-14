@@ -7,10 +7,12 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Household, Problem, SessionService, validHouseholdName } from './session';
 import { LanguageService, Message, MessageKey } from './i18n/i18n';
 import { TranslatePipe } from './i18n/translate.pipe';
+import { SessionUnavailable } from './subscriptions/session-unavailable';
+import { SubscriptionOverviewComponent } from './subscriptions/subscription-overview';
 
 @Component({
   selector: 'app-foundation-page',
-  imports: [FormsModule, DatePipe, RouterLink, TranslatePipe],
+  imports: [FormsModule, DatePipe, RouterLink, TranslatePipe, SessionUnavailable, SubscriptionOverviewComponent],
   templateUrl: './foundation-page.html',
 })
 export class FoundationPage {

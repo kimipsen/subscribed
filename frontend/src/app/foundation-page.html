@@ -16,14 +16,7 @@
       </section>
     }
     @case ('unavailable') {
-      <section class="panel">
-        <h1 tabindex="-1">{{ 'unavailable.heading' | t }}</h1>
-        <p role="alert">{{ 'unavailable.message' | t }}</p>
-        @if (session.unavailableReference()) {
-          <p>{{ 'common.referenceLabel' | t }} <code>{{ session.unavailableReference() }}</code></p>
-        }
-        <button type="button" (click)="session.load()">{{ 'common.retry' | t }}</button>
-      </section>
+      <app-session-unavailable />
     }
     @case ('anonymous') {
       <section class="panel">
@@ -106,11 +99,7 @@
       } @else {
         <h1 tabindex="-1">{{ 'home.welcome' | t: { name: user()?.displayName ?? '' } }}</h1>
         <p class="muted">{{ 'home.ready' | t }}</p>
-        <section class="empty">
-          <h2>{{ 'home.emptyHeading' | t }}</h2>
-          <p>{{ 'home.emptyBody' | t }}</p>
-          <a class="button" routerLink="/household">{{ 'home.viewHousehold' | t }}</a>
-        </section>
+        <app-subscription-overview />
       }
     }
   }
