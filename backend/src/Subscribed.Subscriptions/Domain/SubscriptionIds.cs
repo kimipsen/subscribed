@@ -27,6 +27,13 @@ public static class SubscriptionIds
 
     public static string StreamKey(string id) => StreamPrefix + id;
 
+    /// <summary>The bare id of a document id (the stream key) or of an id that is already bare.</summary>
+    public static string Bare(string idOrStreamKey)
+    {
+        ArgumentNullException.ThrowIfNull(idOrStreamKey);
+        return idOrStreamKey.StartsWith(StreamPrefix, StringComparison.Ordinal) ? idOrStreamKey[StreamPrefix.Length..] : idOrStreamKey;
+    }
+
     public static bool TryParseStreamKey(string? streamKey, out string id)
     {
         id = "";

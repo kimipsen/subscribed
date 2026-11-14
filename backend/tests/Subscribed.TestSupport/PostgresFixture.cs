@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Npgsql;
 using Subscribed.Household;
+using Subscribed.Subscriptions;
 using Subscribed.Platform.Database;
 using Subscribed.Platform.EventStore;
 using Xunit;
@@ -18,7 +19,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public const string Variable = "SUBSCRIBED_TEST_DB";
     public const string Schema = "subscribed";
 
-    private static readonly IReadOnlyList<IEventStoreModule> Modules = [new HouseholdModule()];
+    private static readonly IReadOnlyList<IEventStoreModule> Modules = [new HouseholdModule(), new SubscriptionsModule()];
     private readonly SemaphoreSlim _createLock = new(1, 1);
     private readonly List<string> _databases = [];
     private int _counter;

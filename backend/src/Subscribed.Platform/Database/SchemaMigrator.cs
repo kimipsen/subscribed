@@ -13,9 +13,9 @@ namespace Subscribed.Platform.Database;
 /// </summary>
 public static class SchemaVersion
 {
-    public const int Current = 1;
+    public const int Current = 2;
 
-    public const string Description = "foundation: Marten 9.59.0 event store, household view, dp keys";
+    public const string Description = "subscriptions: subscription view document";
 
     public const string Table = "schema_migrations";
 }

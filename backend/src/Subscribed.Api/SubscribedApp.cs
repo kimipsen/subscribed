@@ -10,6 +10,7 @@ using Subscribed.Api.Bff;
 using Subscribed.Api.Configuration;
 using Subscribed.Api.Hosting;
 using Subscribed.Household;
+using Subscribed.Subscriptions;
 using Subscribed.Platform.DataProtection;
 using Subscribed.Platform.EventStore;
 using Subscribed.Platform.Identity;
@@ -26,7 +27,7 @@ public sealed class ConfigurationInvalidException(IReadOnlyList<string> keys)
 /// <summary>Composition root of the web host. Tests build the same host with TestServer.</summary>
 public static class SubscribedApp
 {
-    public static IReadOnlyList<IEventStoreModule> Modules { get; } = [new HouseholdModule()];
+    public static IReadOnlyList<IEventStoreModule> Modules { get; } = [new HouseholdModule(), new SubscriptionsModule()];
 
     public static WebApplicationBuilder CreateBuilder(string[] args)
     {
@@ -81,6 +82,7 @@ public static class SubscribedApp
         services.TryAddSingletonTimeProvider();
         services.AddSingleton<IDocumentStore>(_ => SubscribedStore.Create(settings.AppConnectionString, settings.Schema, StoreRole.App, Modules));
         services.AddSingleton<HouseholdService>();
+        services.AddSingleton<SubscriptionService>();
         services.AddSingleton<MartenXmlRepository>();
         services.AddDataProtection().SetApplicationName("subscribed");
         services.AddOptions<KeyManagementOptions>()

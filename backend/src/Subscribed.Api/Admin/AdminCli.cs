@@ -3,6 +3,7 @@ using Subscribed.Household;
 using Subscribed.Household.Domain;
 using Subscribed.Platform.Database;
 using Subscribed.Platform.EventStore;
+using Subscribed.Subscriptions;
 
 namespace Subscribed.Api.Admin;
 
@@ -112,6 +113,8 @@ public static class AdminCli
         await using var store = SubscribedStore.Create(settings.MigratorConnectionString!, settings.Schema, StoreRole.Migrator, SubscribedApp.Modules);
         var count = await HouseholdProjectionRebuilder.RebuildAsync(store);
         await stdout.WriteLineAsync($"Rebuilt {count} household view document(s).");
+        var subscriptions = await SubscriptionProjectionRebuilder.RebuildAsync(store);
+        await stdout.WriteLineAsync($"Rebuilt {subscriptions} subscription view document(s).");
         return Ok;
     }
 
