@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { Message } from '../i18n/i18n';
 import { Observable } from 'rxjs';
 import {
   AddSubscriptionBody,
@@ -19,6 +20,9 @@ function ifMatch(version: number): { headers: { 'If-Match': string } } {
 @Injectable({ providedIn: 'root' })
 export class SubscriptionsService {
   private readonly http = inject(HttpClient);
+
+  /** A one-time polite status message for the next overview, e.g. after a removal. */
+  readonly notice = signal<Message | null>(null);
 
   overview(): Observable<SubscriptionOverview> {
     return this.http.get<SubscriptionOverview>(BASE);

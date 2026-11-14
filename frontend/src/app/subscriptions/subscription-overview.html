@@ -1,5 +1,6 @@
 <section aria-labelledby="subscriptions-heading">
   <h2 id="subscriptions-heading">{{ 'subscriptions.heading' | t }}</h2>
+  @if (notice(); as message) { <p class="status" role="status">{{ message.key | t: message.params }}</p> }
   @if (loading()) {
     <p role="status">{{ 'subscriptions.loading' | t }}</p>
     <div class="skeleton" aria-hidden="true"></div>

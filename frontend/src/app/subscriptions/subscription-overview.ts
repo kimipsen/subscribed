@@ -34,6 +34,7 @@ export class SubscriptionOverviewComponent {
   readonly failed = signal(false);
   readonly reference = signal<string | undefined>(undefined);
   readonly overview = signal<SubscriptionOverview | null>(null);
+  readonly notice = signal<Message | null>(null);
 
   /** The API sorts by name ordinally; the screen re-sorts with the active language's collation, then start date, then id. */
   readonly rows = computed<SubscriptionSummary[]>(() => {
@@ -43,6 +44,8 @@ export class SubscriptionOverviewComponent {
   });
 
   constructor() {
+    this.notice.set(this.service.notice());
+    this.service.notice.set(null);
     this.load();
   }
 

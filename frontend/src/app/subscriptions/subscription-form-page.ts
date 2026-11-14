@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, Injector, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
@@ -55,6 +55,7 @@ export class SubscriptionFormPage {
   private readonly service = inject(SubscriptionsService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly injector = inject(Injector);
 
   /** The route parameter is named `id`; its presence is what makes this the edit form. */
   readonly id = this.route.snapshot.paramMap.get('id');
@@ -158,7 +159,7 @@ export class SubscriptionFormPage {
     if (this.saving()) return;
     this.clearProblems();
     if (!this.validate()) {
-      queueMicrotask(() => document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      this.focusLater('[aria-invalid="true"]');
       return;
     }
     this.saving.set(true);
@@ -185,7 +186,7 @@ export class SubscriptionFormPage {
     } else if (error.status === 404) {
       this.notFound.set(true);
     } else if (error.status === 400 && body?.errors && this.mapServerErrors(body.errors)) {
-      queueMicrotask(() => document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      this.focusLater('[aria-invalid="true"]');
     } else {
       this.problem.set({ key: 'subscriptions.form.saveFailed' });
     }
@@ -211,6 +212,11 @@ export class SubscriptionFormPage {
     if (message) next[field] = message;
     else delete next[field];
     this.errors.set(next);
+  }
+
+  /** Focus after the next render: the invalid field's attributes are not in the DOM until change detection has run. */
+  private focusLater(selector: string): void {
+    afterNextRender(() => document.querySelector<HTMLElement>(selector)?.focus(), { injector: this.injector });
   }
 
   private clearProblems(): void {

@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import { routes } from '../app.routes';
 import { BROWSER_LANGUAGES, LANGUAGE_STORAGE } from '../i18n/i18n';
 import { Session, SessionService, csrfInterceptor } from '../session';
+import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionFormPage } from './subscription-form-page';
 import { detailFixture, optionsFixture } from './testing/fixtures';
 import '../app.config';
@@ -54,7 +55,24 @@ describe('Subscription routes', () => {
     expect(component.id).toBe(detail.id);
   });
 
-  for (const url of ['/subscriptions/new', `/subscriptions/${'a'.repeat(32)}/edit`]) {
+  it('/subscriptions/<id> renders the detail page and requests that subscription', async () => {
+    session.current.set(member);
+    const detail = detailFixture();
+    const harness = await RouterTestingHarness.create();
+    const component = await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
+    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    expect(component.id).toBe(detail.id);
+  });
+
+  it('keeps /subscriptions/new on the form even though /subscriptions/:id exists (route order)', async () => {
+    session.current.set(member);
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
+    http.expectOne('/api/subscriptions/options').flush(optionsFixture());
+    http.expectNone('/api/subscriptions/new');
+  });
+
+  for (const url of ['/subscriptions/new', `/subscriptions/${'a'.repeat(32)}/edit`, `/subscriptions/${'a'.repeat(32)}`]) {
     it(`${url}: anonymous users go to sign-in with the return path and nothing is requested`, async () => {
       session.current.set({ state: 'anonymous' });
       await RouterTestingHarness.create(url);

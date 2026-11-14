@@ -9,6 +9,7 @@ import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from '../i18n/i1
 import { en } from '../i18n/catalog.en';
 import { da } from '../i18n/catalog.da';
 import { SessionService, csrfInterceptor } from '../session';
+import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionFormPage } from './subscription-form-page';
 import { SubscriptionDetail, SubscriptionOptions } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
@@ -81,6 +82,14 @@ describe('SubscriptionFormPage', () => {
 
   const lastRequest = (url: string): TestRequest => http.expectOne(url);
 
+  /** A saved subscription lands on its detail page, which loads the detail. */
+  async function finishSave(harness: RouterTestingHarness, req: TestRequest, saved: SubscriptionDetail, status = 200) {
+    req.flush(saved, status === 201 ? { status, statusText: 'Created' } : {});
+    await settle(harness);
+    http.expectOne(`/api/subscriptions/${saved.id}`).flush(saved);
+    await settle(harness);
+  }
+
   it('adds with the expected body: a string amount, null for empty optionals, and the CSRF header', async () => {
     const { harness, root } = await openAdd();
     await fillValidAdd(root);
@@ -93,9 +102,9 @@ describe('SubscriptionFormPage', () => {
       amount: '129.00', cadenceUnit: 'month', cadenceCount: 1,
     });
     const created = detailFixture();
-    req.flush(created, { status: 201, statusText: 'Created' });
-    await settle(harness);
+    await finishSave(harness, req, created, 201);
     expect(TestBed.inject(Router).url).toBe(`/subscriptions/${created.id}`);
+    expect(harness.routeDebugElement?.componentInstance).toBeInstanceOf(SubscriptionDetailPage);
   });
 
   it('sends the canonical amount, never the field text, when a Danish member types a decimal comma (D-7)', async () => {
@@ -105,7 +114,7 @@ describe('SubscriptionFormPage', () => {
     await submit(harness);
     const req = lastRequest('/api/subscriptions');
     expect((req.request.body as { amount: string }).amount).toBe('129.50');
-    req.flush(detailFixture(), { status: 201, statusText: 'Created' });
+    await finishSave(harness, req, detailFixture(), 201);
   });
 
   it('preselects the default currency', async () => {
@@ -133,7 +142,7 @@ describe('SubscriptionFormPage', () => {
     await submit(harness);
     const req = lastRequest('/api/subscriptions');
     expect(req.request.body).toMatchObject({ cadenceUnit: 'year', cadenceCount: 3 });
-    req.flush(detailFixture(), { status: 201, statusText: 'Created' });
+    await finishSave(harness, req, detailFixture(), 201);
   });
 
   it('shows localized client errors next to their fields with aria-invalid and aria-describedby, and sends nothing', async () => {
@@ -158,7 +167,7 @@ describe('SubscriptionFormPage', () => {
     expect(input(root, 'amount').getAttribute('aria-invalid')).toBe('true');
     type(root, 'amount', '1200');
     await submit(harness);
-    lastRequest('/api/subscriptions').flush(detailFixture(), { status: 201, statusText: 'Created' });
+    await finishSave(harness, lastRequest('/api/subscriptions'), detailFixture(), 201);
   });
 
   it('maps server field errors to localized messages and never renders backend English', async () => {
@@ -207,9 +216,9 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.body).toEqual({
       name: 'FilmPlus HD', category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null,
     });
-    req.flush({ ...detail, name: 'FilmPlus HD', version: detail.version + 1 });
-    await settle(harness);
+    await finishSave(harness, req, { ...detail, name: 'FilmPlus HD', version: detail.version + 1 });
     expect(TestBed.inject(Router).url).toBe(`/subscriptions/${detail.id}`);
+    expect(harness.routeDebugElement?.componentInstance).toBeInstanceOf(SubscriptionDetailPage);
   });
 
   it('keeps the input on a 412 and reloads the latest on request (BR-022)', async () => {
