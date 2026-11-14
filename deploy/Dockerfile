@@ -18,6 +18,7 @@ WORKDIR /src/backend
 COPY backend/Directory.Build.props backend/Directory.Build.targets backend/Directory.Packages.props backend/.editorconfig ./
 COPY backend/src/Subscribed.Platform/Subscribed.Platform.csproj backend/src/Subscribed.Platform/packages.lock.json src/Subscribed.Platform/
 COPY backend/src/Subscribed.Household/Subscribed.Household.csproj backend/src/Subscribed.Household/packages.lock.json src/Subscribed.Household/
+COPY backend/src/Subscribed.Subscriptions/Subscribed.Subscriptions.csproj backend/src/Subscribed.Subscriptions/packages.lock.json src/Subscribed.Subscriptions/
 COPY backend/src/Subscribed.Api/Subscribed.Api.csproj backend/src/Subscribed.Api/packages.lock.json src/Subscribed.Api/
 RUN dotnet restore src/Subscribed.Api/Subscribed.Api.csproj --locked-mode
 COPY backend/src/ ./src/

@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.KeyPerFile" />
     <ProjectReference Include="../Subscribed.Platform/Subscribed.Platform.csproj" />
     <ProjectReference Include="../Subscribed.Household/Subscribed.Household.csproj" />
+    <ProjectReference Include="../Subscribed.Subscriptions/Subscribed.Subscriptions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

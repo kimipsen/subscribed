@@ -13,6 +13,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="../../src/Subscribed.Platform/Subscribed.Platform.csproj" />
     <ProjectReference Include="../../src/Subscribed.Household/Subscribed.Household.csproj" />
+    <ProjectReference Include="../../src/Subscribed.Subscriptions/Subscribed.Subscriptions.csproj" />
     <ProjectReference Include="../../src/Subscribed.Api/Subscribed.Api.csproj" />
   </ItemGroup>
 

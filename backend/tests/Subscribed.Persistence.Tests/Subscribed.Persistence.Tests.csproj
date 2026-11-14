@@ -14,6 +14,7 @@
     <ProjectReference Include="../Subscribed.TestSupport/Subscribed.TestSupport.csproj" />
     <ProjectReference Include="../../src/Subscribed.Platform/Subscribed.Platform.csproj" />
     <ProjectReference Include="../../src/Subscribed.Household/Subscribed.Household.csproj" />
+    <ProjectReference Include="../../src/Subscribed.Subscriptions/Subscribed.Subscriptions.csproj" />
   </ItemGroup>
 
 </Project>

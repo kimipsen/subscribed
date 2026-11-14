@@ -215,6 +215,13 @@
           "Npgsql": "[9.0.4, 9.0.4]"
         }
       },
+      "subscribed.subscriptions": {
+        "type": "Project",
+        "dependencies": {
+          "Subscribed.Household": "[1.0.0, )",
+          "Subscribed.Platform": "[1.0.0, )"
+        }
+      },
       "Marten": {
         "type": "CentralTransitive",
         "requested": "[9.59.0, 9.59.0]",

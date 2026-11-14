@@ -510,6 +510,13 @@
           "Npgsql": "[9.0.4, 9.0.4]"
         }
       },
+      "subscribed.subscriptions": {
+        "type": "Project",
+        "dependencies": {
+          "Subscribed.Household": "[1.0.0, )",
+          "Subscribed.Platform": "[1.0.0, )"
+        }
+      },
       "subscribed.testsupport": {
         "type": "Project",
         "dependencies": {
@@ -518,6 +525,7 @@
           "Npgsql": "[9.0.4, 9.0.4]",
           "Subscribed.Household": "[1.0.0, )",
           "Subscribed.Platform": "[1.0.0, )",
+          "Subscribed.Subscriptions": "[1.0.0, )",
           "xunit.v3.extensibility.core": "[4.0.3, 4.0.3]"
         }
       },
