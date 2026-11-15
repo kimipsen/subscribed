@@ -82,6 +82,8 @@ export class SubscriptionFormPage {
   cadencePreset: CadencePreset = 'month';
   customCount = '2';
   customUnit: CadenceUnit = 'month';
+  /** The linked catalog service: null for a free-form add; when editing, the stored link (kept unless removed). */
+  catalogId: string | null = null;
 
   /** The canonical string behind `amountText` while it is valid; null when the member's text is not a valid amount. */
   private amountCanonical: string | null = null;
@@ -233,6 +235,7 @@ export class SubscriptionFormPage {
     this.currency = detail.currency;
     this.startDate = detail.startDate;
     this.endDate = detail.endDate ?? '';
+    this.catalogId = detail.catalogId;
   }
 
   /** The client-side rules mirror the server's field rules and, when editing, the invariants the page can see. */
@@ -284,10 +287,11 @@ export class SubscriptionFormPage {
       currency: this.currency,
       startDate: this.startDate,
       endDate: this.endDate || null,
+      catalogId: this.catalogId,
     };
   }
 
-  /** Edit sends all six keys, with explicit nulls (D-10). */
+  /** Edit sends all seven keys, with explicit nulls (D-10). */
   private updateBody(): UpdateSubscriptionBody {
     return this.details();
   }

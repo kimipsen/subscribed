@@ -344,7 +344,7 @@ export class SubscriptionDetailPage {
     });
   }
 
-  /** All six PUT keys come from the loaded detail, never from what the page shows: an omitted category or notes would be erased (D-10). */
+  /** All seven PUT keys come from the loaded detail, never from what the page shows: an omitted category or notes would be erased (D-10). */
   private details(detail: SubscriptionDetail, endDate: string | null): UpdateSubscriptionBody {
     return {
       name: detail.name,
@@ -353,6 +353,7 @@ export class SubscriptionDetailPage {
       currency: detail.currency,
       startDate: detail.startDate,
       endDate,
+      catalogId: detail.catalogId,
     };
   }
 

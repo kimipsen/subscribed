@@ -99,7 +99,7 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.headers.get('X-CSRF')).toBe('1');
     expect(req.request.body).toEqual({
       name: 'StreamCo', category: null, notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
-      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1,
+      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null,
     });
     const created = detailFixture();
     await finishSave(harness, req, created, 201);
@@ -202,7 +202,7 @@ describe('SubscriptionFormPage', () => {
     expect(root.textContent).toContain(en['subscriptions.form.forbidden']);
   });
 
-  it('edits with If-Match and exactly six keys: non-null category and notes are echoed, endDate is an explicit null (D-10)', async () => {
+  it('edits with If-Match and exactly seven keys: non-null category and notes are echoed, endDate is an explicit null (D-10)', async () => {
     const detail = detailFixture();
     const { harness, root } = await openEdit(detail);
     expect(input(root, 'name').value).toBe(detail.name);
@@ -214,7 +214,7 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.method).toBe('PUT');
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     expect(req.request.body).toEqual({
-      name: 'FilmPlus HD', category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null,
+      name: 'FilmPlus HD', category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null, catalogId: null,
     });
     await finishSave(harness, req, { ...detail, name: 'FilmPlus HD', version: detail.version + 1 });
     expect(TestBed.inject(Router).url).toBe(`/subscriptions/${detail.id}`);
