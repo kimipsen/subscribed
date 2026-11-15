@@ -8,9 +8,9 @@ import { en } from '../i18n/catalog.en';
 import { da } from '../i18n/catalog.da';
 import { csrfInterceptor } from '../session';
 import { SubscriptionOverviewComponent } from './subscription-overview';
-import { SubscriptionOverview } from './subscription.models';
+import { SubscriptionOverview, SubscriptionSummary } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
-import { overviewFixture } from './testing/fixtures';
+import { overviewFixture, overviewWith } from './testing/fixtures';
 
 const plain = (value: string | null | undefined) => (value ?? '').replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -155,5 +155,247 @@ describe('SubscriptionOverviewComponent', () => {
     expect(rowFor(root, 'StreamCo').querySelector('.badge')?.textContent?.trim()).toBe(da['subscriptions.status.active']);
     expect(englishLeftovers(root)).toEqual([]);
     http.expectNone(() => true);
+  });
+});
+
+describe('SubscriptionOverviewComponent categories', () => {
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        provideHttpClient(withInterceptors([csrfInterceptor])),
+        provideHttpClientTesting(),
+        { provide: BROWSER_LANGUAGES, useValue: ['en'] },
+        { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+  afterEach(() => http.verify());
+
+  const rows = (...patches: Partial<SubscriptionSummary>[]) => overviewWith(patches);
+
+  async function render(data: SubscriptionOverview) {
+    const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
+    fixture.detectChanges();
+    http.expectOne('/api/subscriptions').flush(data);
+    await settle(fixture);
+    return fixture;
+  }
+  async function settle(fixture: { whenStable(): Promise<unknown>; detectChanges(): void }) {
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  const root = (fixture: { nativeElement: unknown }) => fixture.nativeElement as HTMLElement;
+  const select = (el: HTMLElement) => el.querySelector('#category-filter') as HTMLSelectElement;
+  const toggle = (el: HTMLElement) => el.querySelector('#group-toggle') as HTMLInputElement;
+  const names = (el: HTMLElement) => Array.from(el.querySelectorAll('tbody th a')).map((a) => a.textContent?.trim());
+  const status = (el: HTMLElement) => plain(el.querySelector('p[role=status]')?.textContent);
+  const optionLabels = (el: HTMLElement) => Array.from(select(el).options).map((o) => o.textContent?.trim());
+  const choose = async (fixture: Parameters<typeof settle>[0] & { nativeElement: unknown }, value: string) => {
+    const control = select(root(fixture));
+    control.value = value;
+    control.dispatchEvent(new Event('change'));
+    await settle(fixture);
+  };
+  const group = async (fixture: Parameters<typeof settle>[0] & { nativeElement: unknown }, on = true) => {
+    const box = toggle(root(fixture));
+    box.checked = on;
+    box.dispatchEvent(new Event('change'));
+    await settle(fixture);
+  };
+  const headings = (el: HTMLElement) => Array.from(el.querySelectorAll('.category-group h3')).map((h) => h.textContent?.trim());
+
+  const data = () =>
+    rows(
+      { name: 'A', category: 'Food' },
+      { name: 'B', category: ' food ' },
+      { name: 'C', category: 'Internet' },
+      { name: 'D', category: null },
+      { name: 'E', category: '   ' },
+    );
+
+  it('filters by category, treats case and whitespace variants as one, and All restores everything (AC1, AC3)', async () => {
+    const fixture = await render(data());
+    const el = root(fixture);
+    expect(names(el)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    expect(optionLabels(el)).toEqual([en['subscriptions.filter.all'], 'Food', 'Internet', en['subscriptions.filter.uncategorized']]);
+    await choose(fixture, 'cat:food');
+    expect(names(el)).toEqual(['A', 'B']);
+    expect(status(el)).toBe('2 shown');
+    await choose(fixture, 'all');
+    expect(names(el)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    expect(status(el)).toBe('5 shown');
+  });
+
+  it('offers Uncategorized only when an uncategorized subscription exists (AC2)', async () => {
+    const withNone = await render(rows({ name: 'A', category: 'Food' }));
+    expect(optionLabels(root(withNone))).toEqual([en['subscriptions.filter.all'], 'Food']);
+    const fixture = await render(data());
+    await choose(fixture, 'uncategorized');
+    expect(names(root(fixture))).toEqual(['D', 'E']);
+  });
+
+  it('keeps categories literally named All and Uncategorized apart from the built-in choices, in Danish too', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const fixture = await render(rows({ name: 'A', category: 'All' }, { name: 'B', category: 'Uncategorized' }, { name: 'C', category: null }));
+    const el = root(fixture);
+    expect(optionLabels(el)).toEqual([da['subscriptions.filter.all'], 'All', 'Uncategorized', da['subscriptions.filter.uncategorized']]);
+    await choose(fixture, 'cat:all');
+    expect(names(el)).toEqual(['A']);
+    await choose(fixture, 'cat:uncategorized');
+    expect(names(el)).toEqual(['B']);
+    await choose(fixture, 'uncategorized');
+    expect(names(el)).toEqual(['C']);
+  });
+
+  it('shows All when the selected category disappears and resumes it if it comes back (R3.3)', async () => {
+    const fixture = await render(data());
+    const el = root(fixture);
+    await choose(fixture, 'cat:internet');
+    expect(names(el)).toEqual(['C']);
+
+    fixture.componentInstance.overview.set(rows({ name: 'A', category: 'Food' }, { name: 'D', category: null }));
+    await settle(fixture);
+    expect(names(el)).toEqual(['A', 'D']);
+    expect(select(el).value).toBe('all');
+    expect(status(el)).toBe('2 shown');
+
+    fixture.componentInstance.overview.set(data());
+    await settle(fixture);
+    expect(select(el).value).toBe('cat:internet');
+    expect(names(el)).toEqual(['C']);
+  });
+
+  it('falls back to All for a stored selection that names nothing (R3.4 guard is unreachable through the UI)', async () => {
+    const fixture = await render(data());
+    const el = root(fixture);
+    fixture.componentInstance.categoryFilter.set({ kind: 'category', key: 'nope' });
+    await settle(fixture);
+    expect(names(el)).toHaveLength(5);
+    expect(select(el).value).toBe('all');
+    expect(status(el)).toBe('5 shown');
+    expect(el.textContent).not.toContain(en['subscriptions.filter.emptyBody']);
+    fixture.componentInstance.categoryFilter.set({ kind: 'uncategorized' });
+    fixture.componentInstance.overview.set(rows({ name: 'A', category: 'Food' }));
+    await settle(fixture);
+    expect(select(el).value).toBe('all');
+  });
+
+  it('shows no toolbar and keeps the empty state when there are no subscriptions (AC8)', async () => {
+    const el = root(await render({ asOf: '2026-11-13', subscriptions: [], totals: [] }));
+    expect(el.textContent).toContain(en['subscriptions.emptyHeading']);
+    expect(select(el)).toBeNull();
+    expect(el.textContent).not.toContain(en['subscriptions.filter.emptyBody']);
+  });
+
+  it('groups alphabetically with Uncategorized last, counts every status and totals active rows per currency (AC4, AC5)', async () => {
+    const fixture = await render(
+      rows(
+        { name: 'A', category: 'Media', currency: 'DKK', normalizedMonthly: '79.00', normalizedYearly: '948.00' },
+        { name: 'B', category: 'media', currency: 'DKK', normalizedMonthly: '10.50', normalizedYearly: '126.00' },
+        { name: 'C', category: 'Media', currency: 'EUR', normalizedMonthly: '5.00', normalizedYearly: '60.00' },
+        { name: 'D', category: 'Media', currency: 'DKK', status: 'ended', normalizedMonthly: '9.00', normalizedYearly: '108.00' },
+        { name: 'E', category: 'Bills', status: 'not-started' },
+        { name: 'F', category: null },
+      ),
+    );
+    const el = root(fixture);
+    await group(fixture);
+    expect(headings(el)).toEqual(['Bills', 'Media', en['subscriptions.filter.uncategorized']]);
+    const sections = Array.from(el.querySelectorAll('.category-group'));
+    expect(plain(sections[1].querySelector('p')?.textContent)).toBe('Subscriptions: 4');
+    const lines = Array.from(sections[1].querySelectorAll('.totals li')).map((li) => plain(li.textContent));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('DKK 89.50 per month · DKK 1,074.00 per year');
+    expect(lines[0]).toContain('2 active');
+    expect(lines[1]).toContain('EUR 5.00 per month');
+    expect(lines.some((line) => line.includes('DKK') && line.includes('EUR'))).toBe(false);
+    // No active subscription in Bills: rows and count, but no totals line.
+    expect(sections[0].querySelector('.totals')).toBeNull();
+    expect(sections[0].querySelectorAll('tbody tr')).toHaveLength(1);
+    await group(fixture, false);
+    expect(el.querySelector('.category-group')).toBeNull();
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(6);
+  });
+
+  it('combines filter and grouping and reorders groups in Danish (AC5)', async () => {
+    const fixture = await render(
+      rows({ name: 'A', category: 'Zebra' }, { name: 'B', category: 'Åben' }, { name: 'C', category: 'Æble' }, { name: 'D', category: 'Øl' }, { name: 'E', category: null }),
+    );
+    const el = root(fixture);
+    await group(fixture);
+    expect(headings(el).slice(0, 4)).toEqual(['Åben', 'Æble', 'Øl', 'Zebra']);
+    TestBed.inject(LanguageService).setLanguage('da');
+    await settle(fixture);
+    expect(headings(el)).toEqual(['Zebra', 'Æble', 'Øl', 'Åben', da['subscriptions.filter.uncategorized']]);
+    await choose(fixture, 'cat:zebra');
+    expect(headings(el)).toEqual(['Zebra']);
+    expect(status(el)).toBe('1 vist');
+    expect(englishLeftovers(el)).toEqual([]);
+  });
+
+  it('omits a group totals line for malformed amounts but still renders the rows', async () => {
+    const fixture = await render(rows({ name: 'A', category: 'Bad', normalizedMonthly: '1,50' }, { name: 'B', category: 'Good' }));
+    const el = root(fixture);
+    await group(fixture);
+    const [bad, good] = Array.from(el.querySelectorAll('.category-group'));
+    expect(bad.querySelector('.totals')).toBeNull();
+    expect(bad.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(good.querySelector('.totals')).toBeTruthy();
+  });
+
+  it('labels the controls and exposes group headings semantically (R5.1)', async () => {
+    const fixture = await render(data());
+    const el = root(fixture);
+    expect(el.querySelector('label[for=category-filter]')?.textContent?.trim()).toBe(en['subscriptions.filter.label']);
+    expect(el.querySelector('label[for=group-toggle]')?.textContent?.trim()).toBe(en['subscriptions.group.toggle']);
+    expect(toggle(el).type).toBe('checkbox');
+    expect(el.querySelectorAll('[role=region]')).toHaveLength(1);
+    await group(fixture);
+    const regions = el.querySelectorAll('[role=region]');
+    expect(regions).toHaveLength(1);
+    expect(regions[0].getAttribute('tabindex')).toBe('0');
+    expect(regions[0].getAttribute('aria-label')).toBe(en['subscriptions.scrollRegion']);
+    const sections = Array.from(el.querySelectorAll('.category-group'));
+    expect(sections.length).toBeGreaterThan(1);
+    const ids = new Set<string>();
+    for (const section of sections) {
+      const id = section.getAttribute('aria-labelledby') as string;
+      ids.add(id);
+      expect(section.querySelector(`h3[id=${id}]`)).toBeTruthy();
+      expect(section.querySelector('table')?.getAttribute('aria-labelledby')).toBe(id);
+      expect(section.querySelector('caption')).toBeNull();
+    }
+    expect(ids.size).toBe(sections.length);
+  });
+
+  it('keeps focus on the filter and the toggle when they change (R5.1)', async () => {
+    const fixture = await render(data());
+    document.body.appendChild(root(fixture));
+    try {
+      const el = root(fixture);
+      select(el).focus();
+      await choose(fixture, 'cat:food');
+      expect(document.activeElement).toBe(select(el));
+      toggle(el).focus();
+      await group(fixture);
+      expect(document.activeElement).toBe(toggle(el));
+    } finally {
+      root(fixture).remove();
+    }
+  });
+
+  it('has the same columns and row markup flat and grouped', async () => {
+    const fixture = await render(data());
+    const el = root(fixture);
+    const flat = Array.from(el.querySelectorAll('thead th')).map((th) => th.textContent?.trim());
+    await group(fixture);
+    for (const head of Array.from(el.querySelectorAll('thead'))) {
+      expect(Array.from(head.querySelectorAll('th')).map((th) => th.textContent?.trim())).toEqual(flat);
+    }
   });
 });
