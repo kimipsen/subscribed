@@ -42,7 +42,7 @@ describe('SubscriptionOverviewComponent', () => {
 
   const element = (fixture: { nativeElement: unknown }) => fixture.nativeElement as HTMLElement;
   const rowFor = (root: HTMLElement, name: string) =>
-    Array.from(root.querySelectorAll('tbody tr')).find((row) => row.querySelector('th')?.textContent?.trim() === name) as HTMLElement;
+    Array.from(root.querySelectorAll('tbody tr')).find((row) => row.querySelector('th a')?.textContent?.trim() === name) as HTMLElement;
 
   it('shows a loading status first', () => {
     const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
@@ -155,5 +155,33 @@ describe('SubscriptionOverviewComponent', () => {
     expect(rowFor(root, 'StreamCo').querySelector('.badge')?.textContent?.trim()).toBe(da['subscriptions.status.active']);
     expect(englishLeftovers(root)).toEqual([]);
     http.expectNone(() => true);
+  });
+
+  it('shows a logo or the initial letter beside each name without changing the row name', async () => {
+    const data = overviewFixture();
+    data.subscriptions[0] = { ...data.subscriptions[0], catalogId: 'streamco', logoUrl: '/logos/streamco.svg' };
+    const fixture = await render(data);
+    const root = element(fixture);
+    const first = rowFor(root, data.subscriptions[0].name);
+    const img = first.querySelector('th img');
+    expect(img?.getAttribute('src')).toBe('/logos/streamco.svg');
+    expect(img?.getAttribute('alt')).toBe('');
+    const other = rowFor(root, data.subscriptions[1].name);
+    expect(other.querySelector('th img')).toBeNull();
+    expect(other.querySelector('th span[aria-hidden="true"]')?.textContent?.trim()).toBe(Array.from(data.subscriptions[1].name)[0].toUpperCase());
+    // The link is still the accessible name: the logo adds no text of its own.
+    expect(other.querySelector('th a')?.textContent?.trim()).toBe(data.subscriptions[1].name);
+  });
+
+  it('falls back to the letter when a logo fails to load', async () => {
+    const data = overviewFixture();
+    data.subscriptions[0] = { ...data.subscriptions[0], catalogId: 'streamco', logoUrl: '/logos/broken.svg' };
+    const fixture = await render(data);
+    const root = element(fixture);
+    const first = rowFor(root, data.subscriptions[0].name);
+    first.querySelector('th img')?.dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+    expect(first.querySelector('th img')).toBeNull();
+    expect(first.querySelector('th span[aria-hidden="true"]')).not.toBeNull();
   });
 });

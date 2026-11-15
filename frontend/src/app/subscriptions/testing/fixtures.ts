@@ -1,9 +1,11 @@
+import catalogJson from './catalog.json';
 import detailJson from './detail.json';
 import optionsJson from './options.json';
 import overviewJson from './overview.json';
 import validationProblemJson from './validation-problem.json';
 import {
   ApiProblem,
+  Catalog,
   SubscriptionDetail,
   SubscriptionOptions,
   SubscriptionOverview,
@@ -15,13 +17,15 @@ import {
 // which the literal unions reject), and a bare `as` would compile even when a required property is missing.
 const overviewCheck: Wire<SubscriptionOverview> = overviewJson;
 const detailCheck: Wire<SubscriptionDetail> = detailJson;
+const catalogCheck: Wire<Catalog> = catalogJson;
 const optionsCheck: Wire<SubscriptionOptions> = optionsJson;
 const problemCheck: Wire<ApiProblem> = validationProblemJson;
-void [overviewCheck, detailCheck, optionsCheck, problemCheck];
+void [overviewCheck, detailCheck, catalogCheck, optionsCheck, problemCheck];
 
 const copy = <T>(value: unknown): T => structuredClone(value) as T;
 
 export const overviewFixture = (): SubscriptionOverview => copy(overviewJson);
 export const detailFixture = (): SubscriptionDetail => copy(detailJson);
+export const catalogFixture = (): Catalog => copy(catalogJson);
 export const optionsFixture = (): SubscriptionOptions => copy(optionsJson);
 export const validationProblemFixture = (): ApiProblem => copy(validationProblemJson);

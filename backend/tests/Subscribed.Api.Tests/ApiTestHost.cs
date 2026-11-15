@@ -63,7 +63,7 @@ public sealed class ApiTestHost : IAsyncDisposable
 
     public static string Issuer => StubIdentityProvider.Authority;
 
-    public static async Task<ApiTestHost> StartAsync(PostgresFixture pg, Action<Dictionary<string, string?>>? configure = null, TestDatabase? database = null)
+    public static async Task<ApiTestHost> StartAsync(PostgresFixture pg, Action<Dictionary<string, string?>>? configure = null, TestDatabase? database = null, Action<IServiceCollection>? services = null)
     {
         ArgumentNullException.ThrowIfNull(pg);
         var db = database ?? await pg.CreateDatabaseAsync();
@@ -90,7 +90,23 @@ public sealed class ApiTestHost : IAsyncDisposable
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
         builder.Services.AddSingleton<TimeProvider>(time);
         builder.Services.Configure<OpenIdConnectOptions>(OidcSetup.Scheme, o => o.BackchannelHttpHandler = stub.Handler);
-        var app = SubscribedApp.Build(builder);
+        services?.Invoke(builder.Services);
+        WebApplication app;
+        try
+        {
+            app = SubscribedApp.Build(builder);
+        }
+        catch
+        {
+            await stub.DisposeAsync();
+            if (database is null)
+            {
+                await db.DisposeAsync();
+            }
+
+            throw;
+        }
+
         await app.StartAsync();
         return new ApiTestHost(db, database is null, stub, app, time, logs, config);
     }

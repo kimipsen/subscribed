@@ -16,7 +16,10 @@
         <button type="button" (click)="load()">{{ 'common.retry' | t }}</button>
       </div>
     } @else if (detail(); as d) {
-      <h1 tabindex="-1">{{ d.name }}</h1>
+      <div class="title-row">
+        <app-service-logo [name]="d.name" [logoUrl]="d.logoUrl" [size]="32" />
+        <h1 tabindex="-1">{{ d.name }}</h1>
+      </div>
       <p class="actions">
         <a routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
         <a class="button secondary" [routerLink]="['/subscriptions', d.id, 'edit']">{{ 'detail.edit' | t }}</a>

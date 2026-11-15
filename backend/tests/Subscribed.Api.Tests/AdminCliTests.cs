@@ -104,7 +104,7 @@ public sealed class AdminCliTests(PostgresFixture pg)
 
         await using (var store = SubscribedStore.Create(db.AppConnectionString, PostgresFixture.Schema, StoreRole.App, SubscribedApp.Modules))
         {
-            var service = new SubscriptionService(store, TimeProvider.System);
+            var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
             var context = new WriteContext(WriteContext.AdminCli, null);
             NewSubscription Sub(string name) => SubscriptionDecisions.ParseAdd(new AddInput(name, "Streaming", "Notes", "DKK", "2024-03-01", null, "129.00", "month", 1));
             var active = await service.AddAsync(Sub("Active"), context, TestContext.Current.CancellationToken);

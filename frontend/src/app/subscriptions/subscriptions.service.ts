@@ -4,6 +4,7 @@ import { Message } from '../i18n/i18n';
 import { Observable } from 'rxjs';
 import {
   AddSubscriptionBody,
+  Catalog,
   PriceEntryBody,
   SubscriptionDetail,
   SubscriptionOptions,
@@ -30,6 +31,10 @@ export class SubscriptionsService {
 
   options(): Observable<SubscriptionOptions> {
     return this.http.get<SubscriptionOptions>(`${BASE}/options`);
+  }
+
+  catalog(): Observable<Catalog> {
+    return this.http.get<Catalog>(`${BASE}/catalog`);
   }
 
   detail(id: string): Observable<SubscriptionDetail> {

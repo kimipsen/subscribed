@@ -85,6 +85,23 @@ describe('SubscriptionDetailPage', () => {
 
   // ---- display ---------------------------------------------------------------------------------------
 
+  it('shows the logo beside the heading and falls back to the letter when it is broken', async () => {
+    const { harness, root, detail } = await open({ ...detailFixture(), catalogId: 'streamco', logoUrl: '/logos/streamco.svg' });
+    expect(root.querySelector('.title-row img')?.getAttribute('src')).toBe('/logos/streamco.svg');
+    expect(root.querySelector('.title-row img')?.getAttribute('alt')).toBe('');
+    expect(el(root, 'h1').textContent).toBe(detail.name);
+    root.querySelector('.title-row img')?.dispatchEvent(new Event('error'));
+    await settle(harness);
+    expect(root.querySelector('.title-row img')).toBeNull();
+    expect(root.querySelector('.title-row span[aria-hidden="true"]')?.textContent?.trim()).toBe(Array.from(detail.name)[0].toUpperCase());
+  });
+
+  it('shows the initial letter when the subscription has no logo', async () => {
+    const { root, detail } = await open();
+    expect(root.querySelector('.title-row img')).toBeNull();
+    expect(root.querySelector('.title-row span[aria-hidden="true"]')?.textContent?.trim()).toBe(Array.from(detail.name)[0].toUpperCase());
+  });
+
   it('shows the history chronologically with changes and the Upcoming and Current badges', async () => {
     const { root, detail } = await open();
     const body = rows(root);
@@ -329,7 +346,7 @@ describe('SubscriptionDetailPage', () => {
 
   // ---- end, reinstate, remove ------------------------------------------------------------------------
 
-  it('ends with the exact six-key PUT body copied from the loaded detail (D-10)', async () => {
+  it('ends with the exact seven-key PUT body copied from the loaded detail (D-10)', async () => {
     const { harness, root, detail } = await open();
     el<HTMLButtonElement>(root, '#end-open').click();
     await settle(harness);
@@ -340,20 +357,20 @@ describe('SubscriptionDetailPage', () => {
     expect(req.request.method).toBe('PUT');
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     expect(req.request.body).toEqual({
-      name: detail.name, category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate,
+      name: detail.name, category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate, catalogId: null,
     });
     await respond(harness, req, bump(detail, { endDate, status: 'ended' }));
     expect(root.textContent).toContain(en['subscriptions.status.ended']);
   });
 
-  it('reinstates with the same six keys and endDate null', async () => {
+  it('reinstates with the same seven keys and endDate null', async () => {
     const detail = { ...detailFixture(), endDate: '2099-01-01', status: 'active' as const };
     const { harness, root } = await open(detail);
     buttonByText(root, en['detail.reinstate']).click();
     await settle(harness);
     const req = request(detail);
     expect(req.request.body).toEqual({
-      name: detail.name, category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null,
+      name: detail.name, category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null, catalogId: null,
     });
     await respond(harness, req, bump(detail, { endDate: null }));
     expect(buttonByText(root, en['detail.reinstate'])).toBeUndefined();

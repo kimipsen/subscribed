@@ -6,7 +6,7 @@ using Subscribed.Subscriptions.Domain;
 namespace Subscribed.Subscriptions;
 
 /// <summary>Subscription reads and writes. One Marten event stream per subscription (D-3).</summary>
-public sealed class SubscriptionService(IDocumentStore store, TimeProvider time)
+public sealed class SubscriptionService(IDocumentStore store, TimeProvider time, Catalog catalog)
 {
     /// <summary>All non-removed subscriptions of the household, in no particular order.</summary>
     public Task<IReadOnlyList<SubscriptionState>> ListAsync(CancellationToken ct = default) =>
@@ -29,6 +29,7 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time)
     public Task<SubscriptionState> AddAsync(NewSubscription command, WriteContext context, CancellationToken ct = default) =>
         EventStoreErrors.GuardAsync(async () =>
         {
+            RequireKnownCatalogId(command.CatalogId);
             var id = SubscriptionIds.New(time);
             var streamKey = SubscriptionIds.StreamKey(id);
             var events = SubscriptionDecisions.Add(command, HouseholdService.StreamId, SubscriptionIds.New(time), time.GetUtcNow());
@@ -41,7 +42,17 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time)
         });
 
     public Task<SubscriptionState> UpdateAsync(string id, long expectedVersion, DetailsUpdate command, WriteContext context, CancellationToken ct = default) =>
-        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.UpdateDetails(history, command, time.GetUtcNow()), context, ct);
+        WriteAsync(id, expectedVersion, history =>
+        {
+            // Only a changed link is checked, so a subscription whose catalog entry was removed can still be edited. This runs inside
+            // the decide step, after the 404 and 412 checks. The extra rehydration is accepted: do not fold it into WriteAsync.
+            if (!string.Equals(command.CatalogId, SubscriptionState.Rehydrate(history).CatalogId, StringComparison.Ordinal))
+            {
+                RequireKnownCatalogId(command.CatalogId);
+            }
+
+            return SubscriptionDecisions.UpdateDetails(history, command, time.GetUtcNow());
+        }, context, ct);
 
     public Task<SubscriptionState> AddPriceEntryAsync(string id, long expectedVersion, PriceEntryChange command, WriteContext context, CancellationToken ct = default) =>
         WriteAsync(id, expectedVersion, history => SubscriptionDecisions.AddPriceEntry(history, command, SubscriptionIds.New(time), time.GetUtcNow()), context, ct);
@@ -101,6 +112,17 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time)
             return await session.LoadAsync<SubscriptionState>(streamKey, ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("Subscription view missing after write.");
         });
+
+    private void RequireKnownCatalogId(string? catalogId)
+    {
+        if (catalogId is not null && catalog.TryGet(catalogId) is null)
+        {
+            throw new SubscriptionValidationException(new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                ["catalogId"] = ["The catalog id is not a known service."],
+            });
+        }
+    }
 
     private static void SetHeaders(IDocumentSession session, WriteContext context)
     {

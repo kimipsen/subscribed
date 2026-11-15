@@ -1,0 +1,64 @@
+{
+  "services": [
+    {
+      "id": "streamco",
+      "name": "StreamCo",
+      "category": "Streaming",
+      "logoUrl": "/logos/streamco.svg",
+      "lastVerified": "2026-11-01",
+      "plans": [
+        {
+          "country": "DK",
+          "name": "Family",
+          "currency": "DKK",
+          "minorUnit": 2,
+          "amount": "129.00",
+          "cadenceUnit": "month",
+          "cadenceCount": 1,
+          "upcomingChange": {
+            "amount": "139.00",
+            "effectiveFrom": "2027-02-01"
+          }
+        },
+        {
+          "country": "DK",
+          "name": "Solo",
+          "currency": "DKK",
+          "minorUnit": 2,
+          "amount": "89.00",
+          "cadenceUnit": "month",
+          "cadenceCount": 1,
+          "upcomingChange": null
+        }
+      ]
+    },
+    {
+      "id": "music-box",
+      "name": "Music Box",
+      "category": "Music",
+      "logoUrl": null,
+      "lastVerified": "2026-10-20",
+      "plans": [
+        {
+          "country": "DK",
+          "name": "Duo",
+          "currency": "DKK",
+          "minorUnit": 2,
+          "amount": "119.00",
+          "cadenceUnit": "month",
+          "cadenceCount": 1,
+          "upcomingChange": null
+        }
+      ]
+    },
+    {
+      "id": "no-plans",
+      "name": "No Plans",
+      "category": "Other",
+      "logoUrl": null,
+      "lastVerified": "2026-10-01",
+      "plans": []
+    }
+  ],
+  "defaultCountry": "DK"
+}
