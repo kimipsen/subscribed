@@ -10,7 +10,8 @@ reinstates or removes a subscription.
 Money is text in the browser. Amounts arrive from the API as exact decimal strings and are formatted
 with `Intl.NumberFormat` from the string, never through `Number` or `parseFloat`. Amount input accepts
 only the active language's decimal separator and is sent to the API as a canonical decimal string. The
-server computes every derived value; the browser does no money arithmetic. The shared golden
+server computes every derived value; the only browser arithmetic is the exact BigInt sum of canonical
+strings behind per-category group totals (`sumDecimalStrings`). The shared golden
 fixtures in `src/app/subscriptions/testing/` are flushed by the specs and compared with the live API
 responses by the backend tests.
 
