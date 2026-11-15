@@ -28,6 +28,55 @@
         <p class="muted">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p>
       }
       <form class="panel form" (ngSubmit)="save()" novalidate>
+        @if (!editing && catalog()) {
+          <div class="field picker" role="search" aria-labelledby="picker-heading">
+            <h2 id="picker-heading" class="picker-heading">{{ 'subscriptions.picker.heading' | t }}</h2>
+            <label for="picker-search">{{ 'subscriptions.picker.searchLabel' | t }}</label>
+            <input id="picker-search" name="pickerSearch" type="search" autocomplete="off" aria-describedby="picker-count"
+              [ngModel]="search()" (ngModelChange)="onSearchInput($event)" (keydown.enter)="$event.preventDefault()" />
+            <p id="picker-count" class="muted" aria-live="polite">
+              {{ (results().length ? 'subscriptions.picker.count' : 'subscriptions.picker.none') | t: { count: resultCount() } }}
+            </p>
+            <ul class="picker-results">
+              @for (service of results(); track service.id) {
+                <li>
+                  <button type="button" class="secondary picker-result" [attr.aria-pressed]="selectedService()?.id === service.id" (click)="pickService(service)">
+                    <app-service-logo [name]="service.name" [logoUrl]="service.logoUrl" />
+                    <span>{{ service.name }}</span>
+                    <span class="muted">{{ service.category }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+            @if (selectedService(); as picked) {
+              <p class="picker-selected" role="status">
+                <app-service-logo [name]="picked.name" [logoUrl]="picked.logoUrl" />
+                {{ 'subscriptions.picker.selected' | t: { name: picked.name } }}
+              </p>
+              @if (planChoices().length > 1) {
+                <label for="picker-plan">{{ 'subscriptions.picker.plan' | t }}</label>
+                <select id="picker-plan" name="pickerPlan" (change)="choosePlan($any($event.target).value)">
+                  @for (plan of planChoices(); track $index) {
+                    <option [value]="$index" [selected]="plan === selectedPlan()">{{ planLabel(plan) }}</option>
+                  }
+                </select>
+              }
+              <button type="button" class="secondary" id="picker-unlink" (click)="unlink()">{{ 'subscriptions.picker.unlink' | t }}</button>
+            }
+          </div>
+        } @else if (!editing && catalogFailed()) {
+          <p class="muted" role="status" id="picker-failed">{{ 'subscriptions.picker.loadFailed' | t }}</p>
+        }
+        @if (editing && catalogId) {
+          <div class="field" id="linked-service">
+            <p class="picker-selected">
+              <app-service-logo [name]="linkedService()?.name ?? detail()?.name ?? catalogId" [logoUrl]="linkedService()?.logoUrl ?? detail()?.logoUrl ?? null" />
+              {{ 'subscriptions.picker.linked' | t: { name: linkedService()?.name ?? catalogId } }}
+            </p>
+            <button type="button" class="secondary" id="picker-remove-link" (click)="unlink()">{{ 'subscriptions.picker.removeLink' | t }}</button>
+          </div>
+        }
+        @if (err('catalogId'); as e) { <p class="field-error" id="catalogId-error" role="alert">{{ e.key | t: e.params }}</p> }
         <div class="field">
           <label for="name">{{ 'subscriptions.field.name' | t }}</label>
           <input id="name" name="name" type="text" autocomplete="off" [(ngModel)]="name"
@@ -75,6 +124,12 @@
               (ngModelChange)="onAmountInput($event)"
               [attr.aria-invalid]="err('amount') ? 'true' : null" [attr.aria-describedby]="describedBy('amount', 'amount-hint')" />
             <p class="muted" id="amount-hint">{{ 'subscriptions.field.amountHint' | t: { example: amountExample(), separator: separator() } }}</p>
+            @if (selectedService(); as picked) {
+              <p class="muted" id="catalog-verified">{{ 'subscriptions.picker.verified' | t: { date: formatDay(picked.lastVerified) } }}</p>
+              @if (upcomingChange(); as change) {
+                <p class="muted" id="catalog-upcoming">{{ 'subscriptions.picker.upcoming' | t: { date: formatDay(change.effectiveFrom), amount: money(change.amount, selectedPlan()!) } }}</p>
+              }
+            }
             @if (err('amount'); as e) { <p class="field-error" id="amount-error">{{ e.key | t: e.params }}</p> }
           </div>
           <fieldset>

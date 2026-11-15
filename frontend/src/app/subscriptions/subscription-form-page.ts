@@ -2,16 +2,20 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, Injector, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { forkJoin, of } from 'rxjs';
+import { catchError, forkJoin, of } from 'rxjs';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
-import { parseAmountInput, toAmountInput, decimalSeparator } from './money';
+import { parseAmountInput, toAmountInput, decimalSeparator, formatMoney } from './money';
+import { ServiceLogo } from './service-logo';
 import { SessionUnavailable } from './session-unavailable';
 import {
   AddSubscriptionBody,
   ApiProblem,
   CadenceUnit,
+  Catalog,
+  CatalogPlan,
+  CatalogService,
   SubscriptionDetail,
   SubscriptionOptions,
   UpdateSubscriptionBody,
@@ -30,7 +34,28 @@ const FIELD_MESSAGES: Readonly<Record<string, MessageKey>> = {
   amount: 'subscriptions.error.amount',
   cadenceUnit: 'subscriptions.error.cadenceUnit',
   cadenceCount: 'subscriptions.error.cadenceCount',
+  catalogId: 'subscriptions.error.catalogId',
 };
+
+const MAX_PICKER_RESULTS = 8;
+
+/** Lowercase with diacritics removed, so "cafe" finds "Café". */
+export function foldForSearch(value: string): string {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
+}
+
+/**
+ * The plan a pick prefills. Order is significant: the first plan in the household's default currency, else the first plan of the
+ * catalog's default market, else the first plan; null when the service has no plans.
+ */
+export function defaultPlan(service: CatalogService, defaultCurrency: string | null, defaultCountry: string): CatalogPlan | null {
+  return (
+    (defaultCurrency ? service.plans.find((p) => p.currency === defaultCurrency) : undefined) ??
+    service.plans.find((p) => p.country === defaultCountry) ??
+    service.plans[0] ??
+    null
+  );
+}
 
 export function hasControlCharacters(value: string, allowLineFeed = false): boolean {
   return Array.from(value).some((character) => {
@@ -46,7 +71,7 @@ export function normalizeNotes(value: string): string {
 
 @Component({
   selector: 'app-subscription-form-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo],
   templateUrl: './subscription-form-page.html',
 })
 export class SubscriptionFormPage {
@@ -63,6 +88,14 @@ export class SubscriptionFormPage {
 
   readonly options = signal<SubscriptionOptions | null>(null);
   readonly detail = signal<SubscriptionDetail | null>(null);
+  /** null until loaded, and after a failed load: the picker is then hidden and free-form entry is the only path (R3.2). */
+  readonly catalog = signal<Catalog | null>(null);
+  readonly catalogFailed = signal(false);
+  readonly search = signal('');
+  readonly selectedService = signal<CatalogService | null>(null);
+  readonly selectedPlan = signal<CatalogPlan | null>(null);
+  /** Whether the price fields currently hold values taken from a catalog plan. */
+  private pricePrefilled = false;
   readonly loading = signal(false);
   readonly loadFailed = signal(false);
   readonly notFound = signal(false);
@@ -97,6 +130,38 @@ export class SubscriptionFormPage {
     return (this.options()?.currencies ?? []).map((c) => ({ code: c.code, label: `${c.code} — ${names.of(c.code) ?? c.code}` }));
   });
 
+  /** The services matching the search text, sorted by name for the active language, at most eight. */
+  readonly results = computed(() => {
+    const needle = foldForSearch(this.search().trim());
+    const locale = this.i18n.dateLocale();
+    return (this.catalog()?.services ?? [])
+      .filter((service) => foldForSearch(service.name).includes(needle))
+      .sort((a, b) => a.name.localeCompare(b.name, locale))
+      .slice(0, MAX_PICKER_RESULTS);
+  });
+
+  readonly resultCount = computed(() => String(this.results().length));
+
+  /** The plans of the picked service in its default market, for the plan select (shown only when there is a choice). */
+  readonly planChoices = computed(() => {
+    const service = this.selectedService();
+    const plan = this.selectedPlan();
+    if (!service || !plan) return [];
+    return service.plans.filter((p) => p.country === plan.country);
+  });
+
+  /** An announced price change is shown only from its effective date: a past date is stale data and stays hidden. */
+  readonly upcomingChange = computed(() => {
+    const change = this.selectedPlan()?.upcomingChange;
+    return change && change.effectiveFrom >= new Date().toISOString().slice(0, 10) ? change : null;
+  });
+
+  /** The service the stored link points at (edit mode); null when the entry has since left the catalog. */
+  readonly linkedService = computed(() => {
+    const id = this.catalogId;
+    return id ? (this.catalog()?.services.find((s) => s.id === id) ?? null) : null;
+  });
+
   constructor() {
     effect(() => {
       if (this.session.current().state === 'member' && !this.started) {
@@ -120,10 +185,13 @@ export class SubscriptionFormPage {
     this.clearProblems();
     forkJoin({
       options: this.options() ? of(this.options() as SubscriptionOptions) : this.service.options(),
+      catalog: this.catalog() ? of(this.catalog()) : this.service.catalog().pipe(catchError(() => of(null))),
       detail: this.id ? this.service.detail(this.id) : of(null),
     }).subscribe({
-      next: ({ options, detail }) => {
+      next: ({ options, catalog, detail }) => {
         this.options.set(options);
+        this.catalog.set(catalog);
+        this.catalogFailed.set(catalog === null);
         this.detail.set(detail);
         if (detail) this.fill(detail);
         else if (!this.currency) this.currency = options.defaultCurrency ?? '';
@@ -141,6 +209,77 @@ export class SubscriptionFormPage {
 
   reloadLatest(): void {
     this.load();
+  }
+
+  onSearchInput(text: string): void {
+    this.search.set(text);
+  }
+
+  /** Picks a service: prefills name, category and the default plan's price fields once. Afterwards every field is a normal control. */
+  pickService(service: CatalogService): void {
+    this.selectedService.set(service);
+    this.catalogId = service.id;
+    this.name = service.name;
+    this.category = service.category;
+    const plan = defaultPlan(service, this.options()?.defaultCurrency ?? null, this.catalog()?.defaultCountry ?? 'DK');
+    this.selectedPlan.set(plan);
+    if (plan) this.applyPlan(plan);
+    else this.clearPrefilledPrice();
+    this.setError('name', null);
+    this.setError('category', null);
+  }
+
+  /** The plan select: another plan of the same service replaces the previous plan's prefill. */
+  choosePlan(index: string): void {
+    const plan = this.planChoices()[Number(index)];
+    if (!plan) return;
+    this.selectedPlan.set(plan);
+    this.applyPlan(plan);
+  }
+
+  /** Drops the link and the "prefilled" hints, but keeps every value the member has typed. */
+  unlink(): void {
+    this.catalogId = null;
+    this.selectedService.set(null);
+    this.selectedPlan.set(null);
+    this.pricePrefilled = false;
+    this.setError('catalogId', null);
+  }
+
+  planLabel(plan: CatalogPlan): string {
+    return `${plan.name} — ${formatMoney(plan.amount, plan.currency, plan.minorUnit, this.i18n.dateLocale())}`;
+  }
+
+  formatDay(value: string): string {
+    return new Intl.DateTimeFormat(this.i18n.dateLocale(), { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+  }
+
+  money(amount: string, plan: CatalogPlan): string {
+    return formatMoney(amount, plan.currency, plan.minorUnit, this.i18n.dateLocale());
+  }
+
+  private applyPlan(plan: CatalogPlan): void {
+    this.currency = plan.currency;
+    this.amountCanonical = plan.amount;
+    this.amountText = toAmountInput(plan.amount, this.i18n.dateLocale());
+    if (plan.cadenceCount === 1) {
+      this.cadencePreset = plan.cadenceUnit;
+    } else {
+      this.cadencePreset = 'custom';
+      this.customCount = String(plan.cadenceCount);
+      this.customUnit = plan.cadenceUnit;
+    }
+    this.pricePrefilled = true;
+    this.setError('amount', null);
+    this.setError('currency', null);
+  }
+
+  /** A service without plans prefills only name and category: a price left over from an earlier pick must not stay. */
+  private clearPrefilledPrice(): void {
+    if (!this.pricePrefilled) return;
+    this.amountText = '';
+    this.amountCanonical = null;
+    this.pricePrefilled = false;
   }
 
   onAmountInput(text: string): void {
