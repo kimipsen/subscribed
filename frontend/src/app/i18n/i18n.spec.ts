@@ -102,6 +102,9 @@ describe('Language preferences', () => {
   });
 });
 
+// Words that are legitimately identical in Danish and English.
+const SAME_IN_DANISH = new Set<MessageKey>(['shell.menu', 'shell.footer.version']);
+
 describe('Translation catalogs', () => {
   it('keeps keys and parameters aligned, with complete non-empty translations', () => {
     expect(Object.keys(da).sort()).toEqual(Object.keys(en).sort());
@@ -112,7 +115,7 @@ describe('Translation catalogs', () => {
       expect(da[key].length, key).toBeGreaterThan(0);
       expect(en[key].trim(), key).toBe(en[key]);
       expect(placeholders(da[key]), key).toEqual(placeholders(en[key]));
-      if (key !== 'shell.menu') expect(da[key], key).not.toBe(en[key]);
+      if (!SAME_IN_DANISH.has(key)) expect(da[key], key).not.toBe(en[key]);
     }
   });
 

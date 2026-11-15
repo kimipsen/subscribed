@@ -11,6 +11,8 @@ export const da: Catalog = {
   'shell.signOutFailed': 'Udlogningen mislykkedes. Din session kan stadig være aktiv. Prøv igen.',
   'shell.sessionExpired': 'Din session er udløbet.',
   'shell.signInAgain': 'Log ind igen',
+  'shell.footer.github': 'Kildekode på GitHub',
+  'shell.footer.version': 'Version',
   'language.label': 'Sprog',
   'language.saveFailed': 'Dit sprogvalg kunne ikke gemmes i denne browser. Det gælder, indtil du genindlæser siden.',
   'language.dismiss': 'Luk',
