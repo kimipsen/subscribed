@@ -4,6 +4,8 @@
   "asOf": "2026-11-14",
   "name": "FilmPlus",
   "category": "Streaming",
+  "catalogId": null,
+  "logoUrl": null,
   "notes": "Family plan",
   "status": "active",
   "startDate": "2024-02-18",

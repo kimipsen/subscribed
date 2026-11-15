@@ -40,6 +40,9 @@ public sealed class SubscriptionState
 
     public string InitialEntryId { get; set; } = "";
 
+    /// <summary>The linked catalog entry, or null. Snapshots written before this property existed read as null.</summary>
+    public string? CatalogId { get; set; }
+
     public List<PriceEntryState> Entries { get; set; } = [];
 
     public DateTimeOffset AddedAt { get; set; }
@@ -130,6 +133,12 @@ public sealed class SubscriptionState
         Entries.Remove(Entry(e.EntryId));
     }
 
+    public void Apply(SubscriptionCatalogLinked e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        CatalogId = e.CatalogId;
+    }
+
     /// <summary>Nothing is deleted: the flag hides the subscription from reads (D-5).</summary>
     public void Apply(SubscriptionRemoved e)
     {
@@ -170,6 +179,7 @@ public sealed class SubscriptionState
                     case SubscriptionPriceEntryCorrected x: target.Apply(x); break;
                     case SubscriptionPriceEntryRemoved x: target.Apply(x); break;
                     case SubscriptionRemoved x: target.Apply(x); break;
+                    case SubscriptionCatalogLinked x: target.Apply(x); break;
                     default: throw new InvalidOperationException($"Unsupported subscription event {e.GetType().Name}.");
                 }
             }

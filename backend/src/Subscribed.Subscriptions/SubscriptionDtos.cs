@@ -15,15 +15,16 @@ public sealed record AddSubscriptionRequest(
     string? EndDate,
     string? Amount,
     string? CadenceUnit,
-    int? CadenceCount)
+    int? CadenceCount,
+    string? CatalogId)
 {
-    public AddInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, Amount, CadenceUnit, CadenceCount);
+    public AddInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, Amount, CadenceUnit, CadenceCount, CatalogId);
 }
 
-/// <summary>Fully replaces the editable details: sending a null <c>endDate</c> reinstates the subscription.</summary>
-public sealed record UpdateSubscriptionRequest(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate)
+/// <summary>Fully replaces the editable details: a null <c>endDate</c> reinstates the subscription and a null or omitted <c>catalogId</c> unlinks it (P7).</summary>
+public sealed record UpdateSubscriptionRequest(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId)
 {
-    public UpdateInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate);
+    public UpdateInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, CatalogId);
 }
 
 public sealed record PriceEntryRequest(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount)
@@ -57,6 +58,8 @@ public sealed record SubscriptionSummaryDto(
     string Id,
     string Name,
     string? Category,
+    string? CatalogId,
+    string? LogoUrl,
     string Status,
     DateOnly StartDate,
     DateOnly? EndDate,
@@ -67,7 +70,7 @@ public sealed record SubscriptionSummaryDto(
     string NormalizedYearly,
     bool UpcomingPriceChange)
 {
-    public static SubscriptionSummaryDto From(SubscriptionState state, DateOnly today)
+    public static SubscriptionSummaryDto From(SubscriptionState state, DateOnly today, Catalog catalog)
     {
         var minor = SubscriptionCalculator.MinorUnitOf(state);
         var current = SubscriptionCalculator.CurrentPrice(state, today);
@@ -75,6 +78,8 @@ public sealed record SubscriptionSummaryDto(
             SubscriptionIds.Bare(state.Id),
             state.Name,
             state.Category,
+            state.CatalogId,
+            catalog.TryGet(state.CatalogId)?.Logo,
             SubscriptionCalculator.StatusOn(state, today).ToWire(),
             state.StartDate,
             state.EndDate,
@@ -91,10 +96,10 @@ public sealed record CurrencyTotalDto(string Currency, int MinorUnit, string Mon
 
 public sealed record SubscriptionOverviewDto(DateOnly AsOf, IReadOnlyList<SubscriptionSummaryDto> Subscriptions, IReadOnlyList<CurrencyTotalDto> Totals)
 {
-    public static SubscriptionOverviewDto From(IReadOnlyList<SubscriptionState> subscriptions, DateOnly today) =>
+    public static SubscriptionOverviewDto From(IReadOnlyList<SubscriptionState> subscriptions, DateOnly today, Catalog catalog) =>
         new(
             today,
-            [.. SubscriptionCalculator.ListOrder(subscriptions).Select(s => SubscriptionSummaryDto.From(s, today))],
+            [.. SubscriptionCalculator.ListOrder(subscriptions).Select(s => SubscriptionSummaryDto.From(s, today, catalog))],
             [.. SubscriptionCalculator.Totals(subscriptions, today).Select(t =>
                 new CurrencyTotalDto(t.Currency, t.MinorUnit, Money.FormatAmount(t.Monthly, t.MinorUnit), Money.FormatAmount(t.Yearly, t.MinorUnit), t.ActiveCount))]);
 }
@@ -105,6 +110,8 @@ public sealed record SubscriptionDetailDto(
     DateOnly AsOf,
     string Name,
     string? Category,
+    string? CatalogId,
+    string? LogoUrl,
     string? Notes,
     string Status,
     DateOnly StartDate,
@@ -116,7 +123,7 @@ public sealed record SubscriptionDetailDto(
     string NormalizedYearly,
     IReadOnlyList<HistoryEntryDto> PriceHistory)
 {
-    public static SubscriptionDetailDto From(SubscriptionState state, DateOnly today)
+    public static SubscriptionDetailDto From(SubscriptionState state, DateOnly today, Catalog catalog)
     {
         var minor = SubscriptionCalculator.MinorUnitOf(state);
         var current = SubscriptionCalculator.CurrentPrice(state, today);
@@ -126,6 +133,8 @@ public sealed record SubscriptionDetailDto(
             today,
             state.Name,
             state.Category,
+            state.CatalogId,
+            catalog.TryGet(state.CatalogId)?.Logo,
             state.Notes,
             SubscriptionCalculator.StatusOn(state, today).ToWire(),
             state.StartDate,

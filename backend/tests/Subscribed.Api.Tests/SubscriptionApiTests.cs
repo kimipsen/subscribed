@@ -81,6 +81,7 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         currency = currency ?? detail.GetProperty("currency").GetString(),
         startDate = start ?? detail.GetProperty("startDate").GetString(),
         endDate = keepEnd && endDate is null ? detail.GetProperty("endDate").GetString() : endDate,
+        catalogId = detail.GetProperty("catalogId").GetString(),
     };
 
     internal static async Task<JsonElement> ErrorsAsync(HttpResponseMessage response, HttpStatusCode status = HttpStatusCode.BadRequest)
@@ -465,7 +466,7 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         var id = created.GetProperty("id").GetString()!;
 
         // Omitting endDate reinstates; omitting category and notes clears them.
-        var replaced = await SendOkAsync(host, HttpMethod.Put, $"{Base}/{id}", new { name = "StreamCo", currency = "DKK", startDate = created.GetProperty("startDate").GetString() }, ETag(created));
+        var replaced = await SendOkAsync(host, HttpMethod.Put, $"{Base}/{id}", new { name = "StreamCo", currency = "DKK", startDate = created.GetProperty("startDate").GetString(), catalogId = (string?)null }, ETag(created));
         Assert.Equal(JsonValueKind.Null, replaced.GetProperty("endDate").ValueKind);
         Assert.Equal(JsonValueKind.Null, replaced.GetProperty("category").ValueKind);
         Assert.Equal(JsonValueKind.Null, replaced.GetProperty("notes").ValueKind);
