@@ -15,6 +15,14 @@ strings behind per-category group totals (`sumDecimalStrings`). The shared golde
 fixtures in `src/app/subscriptions/testing/` are flushed by the specs and compared with the live API
 responses by the backend tests.
 
+The overview can be filtered by category and grouped by category, entirely in the browser: categories
+stay free text, and are matched ignoring case and extra whitespace (the first-seen spelling is shown).
+The add and edit forms suggest the existing categories through a `datalist`, and still accept any text.
+Group totals are the exact sum of the displayed per-row monthly and yearly amounts of the group's active
+subscriptions, per currency. They can differ by a minor unit from the server's round-once household
+totals above them, and the group totals need not add up to those. The filter and grouping are view state
+only and are not remembered.
+
 Use Node 24.22.2 and npm 11.19.1:
 
 ```sh
