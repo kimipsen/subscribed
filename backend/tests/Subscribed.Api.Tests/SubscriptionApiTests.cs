@@ -93,6 +93,7 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
     [
         (HttpMethod.Get, Base, false),
         (HttpMethod.Get, Base + "/options", false),
+        (HttpMethod.Get, Base + "/catalog", false),
         (HttpMethod.Post, Base, true),
         (HttpMethod.Get, $"{Base}/{id}", false),
         (HttpMethod.Put, $"{Base}/{id}", true),

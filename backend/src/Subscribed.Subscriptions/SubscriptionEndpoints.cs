@@ -32,6 +32,7 @@ public static class SubscriptionEndpoints
         var group = endpoints.MapGroup("/api/subscriptions").RequireAuthorization(HouseholdMembership.PolicyName);
         group.MapGet("", OverviewAsync);
         group.MapGet("options", OptionsAsync);
+        group.MapGet("catalog", CatalogAsync);
         group.MapPost("", AddAsync);
         group.MapGet("{id}", GetAsync);
         group.MapPut("{id}", UpdateAsync);
@@ -53,6 +54,8 @@ public static class SubscriptionEndpoints
         var subscriptions = await service.ListAsync(context.RequestAborted).ConfigureAwait(false);
         return Json(context, SubscriptionOptionsDto.From(subscriptions));
     }
+
+    private static IResult CatalogAsync(HttpContext context, Catalog catalog) => Json(context, CatalogDto.From(catalog));
 
     private static async Task<IResult> GetAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time)
     {

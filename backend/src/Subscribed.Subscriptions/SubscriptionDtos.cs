@@ -160,3 +160,55 @@ public sealed record SubscriptionOptionsDto(IReadOnlyList<CurrencyOptionDto> Cur
             [.. Iso4217.Codes.Select(code => Iso4217.TryGetMinorUnit(code, out var minor) ? new CurrencyOptionDto(code, minor) : throw new InvalidOperationException(code))],
             SubscriptionCalculator.DefaultCurrency(subscriptions));
 }
+
+public sealed record CatalogUpcomingChangeDto(string Amount, DateOnly EffectiveFrom);
+
+public sealed record CatalogPlanDto(
+    string Country,
+    string Name,
+    string Currency,
+    int MinorUnit,
+    string Amount,
+    string CadenceUnit,
+    int CadenceCount,
+    CatalogUpcomingChangeDto? UpcomingChange);
+
+public sealed record CatalogServiceDto(
+    string Id,
+    string Name,
+    string Category,
+    string? LogoUrl,
+    DateOnly LastVerified,
+    IReadOnlyList<CatalogPlanDto> Plans);
+
+/// <summary>The catalog as the API shows it. File order of services and plans is preserved; <c>sourceUrl</c> is not exposed.</summary>
+public sealed record CatalogDto(IReadOnlyList<CatalogServiceDto> Services, string DefaultCountry)
+{
+    public static CatalogDto From(Catalog catalog)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        return new CatalogDto(
+            [.. catalog.Services.Select(static service => new CatalogServiceDto(
+                service.Id,
+                service.Name,
+                service.Category,
+                service.Logo,
+                service.LastVerified,
+                [.. service.Plans.Select(static plan => PlanFrom(plan))]))],
+            catalog.DefaultCountry);
+    }
+
+    private static CatalogPlanDto PlanFrom(CatalogPlan plan)
+    {
+        Iso4217.TryGetMinorUnit(plan.Currency, out var minor);
+        return new CatalogPlanDto(
+            plan.Country,
+            plan.Name,
+            plan.Currency,
+            minor,
+            Money.FormatAmount(plan.Amount, minor),
+            plan.CadenceUnit,
+            plan.CadenceCount,
+            plan.UpcomingChange is { } change ? new CatalogUpcomingChangeDto(Money.FormatAmount(change.Amount, minor), change.EffectiveFrom) : null);
+    }
+}
