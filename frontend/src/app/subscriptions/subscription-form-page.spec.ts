@@ -11,9 +11,9 @@ import { da } from '../i18n/catalog.da';
 import { SessionService, csrfInterceptor } from '../session';
 import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionFormPage } from './subscription-form-page';
-import { Catalog, CatalogPlan, CatalogService, SubscriptionDetail, SubscriptionOptions } from './subscription.models';
+import { Catalog, CatalogPlan, CatalogService, SubscriptionDetail, SubscriptionOptions, SubscriptionOverview } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
-import { catalogFixture, detailFixture, optionsFixture, validationProblemFixture } from './testing/fixtures';
+import { catalogFixture, detailFixture, optionsFixture, overviewFixture, overviewWith, validationProblemFixture } from './testing/fixtures';
 import './../app.config';
 
 describe('SubscriptionFormPage', () => {
@@ -38,6 +38,14 @@ describe('SubscriptionFormPage', () => {
 
   const options = (defaultCurrency: string | null = 'DKK'): SubscriptionOptions => ({ ...optionsFixture(), defaultCurrency });
 
+  /** The overview the form reads for category suggestions, or 'fail' for a server error. */
+  type OverviewReply = SubscriptionOverview | 'fail';
+  const flushOverview = (reply: OverviewReply) => {
+    const req = http.expectOne('/api/subscriptions');
+    if (reply === 'fail') req.flush({ traceId: 't' }, { status: 503, statusText: 'Unavailable' });
+    else req.flush(reply);
+  };
+
   /** The catalog request is answered with the fixture, a custom catalog, or a 500 ('fail'). */
   function flushCatalog(catalog: Catalog | 'fail') {
     const req = http.expectOne('/api/subscriptions/catalog');
@@ -45,19 +53,21 @@ describe('SubscriptionFormPage', () => {
     else req.flush(catalog);
   }
 
-  async function openAdd(data: SubscriptionOptions = options(), catalog: Catalog | 'fail' = catalogFixture()) {
+  async function openAdd(data: SubscriptionOptions = options(), overview: OverviewReply = overviewFixture(), catalog: Catalog | 'fail' = catalogFixture()) {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(data);
+    flushOverview(overview);
     flushCatalog(catalog);
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement };
   }
 
-  async function openEdit(detail: SubscriptionDetail = detailFixture(), catalog: Catalog | 'fail' = catalogFixture()) {
+  async function openEdit(detail: SubscriptionDetail = detailFixture(), overview: OverviewReply = overviewFixture(), catalog: Catalog | 'fail' = catalogFixture()) {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}/edit`, SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(options());
+    flushOverview(overview);
     flushCatalog(catalog);
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     await settle(harness);
@@ -241,6 +251,8 @@ describe('SubscriptionFormPage', () => {
     expect(input(root, 'name').value).toBe('My edit');
     (Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === en['subscriptions.form.reloadLatest']) as HTMLButtonElement).click();
     http.expectOne(`/api/subscriptions/${detail.id}`).flush({ ...detail, name: 'Server name', version: detail.version + 1 });
+    // The overview from the first load is reused, like the options: no second GET /api/subscriptions.
+    http.expectNone('/api/subscriptions');
     await settle(harness);
     expect(input(root, 'name').value).toBe('Server name');
     expect(root.textContent).not.toContain(en['subscriptions.form.conflict']);
@@ -289,6 +301,81 @@ describe('SubscriptionFormPage', () => {
     expect(root.querySelector('h1')?.textContent).toContain(da['subscriptions.form.addHeading']);
     expect(englishLeftovers(root)).toEqual([]);
   });
+
+  describe('category suggestions', () => {
+    const datalistValues = (root: HTMLElement) =>
+      Array.from(root.querySelectorAll('datalist#category-suggestions option')).map((option) => (option as HTMLOptionElement).value);
+
+    it('offers the distinct existing categories, never Uncategorized (AC6, AC3)', async () => {
+      const overview = overviewWith([
+        { category: 'Streaming' },
+        { category: ' streaming ' },
+        { category: 'Food  Court' },
+        { category: 'food court' },
+        { category: null },
+        { category: '' },
+        { category: '   ' },
+      ]);
+      const { root } = await openAdd(options(), overview);
+      expect(input(root, 'category').getAttribute('list')).toBe('category-suggestions');
+      expect(datalistValues(root)).toEqual(['Streaming', 'Food Court']);
+    });
+
+    it('still submits free text that is not in the list', async () => {
+      const { harness, root } = await openAdd();
+      await fillValidAdd(root);
+      type(root, 'category', 'Brand new category');
+      await submit(harness);
+      const req = lastRequest('/api/subscriptions');
+      expect((req.request.body as { category: string }).category).toBe('Brand new category');
+      await finishSave(harness, req, detailFixture(), 201);
+    });
+
+    it('also suggests when editing, including the subscription\'s own category', async () => {
+      const { root } = await openEdit();
+      expect(datalistValues(root)).toContain('Streaming');
+    });
+
+    it('works without suggestions when the overview request fails', async () => {
+      const { harness, root } = await openAdd(options(), 'fail');
+      expect(root.querySelector('form')).toBeTruthy();
+      expect(root.querySelector('[role=alert]')).toBeNull();
+      expect(datalistValues(root)).toEqual([]);
+      await fillValidAdd(root);
+      type(root, 'category', 'Anything');
+      await submit(harness);
+      const req = lastRequest('/api/subscriptions');
+      expect(req.request.body).toMatchObject({ category: 'Anything' });
+      await finishSave(harness, req, detailFixture(), 201);
+    });
+
+    it('refetches the overview on retry after a failed load, then reuses it', async () => {
+      const detail = detailFixture();
+      const harness = await RouterTestingHarness.create();
+      const component = await harness.navigateByUrl(`/subscriptions/${detail.id}/edit`, SubscriptionFormPage);
+      http.expectOne('/api/subscriptions/options').flush(options());
+      flushOverview('fail');
+      flushCatalog(catalogFixture());
+      http.expectOne(`/api/subscriptions/${detail.id}`).flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+      await settle(harness);
+      expect(component.loadFailed()).toBe(true);
+      expect(component.overview()).toBeNull();
+
+      component.load();
+      // The options came with an unsuccessful load, so they are fetched again too.
+      http.expectOne('/api/subscriptions/options').flush(options());
+      flushOverview(overviewFixture());
+      flushCatalog(catalogFixture());
+      http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+      await settle(harness);
+      expect(datalistValues(harness.routeNativeElement as HTMLElement)).toContain('Streaming');
+
+      component.load();
+      http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+      http.expectNone('/api/subscriptions');
+      await settle(harness);
+    });
+  });
 });
 
 describe('SubscriptionFormPage catalog picker', () => {
@@ -329,6 +416,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush({ ...optionsFixture(), defaultCurrency });
+    http.expectOne('/api/subscriptions').flush(overviewFixture());
     const req = http.expectOne('/api/subscriptions/catalog');
     if (catalog === 'fail') req.flush({}, { status: 500, statusText: 'Server Error' });
     else req.flush(catalog);
@@ -340,6 +428,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl(`/subscriptions/${detail.id}/edit`, SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(optionsFixture());
+    http.expectOne('/api/subscriptions').flush(overviewFixture());
     http.expectOne('/api/subscriptions/catalog').flush(catalog);
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     await settle(harness);

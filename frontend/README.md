@@ -10,9 +10,18 @@ reinstates or removes a subscription.
 Money is text in the browser. Amounts arrive from the API as exact decimal strings and are formatted
 with `Intl.NumberFormat` from the string, never through `Number` or `parseFloat`. Amount input accepts
 only the active language's decimal separator and is sent to the API as a canonical decimal string. The
-server computes every derived value; the browser does no money arithmetic. The shared golden
+server computes every derived value; the only browser arithmetic is the exact BigInt sum of canonical
+strings behind per-category group totals (`sumDecimalStrings`). The shared golden
 fixtures in `src/app/subscriptions/testing/` are flushed by the specs and compared with the live API
 responses by the backend tests.
+
+The overview can be filtered by category and grouped by category, entirely in the browser: categories
+stay free text, and are matched ignoring case and extra whitespace (the first-seen spelling is shown).
+The add and edit forms suggest the existing categories through a `datalist`, and still accept any text.
+Group totals are the exact sum of the displayed per-row monthly and yearly amounts of the group's active
+subscriptions, per currency. They can differ by a minor unit from the server's round-once household
+totals above them, and the group totals need not add up to those. The filter and grouping are view state
+only and are not remembered.
 
 Use Node 24.22.2 and npm 11.19.1:
 

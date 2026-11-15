@@ -37,43 +37,105 @@
         }
       </section>
       <p class="actions"><a class="button" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a></p>
-      <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'subscriptions.scrollRegion' | t">
-        <table class="data">
-          <caption>{{ 'subscriptions.tableCaption' | t }}</caption>
-          <thead>
-            <tr>
-              <th scope="col">{{ 'subscriptions.col.name' | t }}</th>
-              <th scope="col">{{ 'subscriptions.col.category' | t }}</th>
-              <th scope="col">{{ 'subscriptions.col.status' | t }}</th>
-              <th scope="col">{{ 'subscriptions.col.price' | t }}</th>
-              <th scope="col">{{ 'subscriptions.col.perMonth' | t }}</th>
-              <th scope="col">{{ 'subscriptions.col.perYear' | t }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (row of rows(); track row.id) {
-              <tr>
-                <th scope="row">
-                  <span class="name-cell">
-                    <app-service-logo [name]="row.name" [logoUrl]="row.logoUrl" [size]="20" />
-                    <a [routerLink]="['/subscriptions', row.id]">{{ row.name }}</a>
-                  </span>
-                </th>
-                <td>{{ row.category ?? '—' }}</td>
-                <td><span class="badge" [class]="'badge status-' + row.status">{{ statusKey(row.status) | t }}</span></td>
-                <td>
-                  {{ price(row) }} · {{ cadence(row.currentPrice) }}
-                  @if (row.upcomingPriceChange) {
-                    <span class="badge upcoming">{{ 'subscriptions.priceChangeScheduled' | t }}</span>
-                  }
-                </td>
-                <td>{{ money(row.normalizedMonthly, row.currency, row.minorUnit) }}</td>
-                <td>{{ money(row.normalizedYearly, row.currency, row.minorUnit) }}</td>
-              </tr>
+      <div class="category-toolbar">
+        <div class="field">
+          <label for="category-filter">{{ 'subscriptions.filter.label' | t }}</label>
+          <select id="category-filter" (change)="selectCategory($any($event.target).value)">
+            <option value="all" [selected]="filterValue() === 'all'">{{ 'subscriptions.filter.all' | t }}</option>
+            @for (option of categoryOptions(); track option.key) {
+              <option [value]="'cat:' + option.key" [selected]="filterValue() === 'cat:' + option.key">{{ option.label }}</option>
             }
-          </tbody>
-        </table>
+            @if (categorySet().hasUncategorized) {
+              <option value="uncategorized" [selected]="filterValue() === 'uncategorized'">{{ 'subscriptions.filter.uncategorized' | t }}</option>
+            }
+          </select>
+        </div>
+        <div class="choice">
+          <input id="group-toggle" type="checkbox" [checked]="grouped()" (change)="setGrouped($any($event.target).checked)" />
+          <label for="group-toggle">{{ 'subscriptions.group.toggle' | t }}</label>
+        </div>
       </div>
+      <p class="muted" role="status">{{ 'subscriptions.filter.resultCount' | t: { count: '' + visibleRows().length } }}</p>
+
+      <ng-template #columns>
+        <thead>
+          <tr>
+            <th scope="col">{{ 'subscriptions.col.name' | t }}</th>
+            <th scope="col">{{ 'subscriptions.col.category' | t }}</th>
+            <th scope="col">{{ 'subscriptions.col.status' | t }}</th>
+            <th scope="col">{{ 'subscriptions.col.price' | t }}</th>
+            <th scope="col">{{ 'subscriptions.col.perMonth' | t }}</th>
+            <th scope="col">{{ 'subscriptions.col.perYear' | t }}</th>
+          </tr>
+        </thead>
+      </ng-template>
+      <ng-template #subscriptionRow let-row>
+        <tr>
+          <th scope="row">
+            <span class="name-cell">
+              <app-service-logo [name]="row.name" [logoUrl]="row.logoUrl" [size]="20" />
+              <a [routerLink]="['/subscriptions', row.id]">{{ row.name }}</a>
+            </span>
+          </th>
+          <td>{{ row.category ?? '—' }}</td>
+          <td><span class="badge" [class]="'badge status-' + row.status">{{ statusKey(row.status) | t }}</span></td>
+          <td>
+            {{ price(row) }} · {{ cadence(row.currentPrice) }}
+            @if (row.upcomingPriceChange) {
+              <span class="badge upcoming">{{ 'subscriptions.priceChangeScheduled' | t }}</span>
+            }
+          </td>
+          <td>{{ money(row.normalizedMonthly, row.currency, row.minorUnit) }}</td>
+          <td>{{ money(row.normalizedYearly, row.currency, row.minorUnit) }}</td>
+        </tr>
+      </ng-template>
+
+      @if (visibleRows().length === 0) {
+        <!-- Defensive guard (R3.4): effectiveFilter falls back to All, so no selectable filter can match nothing. -->
+        <p class="muted">{{ 'subscriptions.filter.emptyBody' | t }}</p>
+      } @else if (grouped()) {
+        <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'subscriptions.scrollRegion' | t">
+          @for (group of groups(); track group.key; let index = $index) {
+            <section class="category-group" [attr.aria-labelledby]="'category-group-' + index">
+              <h3 [id]="'category-group-' + index">{{ groupLabel(group) }}</h3>
+              <p class="muted">{{ 'subscriptions.group.count' | t: { count: '' + group.count } }}</p>
+              @if (group.totals.length > 0) {
+                <ul class="totals">
+                  @for (total of group.totals; track total.currency) {
+                    <li>
+                      {{ 'subscriptions.totalsLine' | t: {
+                        monthly: money(total.monthly, total.currency, total.minorUnit),
+                        yearly: money(total.yearly, total.currency, total.minorUnit)
+                      } }}
+                      <span class="muted">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
+                    </li>
+                  }
+                </ul>
+              }
+              <table class="data" [attr.aria-labelledby]="'category-group-' + index">
+                <ng-container [ngTemplateOutlet]="columns" />
+                <tbody>
+                  @for (row of group.rows; track row.id) {
+                    <ng-container [ngTemplateOutlet]="subscriptionRow" [ngTemplateOutletContext]="{ $implicit: row }" />
+                  }
+                </tbody>
+              </table>
+            </section>
+          }
+        </div>
+      } @else {
+        <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'subscriptions.scrollRegion' | t">
+          <table class="data">
+            <caption>{{ 'subscriptions.tableCaption' | t }}</caption>
+            <ng-container [ngTemplateOutlet]="columns" />
+            <tbody>
+              @for (row of visibleRows(); track row.id) {
+                <ng-container [ngTemplateOutlet]="subscriptionRow" [ngTemplateOutletContext]="{ $implicit: row }" />
+              }
+            </tbody>
+          </table>
+        </div>
+      }
     }
   }
 </section>

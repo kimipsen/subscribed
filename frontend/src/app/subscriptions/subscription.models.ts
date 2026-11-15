@@ -1,4 +1,4 @@
-// Wire types for /api/subscriptions. Amounts are decimal strings: the browser never does money arithmetic.
+// Wire types for /api/subscriptions. Amounts are decimal strings: the browser never uses Number or floats for money (only exact BigInt sums in money.ts).
 
 export type SubscriptionStatus = 'active' | 'not-started' | 'ended';
 export type CadenceUnit = 'week' | 'month' | 'year';

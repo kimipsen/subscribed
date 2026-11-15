@@ -6,6 +6,7 @@ import { catchError, forkJoin, of } from 'rxjs';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
+import { buildCategories } from './categories';
 import { parseAmountInput, toAmountInput, decimalSeparator, formatMoney } from './money';
 import { ServiceLogo } from './service-logo';
 import { SessionUnavailable } from './session-unavailable';
@@ -18,6 +19,7 @@ import {
   CatalogService,
   SubscriptionDetail,
   SubscriptionOptions,
+  SubscriptionOverview,
   UpdateSubscriptionBody,
 } from './subscription.models';
 import { SubscriptionsService } from './subscriptions.service';
@@ -88,6 +90,8 @@ export class SubscriptionFormPage {
 
   readonly options = signal<SubscriptionOptions | null>(null);
   readonly detail = signal<SubscriptionDetail | null>(null);
+  /** Only for category suggestions. Set after a successful load and never on failure, so a retry refetches it. */
+  readonly overview = signal<SubscriptionOverview | null>(null);
   /** null until loaded, and after a failed load: the picker is then hidden and free-form entry is the only path (R3.2). */
   readonly catalog = signal<Catalog | null>(null);
   readonly catalogFailed = signal(false);
@@ -125,6 +129,8 @@ export class SubscriptionFormPage {
   readonly minorUnit = computed(() => this.options()?.currencies.find((c) => c.code === this.currency)?.minorUnit ?? 2);
   readonly separator = computed(() => decimalSeparator(this.i18n.dateLocale()));
   readonly amountExample = computed(() => toAmountInput(this.minorUnit() === 0 ? '129' : '129.00', this.i18n.dateLocale()));
+  /** Distinct existing categories (matched by case and whitespace) for the datalist; free text stays allowed. */
+  readonly categorySuggestions = computed(() => buildCategories(this.overview()?.subscriptions ?? []).options.map((option) => option.label));
   readonly currencyLabels = computed(() => {
     const names = new Intl.DisplayNames([this.i18n.dateLocale()], { type: 'currency' });
     return (this.options()?.currencies ?? []).map((c) => ({ code: c.code, label: `${c.code} — ${names.of(c.code) ?? c.code}` }));
@@ -187,9 +193,12 @@ export class SubscriptionFormPage {
       options: this.options() ? of(this.options() as SubscriptionOptions) : this.service.options(),
       catalog: this.catalog() ? of(this.catalog()) : this.service.catalog().pipe(catchError(() => of(null))),
       detail: this.id ? this.service.detail(this.id) : of(null),
+      // Suggestions are an enhancement, never a blocker: a failed overview just means no suggestions.
+      overview: this.overview() ? of(this.overview()) : this.service.overview().pipe(catchError(() => of(null))),
     }).subscribe({
-      next: ({ options, catalog, detail }) => {
+      next: ({ options, catalog, detail, overview }) => {
         this.options.set(options);
+        if (overview) this.overview.set(overview);
         this.catalog.set(catalog);
         this.catalogFailed.set(catalog === null);
         this.detail.set(detail);

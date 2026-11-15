@@ -85,8 +85,11 @@
         </div>
         <div class="field">
           <label for="category">{{ 'subscriptions.field.category' | t }}</label>
-          <input id="category" name="category" type="text" autocomplete="off" [(ngModel)]="category"
+          <input id="category" name="category" type="text" autocomplete="off" list="category-suggestions" [(ngModel)]="category"
             [attr.aria-invalid]="err('category') ? 'true' : null" [attr.aria-describedby]="describedBy('category')" />
+          <datalist id="category-suggestions">
+            @for (suggestion of categorySuggestions(); track suggestion) { <option [value]="suggestion"></option> }
+          </datalist>
           @if (err('category'); as e) { <p class="field-error" id="category-error">{{ e.key | t: e.params }}</p> }
         </div>
         <div class="field">

@@ -115,4 +115,22 @@ describe('Translation catalogs', () => {
       if (key !== 'shell.menu') expect(da[key], key).not.toBe(en[key]);
     }
   });
+
+  it('has English and Danish text for every category filter and grouping key (AC9)', () => {
+    const keys: MessageKey[] = [
+      'subscriptions.filter.label',
+      'subscriptions.filter.all',
+      'subscriptions.filter.uncategorized',
+      'subscriptions.filter.resultCount',
+      'subscriptions.filter.emptyBody',
+      'subscriptions.group.toggle',
+      'subscriptions.group.count',
+    ];
+    for (const key of keys) {
+      expect(en[key], key).toBeTruthy();
+      expect(da[key], key).toBeTruthy();
+      expect(da[key], key).not.toBe(en[key]);
+    }
+  });
 });
+

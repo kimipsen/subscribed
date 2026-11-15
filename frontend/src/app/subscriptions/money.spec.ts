@@ -1,4 +1,12 @@
-import { decimalSeparator, formatMoney, formatPercentChange, formatSignedMoney, parseAmountInput, toAmountInput } from './money';
+import {
+  decimalSeparator,
+  formatMoney,
+  formatPercentChange,
+  formatSignedMoney,
+  parseAmountInput,
+  sumDecimalStrings,
+  toAmountInput,
+} from './money';
 
 // ICU has changed these separators between releases, so compare after normalising them to a plain space.
 const plain = (value: string) => value.replace(/[\u00a0\u202f]/g, ' ');
@@ -81,5 +89,47 @@ describe('toAmountInput', () => {
       }
     }
     expect(parseAmountInput(toAmountInput('1490', 'da-DK'), 'da-DK', 0)).toBe('1490');
+  });
+});
+
+describe('sumDecimalStrings', () => {
+  it('sums exactly at minor units 0, 2 and 3', () => {
+    expect(sumDecimalStrings(['1490', '10'], 0)).toBe('1500');
+    expect(sumDecimalStrings(['10.50', '4.75'], 2)).toBe('15.25');
+    expect(sumDecimalStrings(['14.808', '0.192'], 3)).toBe('15.000');
+  });
+
+  it('is exact where a binary float is not', () => {
+    expect(sumDecimalStrings(['0.10', '0.20'], 2)).toBe('0.30');
+    expect(sumDecimalStrings(['9007199254740993.00', '0.01'], 2)).toBe('9007199254740993.01');
+    expect(sumDecimalStrings(['9007199254740993.00', '9007199254740993.00'], 2)).toBe('18014398509481986.00');
+  });
+
+  it('pads input with fewer fraction digits than the minor unit', () => {
+    expect(sumDecimalStrings(['1'], 2)).toBe('1.00');
+    expect(sumDecimalStrings(['1.5', '2'], 2)).toBe('3.50');
+  });
+
+  it('sums an empty list to zero', () => {
+    expect(sumDecimalStrings([], 2)).toBe('0.00');
+    expect(sumDecimalStrings([], 0)).toBe('0');
+  });
+
+  it('keeps leading zeros in the fraction and a zero integer part', () => {
+    expect(sumDecimalStrings(['0.05', '0.04'], 2)).toBe('0.09');
+    expect(sumDecimalStrings(['0.00', '0.00', '0.00'], 2)).toBe('0.00');
+  });
+
+  it('returns null instead of throwing for malformed input', () => {
+    for (const bad of ['', '1,50', 'abc', '+1.00', '-1.00', '1.', '.5', ' 1.00', '1e3']) {
+      expect(sumDecimalStrings(['1.00', bad], 2)).toBeNull();
+    }
+    expect(sumDecimalStrings(['1.234'], 2)).toBeNull();
+    expect(sumDecimalStrings(['1.5'], 0)).toBeNull();
+  });
+
+  it('formats through formatMoney like any other amount', () => {
+    const total = sumDecimalStrings(['1000.10', '548.20'], 2) as string;
+    expect(plain(formatMoney(total, 'DKK', 2, 'en-GB'))).toBe('DKK 1,548.30');
   });
 });
