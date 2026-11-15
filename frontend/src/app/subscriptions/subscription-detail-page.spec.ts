@@ -85,6 +85,23 @@ describe('SubscriptionDetailPage', () => {
 
   // ---- display ---------------------------------------------------------------------------------------
 
+  it('shows the logo beside the heading and falls back to the letter when it is broken', async () => {
+    const { harness, root, detail } = await open({ ...detailFixture(), catalogId: 'streamco', logoUrl: '/logos/streamco.svg' });
+    expect(root.querySelector('.title-row img')?.getAttribute('src')).toBe('/logos/streamco.svg');
+    expect(root.querySelector('.title-row img')?.getAttribute('alt')).toBe('');
+    expect(el(root, 'h1').textContent).toBe(detail.name);
+    root.querySelector('.title-row img')?.dispatchEvent(new Event('error'));
+    await settle(harness);
+    expect(root.querySelector('.title-row img')).toBeNull();
+    expect(root.querySelector('.title-row span[aria-hidden="true"]')?.textContent?.trim()).toBe(Array.from(detail.name)[0].toUpperCase());
+  });
+
+  it('shows the initial letter when the subscription has no logo', async () => {
+    const { root, detail } = await open();
+    expect(root.querySelector('.title-row img')).toBeNull();
+    expect(root.querySelector('.title-row span[aria-hidden="true"]')?.textContent?.trim()).toBe(Array.from(detail.name)[0].toUpperCase());
+  });
+
   it('shows the history chronologically with changes and the Upcoming and Current badges', async () => {
     const { root, detail } = await open();
     const body = rows(root);

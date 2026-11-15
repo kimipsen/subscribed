@@ -7,6 +7,7 @@ import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
 import { formatMoney, formatPercentChange, formatSignedMoney, parseAmountInput, toAmountInput, decimalSeparator } from './money';
+import { ServiceLogo } from './service-logo';
 import { SessionUnavailable } from './session-unavailable';
 import { cadenceMessage } from './subscription-overview';
 import { CadencePreset } from './subscription-form-page';
@@ -41,7 +42,7 @@ const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.i
 
 @Component({
   selector: 'app-subscription-detail-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo],
   templateUrl: './subscription-detail-page.html',
 })
 export class SubscriptionDetailPage {

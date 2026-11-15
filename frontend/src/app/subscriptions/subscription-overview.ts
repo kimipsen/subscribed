@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { formatMoney } from './money';
+import { ServiceLogo } from './service-logo';
 import { ApiProblem, Price, SubscriptionOverview, SubscriptionStatus, SubscriptionSummary } from './subscription.models';
 import { SubscriptionsService } from './subscriptions.service';
 
@@ -24,7 +25,7 @@ export function cadenceMessage(unit: Price['cadenceUnit'], count: number): Messa
 
 @Component({
   selector: 'app-subscription-overview',
-  imports: [RouterLink, TranslatePipe],
+  imports: [RouterLink, TranslatePipe, ServiceLogo],
   templateUrl: './subscription-overview.html',
 })
 export class SubscriptionOverviewComponent {
