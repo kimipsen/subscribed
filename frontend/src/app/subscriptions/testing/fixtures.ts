@@ -4,9 +4,11 @@ import overviewJson from './overview.json';
 import validationProblemJson from './validation-problem.json';
 import {
   ApiProblem,
+  CurrencyTotal,
   SubscriptionDetail,
   SubscriptionOptions,
   SubscriptionOverview,
+  SubscriptionSummary,
   Wire,
 } from '../subscription.models';
 
@@ -25,3 +27,14 @@ export const overviewFixture = (): SubscriptionOverview => copy(overviewJson);
 export const detailFixture = (): SubscriptionDetail => copy(detailJson);
 export const optionsFixture = (): SubscriptionOptions => copy(optionsJson);
 export const validationProblemFixture = (): ApiProblem => copy(validationProblemJson);
+
+/** Builds an overview from the golden one without mutating it: rows are derived from its first subscription, `patch` per row. */
+export const overviewWith = (rows: Partial<SubscriptionSummary>[], totals: CurrencyTotal[] = []): SubscriptionOverview => {
+  const base = overviewFixture();
+  const template = base.subscriptions[0];
+  return {
+    ...base,
+    subscriptions: rows.map((patch, index) => ({ ...copy<SubscriptionSummary>(template), id: `row-${index + 1}`, name: `Sub ${index + 1}`, ...patch })),
+    totals,
+  };
+};
