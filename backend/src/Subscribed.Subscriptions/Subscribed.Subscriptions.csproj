@@ -11,6 +11,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Catalog/catalog.json" LogicalName="catalog.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Subscribed.UnitTests" />
     <InternalsVisibleTo Include="Subscribed.Persistence.Tests" />
     <InternalsVisibleTo Include="Subscribed.Api.Tests" />

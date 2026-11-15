@@ -16,6 +16,7 @@ import {
   selectionValue,
 } from './categories';
 import { formatMoney } from './money';
+import { ServiceLogo } from './service-logo';
 import { ApiProblem, Price, SubscriptionOverview, SubscriptionStatus, SubscriptionSummary } from './subscription.models';
 import { SubscriptionsService } from './subscriptions.service';
 
@@ -36,7 +37,7 @@ export function cadenceMessage(unit: Price['cadenceUnit'], count: number): Messa
 
 @Component({
   selector: 'app-subscription-overview',
-  imports: [NgTemplateOutlet, RouterLink, TranslatePipe],
+  imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo],
   templateUrl: './subscription-overview.html',
 })
 export class SubscriptionOverviewComponent {

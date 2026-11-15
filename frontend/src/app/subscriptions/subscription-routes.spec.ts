@@ -9,7 +9,7 @@ import { BROWSER_LANGUAGES, LANGUAGE_STORAGE } from '../i18n/i18n';
 import { Session, SessionService, csrfInterceptor } from '../session';
 import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionFormPage } from './subscription-form-page';
-import { detailFixture, optionsFixture, overviewFixture } from './testing/fixtures';
+import { catalogFixture, detailFixture, optionsFixture, overviewFixture } from './testing/fixtures';
 import '../app.config';
 
 describe('Subscription routes', () => {
@@ -40,6 +40,7 @@ describe('Subscription routes', () => {
     const component = await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(optionsFixture());
     http.expectOne('/api/subscriptions').flush(overviewFixture());
+    http.expectOne('/api/subscriptions/catalog').flush(catalogFixture());
     http.expectNone('/api/subscriptions/new');
     expect(component.editing).toBe(false);
     expect(component.id).toBeNull();
@@ -52,6 +53,7 @@ describe('Subscription routes', () => {
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}/edit`, SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(optionsFixture());
     http.expectOne('/api/subscriptions').flush(overviewFixture());
+    http.expectOne('/api/subscriptions/catalog').flush(catalogFixture());
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     expect(component.editing).toBe(true);
     expect(component.id).toBe(detail.id);
@@ -72,6 +74,7 @@ describe('Subscription routes', () => {
     await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(optionsFixture());
     http.expectOne('/api/subscriptions').flush(overviewFixture());
+    http.expectOne('/api/subscriptions/catalog').flush(catalogFixture());
     http.expectNone('/api/subscriptions/new');
   });
 

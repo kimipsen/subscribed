@@ -15,6 +15,8 @@ export interface SubscriptionSummary {
   id: string;
   name: string;
   category: string | null;
+  catalogId: string | null;
+  logoUrl: string | null;
   status: SubscriptionStatus;
   startDate: string;
   endDate: string | null;
@@ -66,6 +68,8 @@ export interface SubscriptionDetail {
   asOf: string;
   name: string;
   category: string | null;
+  catalogId: string | null;
+  logoUrl: string | null;
   notes: string | null;
   status: SubscriptionStatus;
   startDate: string;
@@ -99,9 +103,11 @@ export interface AddSubscriptionBody {
   amount: string;
   cadenceUnit: CadenceUnit;
   cadenceCount: number;
+  /** The picked catalog service, or an explicit null for a free-form add. */
+  catalogId: string | null;
 }
 
-/** Body of PUT /api/subscriptions/{id}: always all six keys, with explicit nulls (D-10). */
+/** Body of PUT /api/subscriptions/{id}: always all seven keys, with explicit nulls (D-10). An omitted or null catalogId unlinks. */
 export interface UpdateSubscriptionBody {
   name: string;
   category: string | null;
@@ -109,6 +115,7 @@ export interface UpdateSubscriptionBody {
   currency: string;
   startDate: string;
   endDate: string | null;
+  catalogId: string | null;
 }
 
 /** Body of POST /prices and PUT /prices/{entryId}: always all four keys. */
@@ -117,6 +124,37 @@ export interface PriceEntryBody {
   amount: string;
   cadenceUnit: CadenceUnit;
   cadenceCount: number;
+}
+
+export interface CatalogUpcomingChange {
+  amount: string;
+  effectiveFrom: string;
+}
+
+export interface CatalogPlan {
+  country: string;
+  name: string;
+  currency: string;
+  minorUnit: number;
+  amount: string;
+  cadenceUnit: CadenceUnit;
+  cadenceCount: number;
+  upcomingChange: CatalogUpcomingChange | null;
+}
+
+export interface CatalogService {
+  id: string;
+  name: string;
+  category: string;
+  logoUrl: string | null;
+  lastVerified: string;
+  plans: CatalogPlan[];
+}
+
+/** GET /api/subscriptions/catalog. Service and plan order is the server's file order. */
+export interface Catalog {
+  services: CatalogService[];
+  defaultCountry: string;
 }
 
 export interface ApiProblem {

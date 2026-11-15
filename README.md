@@ -14,6 +14,7 @@ deployment.
 | `frontend/` | Angular SPA (built to `frontend/dist/subscribed/browser`, served by the backend) |
 | [`deploy/`](deploy/README.md) | Dockerfile, production compose (external PostgreSQL/Keycloak), provisioning template, dev Keycloak |
 | `scripts/integration-check.sh` | image + ephemeral PostgreSQL end-to-end check |
+| [`docs/subscription-catalog.md`](docs/subscription-catalog.md) | how the known-services catalog is maintained and verified |
 | [`docs/dev-environment.md`](docs/dev-environment.md) | pinned development tools and container rebuild instructions |
 
 ## Run with Docker

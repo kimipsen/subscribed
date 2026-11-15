@@ -53,7 +53,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
 
         var added = await service.AddAsync(Sub(amount: "11.99", currency: "EUR"), Member, Ct);
         await service.AddPriceEntryAsync(SubscriptionIds.Bare(added.Id), added.Version, Entry("2025-01-01", "12.99"), Member, Ct);
@@ -77,7 +77,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
         var clock = new TestClock(DateTimeOffset.Parse("2026-11-13T09:30:00Z", CultureInfo.InvariantCulture));
-        var service = new SubscriptionService(store, clock);
+        var service = new SubscriptionService(store, clock, TestCatalog.Standard());
 
         var added = await service.AddAsync(Sub(start: "2021-01-01"), Member, Ct);
         await service.AddPriceEntryAsync(SubscriptionIds.Bare(added.Id), added.Version, Entry("2022-06-01", "69.00"), Member, Ct);
@@ -94,7 +94,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
         var clock = new TestClock(DateTimeOffset.Parse("2026-11-13T09:30:00Z", CultureInfo.InvariantCulture));
-        var service = new SubscriptionService(store, clock);
+        var service = new SubscriptionService(store, clock, TestCatalog.Standard());
 
         var s = await service.AddAsync(Sub("FilmPlus", amount: "59.00", start: "2021-01-01"), Member, Ct);
         s = await service.AddPriceEntryAsync(SubscriptionIds.Bare(s.Id), s.Version, Entry("2022-06-01", "69.00"), Member, Ct);
@@ -124,7 +124,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
         var added = await service.AddAsync(Sub(), Member, Ct);
 
         var same = await service.UpdateAsync(SubscriptionIds.Bare(added.Id), added.Version, new DetailsUpdate("StreamCo", null, null, "DKK", new DateOnly(2024, 3, 1), null), Member, Ct);
@@ -138,7 +138,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
         var keep = await service.AddAsync(Sub("Keep"), Member, Ct);
         var gone = await service.AddAsync(Sub("Gone"), Member, Ct);
 
@@ -159,7 +159,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
         var added = await service.AddAsync(Sub(), Member, Ct);
         var key = StreamKey(added);
 
@@ -180,7 +180,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
         var added = await service.AddAsync(Sub(), Member, Ct);
         await service.UpdateAsync(SubscriptionIds.Bare(added.Id), added.Version, new DetailsUpdate("First", null, null, "DKK", new DateOnly(2024, 3, 1), null), Member, Ct);
 
@@ -196,7 +196,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
         var added = await service.AddAsync(Sub(), Member, Ct);
 
         await using var session = store.LightweightSession();
@@ -211,7 +211,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
         var active = await service.AddAsync(Sub("Active"), Member, Ct);
         active = await service.AddPriceEntryAsync(SubscriptionIds.Bare(active.Id), active.Version, Entry("2025-01-01", "139.00"), Member, Ct);
         var removed = await service.AddAsync(Sub("Removed", "EUR", "5.00"), Member, Ct);
@@ -272,7 +272,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
         var added = await service.AddAsync(Sub(), Member, Ct);
         var key = StreamKey(added);
         const string empty = "{}";
@@ -287,6 +287,112 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         // UnknownSubscriptionEventAliasException is covered by the unit tests.
         await Assert.ThrowsAsync<Marten.Exceptions.UnknownEventTypeException>(() =>
             service.UpdateAsync(SubscriptionIds.Bare(added.Id), 2, new DetailsUpdate("x", null, null, "DKK", new DateOnly(2024, 3, 1), null), Member, Ct));
+    }
+
+    private static NewSubscription LinkedSub(string catalogId) =>
+        SubscriptionDecisions.ParseAdd(new AddInput("StreamCo", null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, catalogId));
+
+    private static DetailsUpdate LinkTo(SubscriptionState s, string? catalogId) =>
+        new(s.Name, s.Category, s.Notes, s.Currency, s.StartDate, s.EndDate, catalogId);
+
+    [Fact]
+    public async Task A_linked_add_stores_both_events_and_the_snapshot_carries_the_catalog_id()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+
+        var added = await service.AddAsync(LinkedSub(TestCatalog.StreamCo), Member, Ct);
+
+        Assert.Equal(TestCatalog.StreamCo, added.CatalogId);
+        Assert.Equal(2, added.Version);
+        var key = StreamKey(added);
+        Assert.Equal("subscription.added.v1,subscription.catalog_linked.v1",
+            await db.ScalarAsMigratorAsync<string>($"SELECT string_agg(type, ',' ORDER BY version) FROM subscribed.mt_events WHERE stream_id = '{key}'"));
+        Assert.Equal(2L, await db.ScalarAsMigratorAsync<long>($"SELECT version FROM subscribed.mt_streams WHERE id = '{key}'"));
+        Assert.Equal(TestCatalog.StreamCo, await db.ScalarAsMigratorAsync<string>($"SELECT data->>'catalogId' FROM subscribed.mt_doc_subscription_view WHERE id = '{key}'"));
+        Assert.Equal(TestCatalog.StreamCo, (await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct))!.CatalogId);
+    }
+
+    [Fact]
+    public async Task A_v1_only_stream_is_unaffected_and_a_rebuild_leaves_the_catalog_id_null()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var added = await service.AddAsync(Sub(), Member, Ct);
+        Assert.Null(added.CatalogId);
+        Assert.Equal(1, added.Version);
+
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
+        await using (var migrator = MigratorStore(db))
+        {
+            Assert.Equal(1, await SubscriptionProjectionRebuilder.RebuildAsync(migrator, Ct));
+        }
+
+        var rebuilt = await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct);
+        Assert.Null(rebuilt!.CatalogId);
+        Assert.Equal(1, rebuilt.Version);
+    }
+
+    [Fact]
+    public async Task A_snapshot_written_before_the_property_existed_accepts_a_catalog_link_through_the_inline_path()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var added = await service.AddAsync(Sub(), Member, Ct);
+        var key = StreamKey(added);
+
+        // Turn the stored snapshot into what an older build wrote: no catalogId property at all.
+        await db.ExecuteAsMigratorAsync($"UPDATE subscribed.mt_doc_subscription_view SET data = data - 'catalogId' WHERE id = '{key}'");
+        Assert.False(await db.ScalarAsMigratorAsync<bool>($"SELECT data ? 'catalogId' FROM subscribed.mt_doc_subscription_view WHERE id = '{key}'"));
+        var old = await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct);
+        Assert.Null(old!.CatalogId);
+
+        var linked = await service.UpdateAsync(SubscriptionIds.Bare(added.Id), old.Version, LinkTo(old, TestCatalog.StreamCo), Member, Ct);
+
+        Assert.Equal(TestCatalog.StreamCo, linked.CatalogId);
+        Assert.Equal(2, linked.Version);
+        Assert.Equal(TestCatalog.StreamCo, await db.ScalarAsMigratorAsync<string>($"SELECT data->>'catalogId' FROM subscribed.mt_doc_subscription_view WHERE id = '{key}'"));
+        Assert.Equal(129.00m, linked.Entries.Single().Amount);
+    }
+
+    [Fact]
+    public async Task Unknown_catalog_ids_are_rejected_at_the_service_without_writing_anything()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+
+        var ex = await Assert.ThrowsAsync<SubscriptionValidationException>(() => service.AddAsync(LinkedSub("not-a-service"), Member, Ct));
+        Assert.Equal("catalogId", Assert.Single(ex.Errors).Key);
+        Assert.Empty(await service.ListAsync(Ct));
+
+        var added = await service.AddAsync(Sub(), Member, Ct);
+        var update = await Assert.ThrowsAsync<SubscriptionValidationException>(() =>
+            service.UpdateAsync(SubscriptionIds.Bare(added.Id), added.Version, LinkTo(added, "not-a-service"), Member, Ct));
+        Assert.Equal("catalogId", Assert.Single(update.Errors).Key);
+        Assert.Equal(1, (await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct))!.Version);
+    }
+
+    [Fact]
+    public async Task An_unchanged_removed_catalog_id_still_saves_but_a_changed_unknown_id_does_not()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var added = await new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard()).AddAsync(LinkedSub(TestCatalog.StreamCo), Member, Ct);
+
+        // The same household later, after the catalog dropped the entry.
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Without(TestCatalog.StreamCo));
+        var id = SubscriptionIds.Bare(added.Id);
+        var renamed = await service.UpdateAsync(id, added.Version, LinkTo(added, TestCatalog.StreamCo) with { Name = "Renamed" }, Member, Ct);
+        Assert.Equal("Renamed", renamed.Name);
+        Assert.Equal(TestCatalog.StreamCo, renamed.CatalogId);
+
+        await Assert.ThrowsAsync<SubscriptionValidationException>(() => service.UpdateAsync(id, renamed.Version, LinkTo(renamed, "other-gone"), Member, Ct));
+        var unlinked = await service.UpdateAsync(id, renamed.Version, LinkTo(renamed, null), Member, Ct);
+        Assert.Null(unlinked.CatalogId);
     }
 
     private static async Task<Exception?> Capture(Task task)
