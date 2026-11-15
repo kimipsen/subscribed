@@ -8,6 +8,7 @@ import { routes } from './app.routes';
 import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from './i18n/i18n';
 import { Session, SessionService, csrfInterceptor } from './session';
 import { COLOR_SCHEME_QUERY, THEME_STORAGE, ThemeService } from './theme/theme';
+import { APP_VERSION } from './version';
 import './app.config';
 
 describe('Language selector', () => {
@@ -275,5 +276,64 @@ describe('Theme selector', () => {
     expect(storage.setItem.mock.calls).toEqual([['subscribed.language', 'da']]);
     expect(TestBed.inject(ThemeService).mode()).toBe('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+});
+
+describe('Footer', () => {
+  let http: HttpTestingController;
+  const member: Session = { state: 'member', user: { displayName: 'Synthetic', memberId: '1' }, expiresAt: '' };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(withInterceptors([csrfInterceptor])),
+        provideHttpClientTesting(),
+        { provide: BROWSER_LANGUAGES, useValue: ['en'] },
+        { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+        { provide: THEME_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+        { provide: COLOR_SCHEME_QUERY, useValue: null },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+  afterEach(() => http.verify());
+
+  async function render(session: Session = { state: 'anonymous' }) {
+    const fixture = TestBed.createComponent(App);
+    if (session.state !== 'loading') http.expectOne('/bff/session').flush(session);
+    await TestBed.inject(Router).navigateByUrl('/');
+    await fixture.whenStable();
+    if (session.state === 'member') {
+      http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+      await fixture.whenStable();
+    }
+    return fixture;
+  }
+
+  it.each<Session>([
+    { state: 'loading' },
+    { state: 'anonymous' },
+    { state: 'not-member', user: { displayName: 'Synthetic', memberId: '2' }, expiresAt: '' },
+    member,
+  ])('renders one footer with a safe GitHub link and the version for the $state state', async (session) => {
+    const fixture = await render(session);
+    const footers = fixture.nativeElement.querySelectorAll('footer');
+    expect(footers.length).toBe(1);
+    const link = footers[0].querySelector('a') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('https://github.com/kimipsen/subscribed');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toContain('noopener');
+    expect(link.getAttribute('rel')).toContain('noreferrer');
+    expect(link.textContent).toBe('Source on GitHub');
+    expect(footers[0].textContent).toContain('Version');
+    expect(footers[0].querySelector('code')?.textContent).toBe(APP_VERSION);
+    if (session.state === 'loading') http.expectOne('/bff/session').flush({ state: 'anonymous' });
+  });
+
+  it('localizes the link label in Danish', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const fixture = await render();
+    expect(fixture.nativeElement.querySelector('footer a').textContent).toBe('Kildekode på GitHub');
   });
 });

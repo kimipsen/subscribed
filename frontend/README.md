@@ -118,3 +118,10 @@ To add a language:
 4. Translate messages/accessibility labels with matching `{named}` parameters.
 5. Run `npm run test:ci`, `npm run lint`, `npm run build` (catalog parity,
    interpolation, switching, errors, storage failure, and locale coverage).
+
+## Footer version
+
+The footer shows a link to the GitHub repository and the application version. The version is injected
+at build time by `scripts/build.mjs` through `ng build --define` from the `APP_VERSION` environment
+variable. The release workflow sets it through the Docker build-arg `APP_VERSION` (the release tag with
+the leading `v` removed). When `APP_VERSION` is unset, the footer shows the `package.json` version.

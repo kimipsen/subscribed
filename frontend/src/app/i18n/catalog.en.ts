@@ -9,6 +9,8 @@ export const en = {
   'shell.signOutFailed': 'Sign out failed. Your session may still be active. Please retry.',
   'shell.sessionExpired': 'Your session expired.',
   'shell.signInAgain': 'Sign in again',
+  'shell.footer.github': 'Source on GitHub',
+  'shell.footer.version': 'Version',
   'language.label': 'Language',
   'language.saveFailed': "Your language choice couldn't be saved in this browser. It applies until you reload the page.",
   'language.dismiss': 'Dismiss',

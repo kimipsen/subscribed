@@ -63,3 +63,7 @@
     <router-outlet />
   </main>
 </div>
+<footer>
+  <a [href]="repoUrl" target="_blank" rel="noopener noreferrer">{{ 'shell.footer.github' | t }}</a>
+  <span class="version">{{ 'shell.footer.version' | t }} <code>{{ version }}</code></span>
+</footer>
