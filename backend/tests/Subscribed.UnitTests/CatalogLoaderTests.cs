@@ -213,6 +213,7 @@ public sealed class CatalogLoaderTests
     public void Shipped_catalog_loads()
     {
         var catalog = CatalogLoader.LoadEmbedded(TimeProvider.System);
-        Assert.NotNull(catalog);
+        Assert.True(catalog.Services.Count >= 3, "The shipped catalog must hold at least 3 verified services.");
+        Assert.All(catalog.Services, s => Assert.NotEmpty(s.SourceUrl));
     }
 }

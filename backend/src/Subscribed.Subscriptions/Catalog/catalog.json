@@ -1,1 +1,42 @@
-{ "schemaVersion": 1, "services": [] }
+{
+  "schemaVersion": 1,
+  "services": [
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "category": "Music",
+      "logo": null,
+      "lastVerified": "2026-11-15",
+      "sourceUrl": "https://www.spotify.com/dk/premium/",
+      "plans": [
+        { "country": "DK", "name": "Premium Individual", "currency": "DKK", "amount": "129.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Premium Duo", "currency": "DKK", "amount": "189.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Premium Family", "currency": "DKK", "amount": "229.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "netflix",
+      "name": "Netflix",
+      "category": "Streaming",
+      "logo": null,
+      "lastVerified": "2026-11-15",
+      "sourceUrl": "https://help.netflix.com/da/node/24926",
+      "plans": [
+        { "country": "DK", "name": "Basis", "currency": "DKK", "amount": "109.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Standard", "currency": "DKK", "amount": "149.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Premium", "currency": "DKK", "amount": "189.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "google-one",
+      "name": "Google One",
+      "category": "Cloud storage",
+      "logo": null,
+      "lastVerified": "2026-11-15",
+      "sourceUrl": "https://one.google.com/about/plans?hl=da&gl=DK",
+      "plans": [
+        { "country": "DK", "name": "Basic (100 GB)", "currency": "DKK", "amount": "17.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    }
+  ]
+}
