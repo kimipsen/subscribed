@@ -21,6 +21,7 @@ import {
   UpdateSubscriptionBody,
 } from './subscription.models';
 import { SubscriptionsService } from './subscriptions.service';
+import { isHttpsUrl } from './unsubscribe-url';
 
 type EntryForm = { mode: 'add' } | { mode: 'correct'; entry: HistoryEntry };
 type Area = 'entry' | 'end' | 'other';
@@ -54,6 +55,7 @@ export class SubscriptionDetailPage {
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
 
+  readonly isHttpsUrl = isHttpsUrl;
   readonly id = this.route.snapshot.paramMap.get('id') ?? '';
   readonly detail = signal<SubscriptionDetail | null>(null);
   readonly loading = signal(false);
@@ -373,7 +375,7 @@ export class SubscriptionDetailPage {
     });
   }
 
-  /** All seven PUT keys come from the loaded detail, never from what the page shows: an omitted category or notes would be erased (D-10). */
+  /** All eight PUT keys come from the loaded detail, never from what the page shows: an omitted category or notes would be erased (D-10). */
   private details(detail: SubscriptionDetail, endDate: string | null): UpdateSubscriptionBody {
     return {
       name: detail.name,
@@ -383,6 +385,7 @@ export class SubscriptionDetailPage {
       startDate: detail.startDate,
       endDate,
       catalogId: detail.catalogId,
+      unsubscribeUrl: detail.unsubscribeUrl,
     };
   }
 
