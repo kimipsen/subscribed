@@ -15,6 +15,9 @@ Nothing is fetched automatically, and catalog data never overwrites household da
      `frontend/public/logos/LICENSES.md`. Ship no brand logo without a confirmed licence.
    - `lastVerified`: the date you checked the price (`yyyy-MM-dd`, not in the future).
    - `sourceUrl`: the official page you used (absolute https URL). It is not exposed by the API.
+   - `unsubscribeUrl` (optional): the provider's official cancel or manage-subscription page (absolute `https://` URL, trimmed,
+     at most 2048 characters, no spaces, backslashes or user-info). It is exposed by the API and shown as the "Unsubscribe"
+     link for subscriptions linked to this service. Omit the field when you cannot confirm an official page: never guess one.
    - `plans`: one object per plan with `country` (two capitals), `name`, `currency` (ISO 4217), `amount` (a string such
      as `"129.00"`, positive, at most the currency's decimals), `cadenceUnit` (`week`, `month` or `year`) and
      `cadenceCount` (1 to 99). Omit any plan you cannot verify.
@@ -25,12 +28,18 @@ Nothing is fetched automatically, and catalog data never overwrites household da
 ## What counts as verification
 
 A price is verified when you read it on the provider's official pricing page for that market on the `lastVerified` date. If
-fewer than three services can be verified, do not invent data: stop and report.
+fewer than three services can be verified, do not invent data: stop and report. That stop-and-report rule applies to
+**prices only**.
+
+An `unsubscribeUrl` is verified when you open the official cancel or manage-subscription page on the day and record the
+service and the date in the PR description. Zero populated URLs is allowed: omit the field for any service you cannot confirm.
 
 ## Rules for pull requests
 
 - A PR that changes a price must update `lastVerified` and cite the source URL in its description.
-- Reviewers check each changed `sourceUrl` and `lastVerified` by hand: no test can verify a price.
+- Reviewers check each changed `sourceUrl` and `lastVerified` by hand: no test can verify a price. They also check each
+  `unsubscribeUrl` by hand: the loader only enforces the https shape, not that the page still exists.
+- Cancel pages move. `unsubscribeUrl` is not tied to `lastVerified`, so re-check the URLs at the same review cadence.
 - Refresh `lastVerified` on a regular review cadence (for example every quarter), even when nothing changed.
 
 ## Things to know

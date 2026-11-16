@@ -23,7 +23,7 @@ public sealed class PaymentOptionPersistenceTests(PostgresFixture pg)
     private static DocumentStore MigratorStore(TestDatabase db) => SubscribedStore.Create(db.MigratorConnectionString, PostgresFixture.Schema, StoreRole.Migrator, PostgresFixture.Modules);
 
     private static NewSubscription Sub(string? optionId = null, string name = "StreamCo") =>
-        SubscriptionDecisions.ParseAdd(new AddInput(name, null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, null, optionId));
+        SubscriptionDecisions.ParseAdd(new AddInput(name, null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, PaymentOptionId: optionId));
 
     private static PriceEntryChange Entry(string from, string amount, string? optionId) =>
         SubscriptionDecisions.ParsePriceEntry(new PriceInput(from, amount, "month", 1, optionId));

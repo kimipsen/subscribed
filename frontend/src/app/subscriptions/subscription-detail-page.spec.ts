@@ -507,7 +507,7 @@ describe('SubscriptionDetailPage', () => {
     buttonByText(root, en['detail.reinstate']).click();
     await settle(harness);
     const req = request(detail);
-    expect(Object.keys(req.request.body as object)).toEqual(['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId']);
+    expect(Object.keys(req.request.body as object)).toEqual(['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId', 'unsubscribeUrl']);
     req.flush(bump(detail, { endDate: null }));
   });
 
@@ -522,9 +522,49 @@ describe('SubscriptionDetailPage', () => {
     expect(englishLeftovers(root)).toEqual([]);
   });
 
+  // ---- unsubscribe link ------------------------------------------------------------------------------
+
+  const unsubscribeLink = (root: HTMLElement) => root.querySelector('a[target="_blank"]') as HTMLAnchorElement | null;
+
+  it('shows the Unsubscribe link with safe attributes when a URL resolves', async () => {
+    const { root, detail } = await open();
+    const link = unsubscribeLink(root);
+    expect(link?.getAttribute('href')).toBe(detail.effectiveUnsubscribeUrl);
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(link?.textContent?.trim()).toBe(en['detail.unsubscribeLink']);
+    expect(plain(root.querySelector('.summary')?.textContent)).toContain(en['detail.unsubscribe']);
+  });
+
+  it('shows no link when no URL resolves', async () => {
+    const { root } = await open({ ...detailFixture(), unsubscribeUrl: null, effectiveUnsubscribeUrl: null });
+    expect(unsubscribeLink(root)).toBeNull();
+    expect(plain(root.querySelector('.summary')?.textContent)).not.toContain(en['detail.unsubscribe']);
+  });
+
+  it('links the resolved catalog URL even when the member set none', async () => {
+    const { root } = await open({ ...detailFixture(), unsubscribeUrl: null, effectiveUnsubscribeUrl: 'https://catalog.example/cancel' });
+    expect(unsubscribeLink(root)?.getAttribute('href')).toBe('https://catalog.example/cancel');
+  });
+
+  it.each(['paused', 'ended'] as const)('shows the link for a %s subscription too', async (status) => {
+    const { root } = await open({ ...detailFixture(), status, paused: status === 'paused' });
+    expect(unsubscribeLink(root)).not.toBeNull();
+  });
+
+  it.each(['HTTPS://Example.com/cancel', 'Https://example.com/cancel'])('renders a link for the stored-as-typed value %s', async (url) => {
+    const { root } = await open({ ...detailFixture(), effectiveUnsubscribeUrl: url });
+    expect(unsubscribeLink(root)?.getAttribute('href')).toBe(url);
+  });
+
+  it.each(['http://example.com/cancel', 'javascript:alert(1)', 'data:text/html,x', '//example.com'])('renders no anchor for the non-https value %s', async (url) => {
+    const { root } = await open({ ...detailFixture(), effectiveUnsubscribeUrl: url });
+    expect(unsubscribeLink(root)).toBeNull();
+    expect(root.innerHTML).not.toContain(url);
+  });
+
   // ---- end, reinstate, remove ------------------------------------------------------------------------
 
-  it('ends with the exact seven-key PUT body copied from the loaded detail (D-10)', async () => {
+  it('ends with the exact eight-key PUT body copied from the loaded detail (D-10)', async () => {
     const { harness, root, detail } = await open();
     el<HTMLButtonElement>(root, '#end-open').click();
     await settle(harness);
@@ -536,12 +576,13 @@ describe('SubscriptionDetailPage', () => {
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     expect(req.request.body).toEqual({
       name: detail.name, category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate, catalogId: null,
+      unsubscribeUrl: 'https://example.com/cancel',
     });
     await respond(harness, req, bump(detail, { endDate, status: 'ended' }));
     expect(root.textContent).toContain(en['subscriptions.status.ended']);
   });
 
-  it('reinstates with the same seven keys and endDate null', async () => {
+  it('reinstates with the same eight keys and endDate null', async () => {
     const detail = { ...detailFixture(), endDate: '2099-01-01', status: 'active' as const };
     const { harness, root } = await open(detail);
     buttonByText(root, en['detail.reinstate']).click();
@@ -549,6 +590,7 @@ describe('SubscriptionDetailPage', () => {
     const req = request(detail);
     expect(req.request.body).toEqual({
       name: detail.name, category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null, catalogId: null,
+      unsubscribeUrl: 'https://example.com/cancel',
     });
     await respond(harness, req, bump(detail, { endDate: null }));
     expect(buttonByText(root, en['detail.reinstate'])).toBeUndefined();

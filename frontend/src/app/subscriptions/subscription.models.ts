@@ -88,6 +88,10 @@ export interface SubscriptionDetail {
   normalizedMonthly: string;
   normalizedYearly: string;
   priceHistory: HistoryEntry[];
+  /** The user-specified unsubscribe link, or null: pre-fills (and lets the member clear) the edit form. */
+  unsubscribeUrl: string | null;
+  /** The link the view shows: the user's URL, else the linked catalog service's, else null. Resolved by the server. */
+  effectiveUnsubscribeUrl: string | null;
 }
 
 export interface CurrencyOption {
@@ -115,9 +119,11 @@ export interface AddSubscriptionBody {
   catalogId: string | null;
   /** The payment option of the initial price, or an explicit null. */
   paymentOptionId: string | null;
+  /** The user-specified unsubscribe link (https only), or an explicit null for none. */
+  unsubscribeUrl: string | null;
 }
 
-/** Body of PUT /api/subscriptions/{id}: always all seven keys, with explicit nulls (D-10). An omitted or null catalogId unlinks. */
+/** Body of PUT /api/subscriptions/{id}: always all eight keys, with explicit nulls (D-10). An omitted or null catalogId unlinks, and an omitted or null unsubscribeUrl clears the link. */
 export interface UpdateSubscriptionBody {
   name: string;
   category: string | null;
@@ -126,6 +132,7 @@ export interface UpdateSubscriptionBody {
   startDate: string;
   endDate: string | null;
   catalogId: string | null;
+  unsubscribeUrl: string | null;
 }
 
 /**
@@ -195,6 +202,8 @@ export interface CatalogService {
   logoUrl: string | null;
   lastVerified: string;
   plans: CatalogPlan[];
+  /** The official cancel page, or null. The effective link on a subscription is resolved by the server. */
+  unsubscribeUrl: string | null;
 }
 
 /** GET /api/subscriptions/catalog. Service and plan order is the server's file order. */

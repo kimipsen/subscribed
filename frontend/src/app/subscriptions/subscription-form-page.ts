@@ -26,6 +26,7 @@ import {
   UpdateSubscriptionBody,
 } from './subscription.models';
 import { SubscriptionsService } from './subscriptions.service';
+import { normalizeUnsubscribeUrl } from './unsubscribe-url';
 
 export type CadencePreset = CadenceUnit | 'custom';
 
@@ -41,6 +42,7 @@ const FIELD_MESSAGES: Readonly<Record<string, MessageKey>> = {
   cadenceCount: 'subscriptions.error.cadenceCount',
   catalogId: 'subscriptions.error.catalogId',
   paymentOptionId: 'subscriptions.error.paymentOptionId',
+  unsubscribeUrl: 'subscriptions.error.unsubscribeUrl',
 };
 
 const MAX_PICKER_RESULTS = 8;
@@ -121,6 +123,7 @@ export class SubscriptionFormPage {
   name = '';
   category = '';
   notes = '';
+  unsubscribeUrl = '';
   currency = '';
   startDate = '';
   endDate = '';
@@ -394,6 +397,7 @@ export class SubscriptionFormPage {
     this.name = detail.name;
     this.category = detail.category ?? '';
     this.notes = detail.notes ?? '';
+    this.unsubscribeUrl = detail.unsubscribeUrl ?? '';
     this.currency = detail.currency;
     this.startDate = detail.startDate;
     this.endDate = detail.endDate ?? '';
@@ -410,6 +414,7 @@ export class SubscriptionFormPage {
     if (category.length > 40 || hasControlCharacters(category)) fail('category', 'subscriptions.error.category');
     const notes = normalizeNotes(this.notes);
     if (notes.length > 1000 || hasControlCharacters(notes, true)) fail('notes', 'subscriptions.error.notes');
+    if (normalizeUnsubscribeUrl(this.unsubscribeUrl) === undefined) fail('unsubscribeUrl', 'subscriptions.error.unsubscribeUrl');
     if (!this.options()?.currencies.some((c) => c.code === this.currency)) fail('currency', 'subscriptions.error.currency');
     const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
     if (!validDate(this.startDate)) fail('startDate', 'subscriptions.error.startDate');
@@ -450,10 +455,11 @@ export class SubscriptionFormPage {
       startDate: this.startDate,
       endDate: this.endDate || null,
       catalogId: this.catalogId,
+      unsubscribeUrl: normalizeUnsubscribeUrl(this.unsubscribeUrl) ?? null,
     };
   }
 
-  /** Edit sends all seven keys, with explicit nulls (D-10). */
+  /** Edit sends all eight keys, with explicit nulls (D-10). */
   private updateBody(): UpdateSubscriptionBody {
     return this.details();
   }

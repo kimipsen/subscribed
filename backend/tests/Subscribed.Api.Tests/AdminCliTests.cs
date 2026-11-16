@@ -170,7 +170,7 @@ public sealed class AdminCliTests(PostgresFixture pg)
             var gone = await options.CreateAsync(PaymentOptionDecisions.ParseCreate(new PaymentOptionInput("Gone", null)), context, TestContext.Current.CancellationToken);
             await options.RemoveAsync(PaymentOptionIds.Bare(gone.Id), gone.Version, context, TestContext.Current.CancellationToken);
             await service.AddAsync(
-                SubscriptionDecisions.ParseAdd(new AddInput("Paid", null, null, "DKK", "2024-03-01", null, "5.00", "month", 1, null, PaymentOptionIds.Bare(visa.Id))),
+                SubscriptionDecisions.ParseAdd(new AddInput("Paid", null, null, "DKK", "2024-03-01", null, "5.00", "month", 1, PaymentOptionId: PaymentOptionIds.Bare(visa.Id))),
                 context,
                 TestContext.Current.CancellationToken);
         }

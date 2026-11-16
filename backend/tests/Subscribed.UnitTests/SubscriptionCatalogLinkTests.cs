@@ -147,7 +147,10 @@ public sealed class SubscriptionCatalogLinkTests
     public void Existing_v1_fixtures_are_byte_identical_to_master(string alias, string sha256)
     {
         // SHA-256 of each fixture as it was at master 9d2d61e. A change to a v1 shape must be a new alias, never an edit.
-        var bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "events", alias + ".json"));
+        // added and details_changed later gained an optional trailing field: their original payloads are pinned, unchanged, under
+        // legacy/, and the top-level fixtures carry the new field.
+        var folder = alias is SubscriptionEventTypes.Added or SubscriptionEventTypes.DetailsChanged ? Path.Combine("events", "legacy") : "events";
+        var bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", folder, alias + ".json"));
         Assert.Equal(sha256, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)));
     }
 

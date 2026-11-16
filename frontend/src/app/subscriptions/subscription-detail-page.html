@@ -55,6 +55,10 @@
           <dd>{{ money(d.normalizedMonthly) }}</dd>
           <dt>{{ 'subscriptions.col.perYear' | t }}</dt>
           <dd>{{ money(d.normalizedYearly) }}</dd>
+          @if (isHttpsUrl(d.effectiveUnsubscribeUrl)) {
+            <dt>{{ 'detail.unsubscribe' | t }}</dt>
+            <dd><a [href]="d.effectiveUnsubscribeUrl" target="_blank" rel="noopener noreferrer">{{ 'detail.unsubscribeLink' | t }}</a></dd>
+          }
           @if (d.notes) {
             <dt>{{ 'detail.notes' | t }}</dt>
             <dd class="notes">{{ d.notes }}</dd>

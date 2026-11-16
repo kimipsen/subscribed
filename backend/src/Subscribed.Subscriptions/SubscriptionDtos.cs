@@ -17,15 +17,31 @@ public sealed record AddSubscriptionRequest(
     string? CadenceUnit,
     int? CadenceCount,
     string? CatalogId,
+    string? UnsubscribeUrl = null,
     string? PaymentOptionId = null)
 {
-    public AddInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, Amount, CadenceUnit, CadenceCount, CatalogId, PaymentOptionId);
+    public AddInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, Amount, CadenceUnit, CadenceCount, CatalogId, UnsubscribeUrl, PaymentOptionId);
 }
 
-/// <summary>Fully replaces the editable details: a null <c>endDate</c> reinstates the subscription and a null or omitted <c>catalogId</c> unlinks it (P7).</summary>
-public sealed record UpdateSubscriptionRequest(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId)
+/// <summary>
+/// Fully replaces the editable details: a null <c>endDate</c> reinstates the subscription and a null or omitted <c>catalogId</c> unlinks it (P7).
+/// The same full-replace rule applies to <c>unsubscribeUrl</c>: a null or omitted value clears the user-specified link, so a stale
+/// cached SPA bundle that does not send the key will clear it on save.
+/// </summary>
+public sealed record UpdateSubscriptionRequest(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId, string? UnsubscribeUrl = null)
 {
-    public UpdateInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, CatalogId);
+    public UpdateInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, CatalogId, UnsubscribeUrl);
+}
+
+/// <summary>The one resolution rule for the unsubscribe link: the user's URL, else the linked catalog service's, else none. No status gating.</summary>
+public static class UnsubscribeLink
+{
+    public static string? Effective(SubscriptionState state, Catalog catalog)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(catalog);
+        return state.UnsubscribeUrl ?? catalog.TryGet(state.CatalogId)?.UnsubscribeUrl;
+    }
 }
 
 /// <summary>A null or omitted <c>paymentOptionId</c> means "no payment option": the same full-replace semantics as <c>catalogId</c> (D9).</summary>
@@ -129,7 +145,9 @@ public sealed record SubscriptionDetailDto(
     PriceDto CurrentPrice,
     string NormalizedMonthly,
     string NormalizedYearly,
-    IReadOnlyList<HistoryEntryDto> PriceHistory)
+    IReadOnlyList<HistoryEntryDto> PriceHistory,
+    string? UnsubscribeUrl,
+    string? EffectiveUnsubscribeUrl)
 {
     public static SubscriptionDetailDto From(SubscriptionState state, DateOnly today, Catalog catalog)
     {
@@ -166,7 +184,9 @@ public sealed record SubscriptionDetailDto(
                 r.Change is { } c ? new PriceChangeDto(Money.FormatAmount(c.Amount, minor), c.Percent is { } p ? Money.FormatAmount(p, 1) : null) : null,
                 r.Current,
                 r.Upcoming,
-                r.Entry.PaymentOptionId))]);
+                r.Entry.PaymentOptionId))],
+            state.UnsubscribeUrl,
+            UnsubscribeLink.Effective(state, catalog));
     }
 }
 
@@ -198,7 +218,8 @@ public sealed record CatalogServiceDto(
     string Category,
     string? LogoUrl,
     DateOnly LastVerified,
-    IReadOnlyList<CatalogPlanDto> Plans);
+    IReadOnlyList<CatalogPlanDto> Plans,
+    string? UnsubscribeUrl);
 
 /// <summary>The catalog as the API shows it. File order of services and plans is preserved; <c>sourceUrl</c> is not exposed.</summary>
 public sealed record CatalogDto(IReadOnlyList<CatalogServiceDto> Services, string DefaultCountry)
@@ -213,7 +234,8 @@ public sealed record CatalogDto(IReadOnlyList<CatalogServiceDto> Services, strin
                 service.Category,
                 service.Logo,
                 service.LastVerified,
-                [.. service.Plans.Select(static plan => PlanFrom(plan))]))],
+                [.. service.Plans.Select(static plan => PlanFrom(plan))],
+                service.UnsubscribeUrl))],
             catalog.DefaultCountry);
     }
 

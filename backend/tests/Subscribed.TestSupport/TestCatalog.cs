@@ -9,6 +9,9 @@ public static class TestCatalog
     public const string MusicBox = "music-box";
     public const string NoLogo = "no-plans";
 
+    /// <summary>StreamCo carries a catalog unsubscribe URL; Music Box and No Plans do not.</summary>
+    public const string StreamCoUnsubscribeUrl = "https://example.com/streamco/cancel";
+
     public static Catalog Standard() => new(
     [
         new CatalogService(
@@ -21,7 +24,8 @@ public static class TestCatalog
             [
                 new CatalogPlan("DK", "Family", "DKK", 129.00m, "month", 1, new CatalogUpcomingChange(139.00m, new DateOnly(2027, 2, 1))),
                 new CatalogPlan("DK", "Solo", "DKK", 89.00m, "month", 1, null),
-            ]),
+            ],
+            StreamCoUnsubscribeUrl),
         new CatalogService(
             MusicBox,
             "Music Box",

@@ -4,16 +4,16 @@ using Subscribed.Subscriptions.PaymentOptions;
 namespace Subscribed.Subscriptions.Domain;
 
 /// <summary>Raw request fields, exactly as the client sent them. Omitted means null (D-10).</summary>
-public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount, string? CatalogId = null, string? PaymentOptionId = null);
+public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount, string? CatalogId = null, string? UnsubscribeUrl = null, string? PaymentOptionId = null);
 
-public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId = null);
+public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null);
 
 public sealed record PriceInput(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount, string? PaymentOptionId = null);
 
 /// <summary>Fields that passed the shape rules.</summary>
-public sealed record NewSubscription(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, decimal Amount, Cadence Cadence, string? CatalogId = null, string? PaymentOptionId = null);
+public sealed record NewSubscription(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, decimal Amount, Cadence Cadence, string? CatalogId = null, string? UnsubscribeUrl = null, string? PaymentOptionId = null);
 
-public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, string? CatalogId = null);
+public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null);
 
 public sealed record PriceEntryChange(DateOnly EffectiveFrom, decimal Amount, Cadence Cadence, string? PaymentOptionId = null);
 
@@ -39,8 +39,9 @@ public static class SubscriptionDecisions
         var (amount, cadence) = PriceFields(input.Amount, input.CadenceUnit, input.CadenceCount, currency, errors);
         var catalogId = CatalogId(input.CatalogId, errors);
         var paymentOptionId = PaymentOptionId(input.PaymentOptionId, errors);
+        var unsubscribeUrl = UnsubscribeUrl(input.UnsubscribeUrl, errors);
         errors.ThrowIfAny();
-        return new NewSubscription(name!, category, notes, currency!, start!.Value, end, amount!.Value, cadence!.Value, catalogId, paymentOptionId);
+        return new NewSubscription(name!, category, notes, currency!, start!.Value, end, amount!.Value, cadence!.Value, catalogId, unsubscribeUrl, paymentOptionId);
     }
 
     public static DetailsUpdate ParseUpdate(UpdateInput input)
@@ -54,8 +55,9 @@ public static class SubscriptionDecisions
         var start = Date(input.StartDate, "startDate", true, errors);
         var end = Date(input.EndDate, "endDate", false, errors);
         var catalogId = CatalogId(input.CatalogId, errors);
+        var unsubscribeUrl = UnsubscribeUrl(input.UnsubscribeUrl, errors);
         errors.ThrowIfAny();
-        return new DetailsUpdate(name!, category, notes, currency!, start!.Value, end, catalogId);
+        return new DetailsUpdate(name!, category, notes, currency!, start!.Value, end, catalogId, unsubscribeUrl);
     }
 
     /// <summary>Shape only. The minor-unit rule needs the subscription's currency and runs with the invariants.</summary>
@@ -76,7 +78,7 @@ public static class SubscriptionDecisions
     {
         ArgumentNullException.ThrowIfNull(command);
         var added = new SubscriptionAdded(householdId, command.Name, command.Category, command.Notes, command.Currency, command.StartDate, command.EndDate,
-            entryId, command.Amount, command.Cadence.Unit, command.Cadence.Count, now.ToUniversalTime());
+            entryId, command.Amount, command.Cadence.Unit, command.Cadence.Count, now.ToUniversalTime(), command.UnsubscribeUrl);
         var candidate = SubscriptionState.Rehydrate([added]);
         var errors = new FieldErrors();
         if (candidate.EndDate is { } end && end < candidate.StartDate)
@@ -107,9 +109,10 @@ public static class SubscriptionDecisions
         var events = new List<object>();
         if (!string.Equals(command.Name, current.Name, StringComparison.Ordinal)
             || !string.Equals(command.Category, current.Category, StringComparison.Ordinal)
-            || !string.Equals(command.Notes, current.Notes, StringComparison.Ordinal))
+            || !string.Equals(command.Notes, current.Notes, StringComparison.Ordinal)
+            || !string.Equals(command.UnsubscribeUrl, current.UnsubscribeUrl, StringComparison.Ordinal))
         {
-            events.Add(new SubscriptionDetailsChanged(command.Name, command.Category, command.Notes, at));
+            events.Add(new SubscriptionDetailsChanged(command.Name, command.Category, command.Notes, at, command.UnsubscribeUrl));
         }
 
         if (!string.Equals(command.Currency, current.Currency, StringComparison.Ordinal))
@@ -365,6 +368,18 @@ public static class SubscriptionDecisions
         }
 
         errors.Add("paymentOptionId", "The payment option id is not valid.");
+        return null;
+    }
+
+    /// <summary>Trimmed; empty becomes null (no user link). Otherwise the shared https-only rule; the URL value is never reported or logged.</summary>
+    private static string? UnsubscribeUrl(string? raw, FieldErrors errors)
+    {
+        if (SubscriptionText.TryNormalizeUnsubscribeUrl(raw, out var url))
+        {
+            return url;
+        }
+
+        errors.Add("unsubscribeUrl", $"The unsubscribe link must be an https:// URL of at most {SubscriptionText.MaxUnsubscribeUrl} characters, with no spaces, backslashes or user-info.");
         return null;
     }
 

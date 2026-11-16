@@ -130,6 +130,8 @@ public static partial class CatalogLoader
             throw new CatalogValidationException($"Catalog service '{id}': field 'sourceUrl' must be an absolute https URL.");
         }
 
+        var unsubscribeUrl = ReadUnsubscribeUrl(element, id);
+
         if (!element.TryGetProperty("plans", out var plans) || plans.ValueKind != JsonValueKind.Array)
         {
             throw new CatalogValidationException($"Catalog service '{id}': field 'plans' must be an array.");
@@ -142,7 +144,27 @@ public static partial class CatalogLoader
             list.Add(ReadPlan(plan, id, planIndex++));
         }
 
-        return new CatalogService(id, name, category, logo, lastVerified, sourceUrl, list);
+        return new CatalogService(id, name, category, logo, lastVerified, sourceUrl, list, unsubscribeUrl);
+    }
+
+    /// <summary>
+    /// Optional. Absent or null means none; a present value must be a string that passes the shared user-input rule and equals its
+    /// trimmed form. The message names the service and field, never the value.
+    /// </summary>
+    private static string? ReadUnsubscribeUrl(JsonElement element, string id)
+    {
+        if (!element.TryGetProperty("unsubscribeUrl", out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        var raw = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        if (raw is null || raw.Length == 0 || !SubscriptionText.TryNormalizeUnsubscribeUrl(raw, out var url) || url is null || url != raw)
+        {
+            throw new CatalogValidationException($"Catalog service '{id}': field 'unsubscribeUrl' must be an absolute https URL.");
+        }
+
+        return url;
     }
 
     private static CatalogPlan ReadPlan(JsonElement element, string serviceId, int index)
