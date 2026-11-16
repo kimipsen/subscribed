@@ -83,10 +83,43 @@
           </section>
           <section class="panel">
             <h2>{{ 'household.membersHeading' | t }}</h2>
+            @if (labelSaved()) { <output class="status">{{ 'household.memberSaved' | t }}</output> }
             <ul class="members">
               @for (member of household.members; track member.memberId) {
-                <li><strong>{{ member.displayLabel }}</strong>
-                  <span class="muted">{{ 'household.joined' | t: { date: (member.grantedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</span>
+                <li>
+                  @if (editingMemberId() === member.memberId) {
+                    <form class="member-edit" (ngSubmit)="saveLabel(member)" novalidate>
+                      <label [for]="'member-label-' + member.memberId">{{ 'household.memberLabelLabel' | t }}</label>
+                      <input [id]="'member-label-' + member.memberId" name="memberLabel" [(ngModel)]="labelDraft"
+                        maxlength="64" required [attr.aria-invalid]="labelInvalid() ? 'true' : null"
+                        [attr.aria-describedby]="'member-label-hint member-label-error'" [disabled]="labelSaving()">
+                      <p id="member-label-hint" class="muted">{{ 'household.memberLabelHint' | t }}</p>
+                      <div id="member-label-error" class="error" role="alert">
+                        @if (labelError()) {
+                          <p>{{ i18n.message(labelError()) }}</p>
+                          @if (labelTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ labelTraceId() }}</code></p> }
+                        }
+                      </div>
+                      @if (labelConflict()) {
+                        <div class="notice" role="alert">
+                          {{ 'household.conflict' | t }}
+                          @if (labelTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ labelTraceId() }}</code></p> }
+                          <button type="button" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
+                        </div>
+                      }
+                      <button type="submit" [disabled]="labelSaving() || !validLabel(labelDraft)">
+                        {{ (labelSaving() ? 'household.saving' : 'household.memberSave') | t }}
+                      </button>
+                      <button type="button" class="secondary" [disabled]="labelSaving()" (click)="cancelEdit()">
+                        {{ 'household.memberCancel' | t }}
+                      </button>
+                    </form>
+                  } @else {
+                    <strong [id]="'member-name-' + member.memberId">{{ member.displayLabel }}</strong>
+                    <span class="muted">{{ 'household.joined' | t: { date: (member.grantedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</span>
+                    <button type="button" class="secondary" (click)="startEdit(member)"
+                      [attr.aria-describedby]="'member-name-' + member.memberId">{{ 'household.memberEdit' | t }}</button>
+                  }
                 </li>
               }
             </ul>
