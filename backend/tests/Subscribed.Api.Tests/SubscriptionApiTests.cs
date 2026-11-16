@@ -100,6 +100,8 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         (HttpMethod.Post, $"{Base}/{id}/prices", true),
         (HttpMethod.Put, $"{Base}/{id}/prices/{entryId}", true),
         (HttpMethod.Delete, $"{Base}/{id}/prices/{entryId}", false),
+        (HttpMethod.Post, $"{Base}/{id}/pause", false),
+        (HttpMethod.Post, $"{Base}/{id}/resume", false),
     ];
 
     // ---- authorization -----------------------------------------------------------------------------

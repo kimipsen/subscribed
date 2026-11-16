@@ -55,9 +55,11 @@ public sealed record HistoryEntryDto(
 
 public sealed record SubscriptionSummaryDto(
     string Id,
+    long Version,
     string Name,
     string? Category,
     string Status,
+    bool Paused,
     DateOnly StartDate,
     DateOnly? EndDate,
     string Currency,
@@ -73,9 +75,11 @@ public sealed record SubscriptionSummaryDto(
         var current = SubscriptionCalculator.CurrentPrice(state, today);
         return new SubscriptionSummaryDto(
             SubscriptionIds.Bare(state.Id),
+            state.Version,
             state.Name,
             state.Category,
             SubscriptionCalculator.StatusOn(state, today).ToWire(),
+            state.Paused,
             state.StartDate,
             state.EndDate,
             state.Currency,
@@ -107,6 +111,7 @@ public sealed record SubscriptionDetailDto(
     string? Category,
     string? Notes,
     string Status,
+    bool Paused,
     DateOnly StartDate,
     DateOnly? EndDate,
     string Currency,
@@ -128,6 +133,7 @@ public sealed record SubscriptionDetailDto(
             state.Category,
             state.Notes,
             SubscriptionCalculator.StatusOn(state, today).ToWire(),
+            state.Paused,
             state.StartDate,
             state.EndDate,
             state.Currency,
