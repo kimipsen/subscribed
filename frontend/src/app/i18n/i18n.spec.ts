@@ -93,6 +93,19 @@ describe('Language preferences', () => {
     }
   });
 
+  it('renders the pause and resume strings in both languages after a language switch', () => {
+    const i18n = service(null);
+    const keys = ['subscriptions.status.paused', 'subscriptions.pause', 'subscriptions.resume', 'subscriptions.pauseInvalid', 'subscriptions.col.actions'] as const;
+    expect(i18n.language()).toBe('da');
+    for (const key of keys) expect(i18n.translate(key), key).toBe(da[key]);
+    expect(i18n.message({ key: 'subscriptions.pauseLabel', params: { name: 'Film' } })).toBe('Sæt Film på pause');
+    expect(i18n.message({ key: 'subscriptions.paused', params: { name: 'Film' } })).toBe('Film er sat på pause.');
+    i18n.setLanguage('en');
+    for (const key of keys) expect(i18n.translate(key), key).toBe(en[key]);
+    expect(i18n.message({ key: 'subscriptions.resumeLabel', params: { name: 'Film' } })).toBe('Resume Film');
+    expect(i18n.message({ key: 'subscriptions.resumed', params: { name: 'Film' } })).toBe('Film was resumed.');
+  });
+
   it('interpolates text once and reports missing parameters', () => {
     expect(formatMessage('Welcome, {name}', { name: '<b>Åse {date}</b>' }))
       .toBe('Welcome, <b>Åse {date}</b>');

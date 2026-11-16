@@ -8,6 +8,7 @@
   "logoUrl": null,
   "notes": "Family plan",
   "status": "active",
+  "paused": false,
   "startDate": "2024-02-18",
   "endDate": null,
   "currency": "DKK",

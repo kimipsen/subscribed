@@ -16,6 +16,8 @@ public sealed class SubscriptionEventTests
     [InlineData(SubscriptionEventTypes.PriceEntryCorrected, typeof(SubscriptionPriceEntryCorrected))]
     [InlineData(SubscriptionEventTypes.PriceEntryRemoved, typeof(SubscriptionPriceEntryRemoved))]
     [InlineData(SubscriptionEventTypes.Removed, typeof(SubscriptionRemoved))]
+    [InlineData(SubscriptionEventTypes.Paused, typeof(SubscriptionPaused))]
+    [InlineData(SubscriptionEventTypes.Resumed, typeof(SubscriptionResumed))]
     [InlineData(SubscriptionEventTypes.CatalogLinked, typeof(SubscriptionCatalogLinked))]
     public void Golden_fixtures_deserialize_and_round_trip(string alias, Type type)
     {
@@ -63,7 +65,7 @@ public sealed class SubscriptionEventTests
             Assert.Contains(type.GetProperties(), p => p.Name == "RecordedAt");
         }
 
-        Assert.Equal(9, SubscriptionEventTypes.ByAlias.Count);
+        Assert.Equal(11, SubscriptionEventTypes.ByAlias.Count);
         Assert.All(SubscriptionEventTypes.ByAlias.Keys, a => Assert.Matches(@"^subscription\.[a-z_]+\.v1$", a));
     }
 
@@ -662,5 +664,249 @@ public sealed class SubscriptionCalculatorTests
     {
         Assert.Equal(new DateOnly(2026, 11, 13), SubscriptionCalculator.Today(new FixedClock(new DateTimeOffset(2026, 11, 13, 23, 59, 0, TimeSpan.Zero))));
         Assert.Equal(new DateOnly(2026, 11, 13), SubscriptionCalculator.Today(new FixedClock(new DateTimeOffset(2026, 11, 14, 0, 30, 0, TimeSpan.FromHours(2)))));
+    }
+}
+
+public sealed class SubscriptionPauseTests
+{
+    private static readonly DateTimeOffset Now = SubscriptionDecisionTests.Now;
+    private static readonly DateOnly Today = SubscriptionDecisionTests.Today;
+    private static readonly DateTimeOffset Later = Now.AddHours(3);
+
+    private static SubscriptionState State(List<object> history, string id = "")
+    {
+        var state = SubscriptionState.Rehydrate(history);
+        state.Id = id;
+        return state;
+    }
+
+    private static List<object> Sub(string name = "StreamCo", string amount = "10.00", string start = "2024-01-01", string? end = null, string currency = "DKK") =>
+        SubscriptionDecisionTests.Added(SubscriptionDecisionTests.Input(name, currency, amount, "month", 1, start, end));
+
+    private static List<object> Paused(List<object> history) =>
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.Pause(history, Now));
+
+    // ---- decisions ---------------------------------------------------------------------------------
+
+    [Fact]
+    public void Pause_then_resume_round_trips_the_flag()
+    {
+        var history = Sub();
+        var pause = Assert.IsType<SubscriptionPaused>(Assert.Single(SubscriptionDecisions.Pause(history, Now.ToOffset(TimeSpan.FromHours(2)))));
+        Assert.Equal(TimeSpan.Zero, pause.RecordedAt.Offset);
+        SubscriptionDecisionTests.Apply(history, [pause]);
+        var paused = State(history);
+        Assert.True(paused.Paused);
+        Assert.Equal(Now.UtcDateTime, paused.PausedAt!.Value.UtcDateTime);
+
+        var resume = Assert.IsType<SubscriptionResumed>(Assert.Single(SubscriptionDecisions.Resume(history, Later)));
+        SubscriptionDecisionTests.Apply(history, [resume]);
+        var resumed = State(history);
+        Assert.False(resumed.Paused);
+        Assert.Null(resumed.PausedAt);
+    }
+
+    [Fact]
+    public void A_subscription_can_be_paused_again_after_it_was_resumed()
+    {
+        var history = Paused(Sub());
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.Resume(history, Later));
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.Pause(history, Later));
+        Assert.True(State(history).Paused);
+        Assert.Equal(4, State(history).Version);
+    }
+
+    [Fact]
+    public void Pausing_a_paused_subscription_is_rejected_and_changes_nothing()
+    {
+        var history = Paused(Sub());
+        var before = history.ToList();
+        Assert.Throws<SubscriptionStateException>(() => SubscriptionDecisions.Pause(history, Later));
+        Assert.Equal(before, history);
+        Assert.True(State(history).Paused);
+    }
+
+    [Fact]
+    public void Resuming_a_subscription_that_is_not_paused_is_rejected_and_changes_nothing()
+    {
+        var history = Sub();
+        var before = history.ToList();
+        Assert.Throws<SubscriptionStateException>(() => SubscriptionDecisions.Resume(history, Now));
+        Assert.Equal(before, history);
+
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.Pause(history, Now));
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.Resume(history, Later));
+        Assert.Throws<SubscriptionStateException>(() => SubscriptionDecisions.Resume(history, Later));
+    }
+
+    [Fact]
+    public void Pause_and_resume_on_a_removed_subscription_or_an_empty_history_are_not_found()
+    {
+        Assert.Throws<SubscriptionNotFoundException>(() => SubscriptionDecisions.Pause([], Now));
+        Assert.Throws<SubscriptionNotFoundException>(() => SubscriptionDecisions.Resume([], Now));
+
+        var history = Sub();
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.Remove(history, Now));
+        Assert.Throws<SubscriptionNotFoundException>(() => SubscriptionDecisions.Pause(history, Now));
+        Assert.Throws<SubscriptionNotFoundException>(() => SubscriptionDecisions.Resume(history, Now));
+    }
+
+    [Fact]
+    public void A_paused_subscription_can_still_be_edited_and_removed()
+    {
+        var history = Paused(Sub());
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.UpdateDetails(history, new DetailsUpdate("Renamed", null, null, "DKK", new DateOnly(2024, 1, 1), null), Now));
+        Assert.True(State(history).Paused);
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.Remove(history, Now));
+        Assert.True(State(history).Removed);
+    }
+
+    [Fact]
+    public void Pause_is_allowed_before_the_start_and_after_the_end()
+    {
+        Assert.Single(SubscriptionDecisions.Pause(Sub(start: "2030-01-01"), Now));
+        Assert.Single(SubscriptionDecisions.Pause(Sub(end: "2024-12-31"), Now));
+    }
+
+    // ---- state -------------------------------------------------------------------------------------
+
+    [Fact]
+    public void Rehydrate_applies_both_events_and_counts_one_version_each()
+    {
+        var history = Sub();
+        Assert.False(State(history).Paused);
+        Assert.Null(State(history).PausedAt);
+
+        history.Add(new SubscriptionPaused(Now));
+        var paused = State(history);
+        Assert.True(paused.Paused);
+        Assert.Equal(Now, paused.PausedAt);
+        Assert.Equal(2, paused.Version);
+
+        history.Add(new SubscriptionResumed(Later));
+        var resumed = State(history);
+        Assert.False(resumed.Paused);
+        Assert.Null(resumed.PausedAt);
+        Assert.Equal(3, resumed.Version);
+    }
+
+    [Fact]
+    public void Pause_events_before_the_subscription_was_added_are_rejected()
+    {
+        Assert.Throws<InvalidOperationException>(() => SubscriptionState.Rehydrate([new SubscriptionPaused(Now)]));
+        Assert.Throws<InvalidOperationException>(() => SubscriptionState.Rehydrate([new SubscriptionResumed(Now)]));
+    }
+
+    [Fact]
+    public void A_snapshot_stored_before_the_feature_deserializes_as_not_paused()
+    {
+        var state = State(Sub(), "abc");
+        var json = JsonSerializer.Serialize(state, SubscriptionEventTypes.Json);
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+        Assert.True(node.Remove("paused"));
+        Assert.True(node.Remove("pausedAt"));
+        var old = JsonSerializer.Deserialize<SubscriptionState>(node.ToJsonString(), SubscriptionEventTypes.Json)!;
+        Assert.False(old.Paused);
+        Assert.Null(old.PausedAt);
+    }
+
+    // ---- calculator --------------------------------------------------------------------------------
+
+    [Fact]
+    public void Wire_value_of_the_paused_status_is_kebab_case()
+    {
+        Assert.Equal("paused", SubscriptionStatus.Paused.ToWire());
+    }
+
+    [Fact]
+    public void Paused_shows_only_when_the_subscription_would_otherwise_be_active()
+    {
+        var active = State(Paused(Sub(start: "2024-01-01")));
+        Assert.Equal(SubscriptionStatus.Paused, SubscriptionCalculator.StatusOn(active, Today));
+
+        var notStarted = State(Paused(Sub(start: "2030-01-01")));
+        Assert.Equal(SubscriptionStatus.NotStarted, SubscriptionCalculator.StatusOn(notStarted, Today));
+
+        var ended = State(Paused(Sub(start: "2023-01-01", end: "2024-01-01")));
+        Assert.Equal(SubscriptionStatus.Ended, SubscriptionCalculator.StatusOn(ended, Today));
+
+        Assert.Equal(SubscriptionStatus.Active, SubscriptionCalculator.StatusOn(State(Sub()), Today));
+    }
+
+    [Fact]
+    public void Status_precedence_at_the_date_boundaries()
+    {
+        var starts = State(Paused(Sub(start: "2026-11-13")));
+        Assert.Equal(SubscriptionStatus.NotStarted, SubscriptionCalculator.StatusOn(starts, Today.AddDays(-1)));
+        Assert.Equal(SubscriptionStatus.Paused, SubscriptionCalculator.StatusOn(starts, Today));
+
+        var endsToday = State(Paused(Sub(start: "2024-01-01", end: "2026-11-13")));
+        Assert.Equal(SubscriptionStatus.Paused, SubscriptionCalculator.StatusOn(endsToday, Today));
+        Assert.Equal(SubscriptionStatus.Ended, SubscriptionCalculator.StatusOn(endsToday, Today.AddDays(1)));
+    }
+
+    [Fact]
+    public void A_paused_not_started_subscription_becomes_paused_as_time_passes_the_start_date()
+    {
+        var state = State(Paused(Sub(start: "2026-12-01")));
+        Assert.Equal(SubscriptionStatus.NotStarted, SubscriptionCalculator.StatusOn(state, new DateOnly(2026, 11, 30)));
+        Assert.Equal(SubscriptionStatus.Paused, SubscriptionCalculator.StatusOn(state, new DateOnly(2026, 12, 1)));
+    }
+
+    [Fact]
+    public void The_flag_survives_a_cleared_end_date_so_the_status_is_paused_again()
+    {
+        var history = Sub(start: "2023-01-01", end: "2024-01-01");
+        Paused(history);
+        Assert.Equal(SubscriptionStatus.Ended, SubscriptionCalculator.StatusOn(State(history), Today));
+
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.UpdateDetails(history, new DetailsUpdate("StreamCo", null, null, "DKK", new DateOnly(2023, 1, 1), null), Now));
+        var state = State(history);
+        Assert.True(state.Paused);
+        Assert.Equal(SubscriptionStatus.Paused, SubscriptionCalculator.StatusOn(state, Today));
+    }
+
+    [Fact]
+    public void Totals_exclude_a_paused_subscription_and_count_it_again_once_resumed()
+    {
+        var kept = State(Sub("Kept", "10.00"), "a");
+        var history = Sub("Pausable", "20.00");
+        var running = State(history, "b");
+        var both = SubscriptionCalculator.Totals([kept, running], Today);
+        Assert.Equal(30.00m, Assert.Single(both).Monthly);
+        Assert.Equal(2, both[0].ActiveCount);
+
+        Paused(history);
+        var paused = State(history, "b");
+        var totals = Assert.Single(SubscriptionCalculator.Totals([kept, paused], Today));
+        Assert.Equal(10.00m, totals.Monthly);
+        Assert.Equal(120.00m, totals.Yearly);
+        Assert.Equal(1, totals.ActiveCount);
+
+        Assert.Empty(SubscriptionCalculator.Totals([paused], Today));
+
+        SubscriptionDecisionTests.Apply(history, SubscriptionDecisions.Resume(history, Later));
+        var resumed = Assert.Single(SubscriptionCalculator.Totals([kept, State(history, "b")], Today));
+        Assert.Equal(30.00m, resumed.Monthly);
+        Assert.Equal(2, resumed.ActiveCount);
+    }
+
+    private static List<(string Id, decimal Amount, DateOnly From, DateOnly? To, decimal Monthly, decimal Yearly, PriceChange? Change, bool Current, bool Upcoming)> Rows(SubscriptionState state) =>
+        [.. SubscriptionCalculator.History(state, Today).Select(r => (r.Entry.EntryId, r.Entry.Amount, r.EffectiveFrom, r.EffectiveTo, r.NormalizedMonthly, r.NormalizedYearly, r.Change, r.Current, r.Upcoming))];
+
+    [Fact]
+    public void Pausing_does_not_change_the_price_history_or_the_current_price()
+    {
+        var plain = SubscriptionDecisionTests.FilmPlus();
+        var pausedHistory = SubscriptionDecisionTests.FilmPlus();
+        Paused(pausedHistory);
+        SubscriptionDecisionTests.Apply(pausedHistory, SubscriptionDecisions.Resume(pausedHistory, Later));
+        Paused(pausedHistory);
+
+        var before = State(plain);
+        var after = State(pausedHistory);
+        Assert.Equal(Rows(before), Rows(after));
+        Assert.Equal(SubscriptionCalculator.CurrentPrice(before, Today).Amount, SubscriptionCalculator.CurrentPrice(after, Today).Amount);
+        Assert.Equal(SubscriptionCalculator.UpcomingPriceChange(before, Today), SubscriptionCalculator.UpcomingPriceChange(after, Today));
     }
 }

@@ -13,6 +13,7 @@ public static class ProblemCodes
     public const string OriginMismatch = "origin-mismatch";
     public const string ValidationFailed = "validation-failed";
     public const string ConcurrencyConflict = "concurrency-conflict";
+    public const string InvalidSubscriptionState = "invalid-subscription-state";
     public const string IfMatchRequired = "if-match-required";
     public const string PayloadTooLarge = "payload-too-large";
     public const string DatabaseUnavailable = "database-unavailable";

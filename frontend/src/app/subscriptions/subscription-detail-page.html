@@ -31,6 +31,7 @@
           <button type="button" class="secondary" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
         </div>
       }
+      @if (notice(); as message) { <output class="status">{{ message.key | t: message.params }}</output> }
       @if (problem(); as message) { <p class="error" role="alert">{{ message.key | t: message.params }}</p> }
       @if (traceId() && (conflict() || problem())) {
         <p class="muted">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p>
@@ -171,6 +172,11 @@
       <section class="panel" aria-labelledby="manage-heading">
         <h2 id="manage-heading">{{ 'subscriptions.form.editHeading' | t }}</h2>
         <div class="actions">
+          @if (d.paused) {
+            <button type="button" class="secondary" id="pause-toggle" [disabled]="saving()" (click)="resume()">{{ 'subscriptions.resume' | t }}</button>
+          } @else if (canPause(d)) {
+            <button type="button" class="secondary" id="pause-toggle" [disabled]="saving()" (click)="pause()">{{ 'subscriptions.pause' | t }}</button>
+          }
           @if (d.endDate) {
             <button type="button" class="secondary" [disabled]="saving()" (click)="reinstate()">{{ 'detail.reinstate' | t }}</button>
           }

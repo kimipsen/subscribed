@@ -173,4 +173,47 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
         Assert.Equal("not-started", rows["KidsClub"].GetProperty("status").GetString());
         Assert.Equal("ended", rows["SportsLive"].GetProperty("status").GetString());
     }
+
+    [Fact]
+    public async Task A_paused_subscription_has_the_golden_detail_and_row_shape_and_the_409_problem_is_pinned()
+    {
+        await using var host = await ApiTestHost.StartAsync(pg);
+        await host.InitHouseholdAsync("subject-owner");
+        (await host.LoginAsync("subject-owner")).Dispose();
+
+        var added = await AddAsync(host, NewBody(host, "MusicBox", start: Day(host, -50), category: "Music", notes: "Duo"));
+        var id = added.GetProperty("id").GetString()!;
+        var paused = await SendOkAsync(host, HttpMethod.Post, $"{Base}/{id}/pause", null, ETag(added));
+        Assert.Equal("paused", paused.GetProperty("status").GetString());
+        Assert.True(paused.GetProperty("paused").GetBoolean());
+
+        // The detail has the golden detail's property names (its history is a different length), and a paused row matches a golden overview row.
+        var goldenDetail = JsonElement.Parse(File.ReadAllText(Path.Combine(GoldenDirectory(), "detail.json")));
+        Assert.Equal(goldenDetail.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal), paused.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        AssertSameShape(goldenDetail.GetProperty("priceHistory")[0], paused.GetProperty("priceHistory")[0], "paused-detail.priceHistory[0]", "");
+        Assert.True(goldenDetail.GetProperty("paused").ValueKind is JsonValueKind.True or JsonValueKind.False);
+        var row = (await OverviewAsync(host)).GetProperty("subscriptions")[0];
+        var golden = JsonElement.Parse(File.ReadAllText(Path.Combine(GoldenDirectory(), "overview.json")));
+        AssertSameShape(golden.GetProperty("subscriptions")[0], row, "paused-row", "");
+        Assert.Equal(paused.GetProperty("version").GetInt64(), row.GetProperty("version").GetInt64());
+
+        // The 409 problem: status, type (the code), title, a trace id, and currentVersion, with the same property set as the 412.
+        using var conflict = await host.SendAsync(HttpMethod.Post, $"{Base}/{id}/pause", ifMatch: ETag(paused));
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        Assert.Equal("application/problem+json", conflict.Content.Headers.ContentType?.MediaType);
+        var problem = await ApiTestHost.JsonAsync(conflict);
+        Assert.Equal(409, problem.GetProperty("status").GetInt32());
+        Assert.Equal("urn:subscribed:problem:invalid-subscription-state", problem.GetProperty("type").GetString());
+        Assert.False(string.IsNullOrEmpty(problem.GetProperty("traceId").GetString()));
+        Assert.Equal("The subscription is not in a state that allows this change.", problem.GetProperty("title").GetString());
+        Assert.Equal(paused.GetProperty("version").GetInt64(), problem.GetProperty("currentVersion").GetInt64());
+        var names = problem.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToList();
+        var concurrency = new List<string>();
+        using (var stale = await host.SendAsync(HttpMethod.Post, $"{Base}/{id}/pause", ifMatch: ETag(added)))
+        {
+            concurrency = [.. (await ApiTestHost.JsonAsync(stale)).EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal)];
+        }
+
+        Assert.Equal(concurrency, names);
+    }
 }

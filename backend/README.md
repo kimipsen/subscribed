@@ -75,13 +75,43 @@ creates the table, records version 2 and re-applies `grants.sql`, and readiness 
 | --- | --- |
 | `src/Subscribed.Platform` | `SubscribedStore` (only Marten configuration), `EventStoreErrors.Map` (only library-aware error code), `Database/grants.sql` (embedded, single source), `SchemaMigrator` + `SchemaVersion`, `ReadinessProbe`, `MartenXmlRepository` (DP keys), RFC 9457 `Problem`, `MemberIdentity`, `SecurityLog` |
 | `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler |
-| `src/Subscribed.Subscriptions` | nine `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints |
+| `src/Subscribed.Subscriptions` | eleven `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints |
 | `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli` |
 | `tests/Subscribed.UnitTests` | invariants (AC7), golden event fixtures + unknown alias (AC6), validators, error map |
 | `tests/Subscribed.Persistence.Tests` | AC1–AC5, AC19, AC20 on PostgreSQL 18 as the least-privilege role |
 | `tests/Subscribed.Api.Tests` | HTTP tests on TestServer with the in-process stub IdP (AC8–AC15, AC12b, AC21), child-process startup tests (AC13), admin CLI |
 | `tests/Subscribed.TestSupport` | PostgreSQL fixture, stub OpenID Provider, log capture (test-only; no production bypass) |
 
+## Pausing a subscription
+
+A household member can pause a subscription and resume it later. Nothing is deleted and no price changes: pausing only
+takes the subscription out of the totals.
+
+| Endpoint | Success | Notes |
+| --- | --- | --- |
+| `POST /api/subscriptions/{id}/pause` | `200` with the subscription detail and a new `ETag` | appends `subscription.paused.v1` |
+| `POST /api/subscriptions/{id}/resume` | `200` with the subscription detail and a new `ETag` | appends `subscription.resumed.v1` |
+
+Both take no body and use the same `If-Match` pipeline as the other writes, in this order: malformed id `404`, `If-Match`
+missing `428` or malformed `400`, removed or unknown subscription `404`, stale version `412`, state rule `409`, then the append
+(`412` if another writer won the race). The stale-version check runs before the state rule, so a stale `If-Match` on a
+subscription that is already paused answers `412`, not `409`.
+
+- **Problem code `invalid-subscription-state` (`409`).** Pausing a subscription that is already paused, or resuming one that is
+  not paused, is rejected rather than treated as a no-op. The problem body carries `currentVersion`, like the `412`, so a client can refresh.
+- **Status precedence.** `status` is `paused` only when the subscription would otherwise be `active`. `not-started` and
+  `ended` win over a pause, because the dates stay authoritative. A pause is allowed in any non-removed state. The flag is kept:
+  a paused subscription whose end date is later cleared shows `paused` until it is resumed.
+- **DTOs.** Both the overview row and the detail carry `paused` (the flag itself, which the UI uses to offer Resume even when
+  `status` shows `ended` or `not-started`). The overview row also carries `version`, the `If-Match` value for a row action.
+- **Totals.** Per-currency totals and the active count include `active` subscriptions only, so a paused one is excluded.
+  Price history and the current price are unchanged by a pause.
+- **History view.** `priceHistory` lists price entries only. Pause and resume events are not shown there.
+- **Roll forward only.** Once a `subscription.paused.v1` or `subscription.resumed.v1` event exists, rolling the backend back to a
+  version that does not know them fails stream reads with `UnknownSubscriptionEventAliasException`. Recover by redeploying the new version.
+  Deploy the backend before or together with the frontend: the new UI reads `version` from the overview rows, which an old backend does not send.
+- **Existing data.** Existing streams and snapshot rows are valid as they are: a stored snapshot without `paused` or `pausedAt`
+  loads as not paused, and `admin projections rebuild` reproduces the flag from the events. No migration is needed.
 ## Subscription catalog
 
 A curated, read-only catalog of known services lives in

@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, Injector, afterNextRender, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
@@ -24,6 +24,7 @@ const STATUS_KEYS: Readonly<Record<SubscriptionStatus, MessageKey>> = {
   active: 'subscriptions.status.active',
   'not-started': 'subscriptions.status.not-started',
   ended: 'subscriptions.status.ended',
+  paused: 'subscriptions.status.paused',
 };
 
 /** Cadence as a catalog message: "Monthly", "Every 3 months", ... */
@@ -35,6 +36,13 @@ export function cadenceMessage(unit: Price['cadenceUnit'], count: number): Messa
   return { key, params: { count: String(count) } };
 }
 
+const FAILURE_KEYS: Record<number, MessageKey> = {
+  412: 'subscriptions.form.conflict',
+  409: 'subscriptions.pauseInvalid',
+  403: 'subscriptions.form.forbidden',
+  404: 'subscriptions.notFound',
+};
+
 @Component({
   selector: 'app-subscription-overview',
   imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo],
@@ -43,11 +51,17 @@ export function cadenceMessage(unit: Price['cadenceUnit'], count: number): Messa
 export class SubscriptionOverviewComponent {
   readonly i18n = inject(LanguageService);
   private readonly service = inject(SubscriptionsService);
+  private readonly injector = inject(Injector);
   readonly loading = signal(true);
   readonly failed = signal(false);
   readonly reference = signal<string | undefined>(undefined);
   readonly overview = signal<SubscriptionOverview | null>(null);
   readonly notice = signal<Message | null>(null);
+
+  /** The row whose pause or resume request is in flight: every action button is disabled meanwhile, so a double click sends one request. */
+  readonly acting = signal<string | null>(null);
+  readonly actionProblem = signal<Message | null>(null);
+  readonly actionTrace = signal<string | undefined>(undefined);
 
   /** The API sorts by name ordinally; the screen re-sorts with the active language's collation, then start date, then id. */
   readonly rows = computed<SubscriptionSummary[]>(() => {
@@ -95,6 +109,52 @@ export class SubscriptionOverviewComponent {
         this.reference.set((error.error as ApiProblem | null)?.traceId);
       },
     });
+  }
+
+  /** Pause is offered on active rows only. Resume follows the flag, so it stays reachable when the dates show `ended` or `not-started`. */
+  canPause(row: SubscriptionSummary): boolean {
+    return row.status === 'active' && !row.paused;
+  }
+
+  toggle(row: SubscriptionSummary): void {
+    if (this.acting() !== null || !(row.paused || this.canPause(row))) return;
+    const pausing = !row.paused;
+    this.acting.set(row.id);
+    this.actionProblem.set(null);
+    this.actionTrace.set(undefined);
+    this.notice.set(null);
+    (pausing ? this.service.pause(row.id, row.version) : this.service.resume(row.id, row.version)).subscribe({
+      next: () => {
+        this.acting.set(null);
+        this.notice.set({ key: pausing ? 'subscriptions.paused' : 'subscriptions.resumed', params: { name: row.name } });
+        this.refresh(row.id);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.acting.set(null);
+        this.fail(error);
+        // The row's version may be stale, so the overview is reloaded whatever went wrong.
+        this.refresh(row.id);
+      },
+    });
+  }
+
+  /** Reloads the rows in place: no skeleton, so the table and the keyboard focus stay put. */
+  private refresh(focusRow: string): void {
+    this.service.overview().subscribe({
+      next: (overview) => {
+        this.overview.set(overview);
+        afterNextRender(() => document.querySelector<HTMLElement>(`#action-${focusRow}`)?.focus(), { injector: this.injector });
+      },
+      error: (error: HttpErrorResponse) => {
+        this.failed.set(true);
+        this.reference.set((error.error as ApiProblem | null)?.traceId);
+      },
+    });
+  }
+
+  private fail(error: HttpErrorResponse): void {
+    this.actionTrace.set((error.error as ApiProblem | null)?.traceId);
+    this.actionProblem.set({ key: FAILURE_KEYS[error.status] ?? 'subscriptions.form.saveFailed' });
   }
 
   selectCategory(value: string): void {

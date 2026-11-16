@@ -1,6 +1,6 @@
 // Wire types for /api/subscriptions. Amounts are decimal strings: the browser never uses Number or floats for money (only exact BigInt sums in money.ts).
 
-export type SubscriptionStatus = 'active' | 'not-started' | 'ended';
+export type SubscriptionStatus = 'active' | 'not-started' | 'ended' | 'paused';
 export type CadenceUnit = 'week' | 'month' | 'year';
 
 export interface Price {
@@ -13,11 +13,15 @@ export interface Price {
 
 export interface SubscriptionSummary {
   id: string;
+  /** The stream version: the `If-Match` value for pause and resume from an overview row. */
+  version: number;
   name: string;
   category: string | null;
   catalogId: string | null;
   logoUrl: string | null;
   status: SubscriptionStatus;
+  /** The pause flag. `status` shows `paused` only when the dates would otherwise make it active, so Resume follows this flag. */
+  paused: boolean;
   startDate: string;
   endDate: string | null;
   currency: string;
@@ -72,6 +76,7 @@ export interface SubscriptionDetail {
   logoUrl: string | null;
   notes: string | null;
   status: SubscriptionStatus;
+  paused: boolean;
   startDate: string;
   endDate: string | null;
   currency: string;

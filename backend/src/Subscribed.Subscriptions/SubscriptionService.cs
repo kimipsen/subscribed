@@ -67,6 +67,14 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
     public Task<SubscriptionState> RemoveAsync(string id, long expectedVersion, WriteContext context, CancellationToken ct = default) =>
         WriteAsync(id, expectedVersion, history => SubscriptionDecisions.Remove(history, time.GetUtcNow()), context, ct);
 
+    /// <summary>Appends <c>subscription.paused.v1</c>. A paused subscription is rejected with <see cref="SubscriptionStateException"/>.</summary>
+    public Task<SubscriptionState> PauseAsync(string id, long expectedVersion, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.Pause(history, time.GetUtcNow()), context, ct);
+
+    /// <summary>Appends <c>subscription.resumed.v1</c>. A subscription that is not paused is rejected with <see cref="SubscriptionStateException"/>.</summary>
+    public Task<SubscriptionState> ResumeAsync(string id, long expectedVersion, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.Resume(history, time.GetUtcNow()), context, ct);
+
     /// <summary>
     /// Fetch and rehydrate → 404 if missing or removed → stale version is a conflict → decide → append at version + N → one
     /// <c>SaveChanges</c>. A decision with no events skips the append and returns the loaded document (no new version).

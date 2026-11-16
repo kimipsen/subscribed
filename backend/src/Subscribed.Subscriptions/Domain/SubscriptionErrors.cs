@@ -9,6 +9,22 @@ public sealed class SubscriptionValidationException(IReadOnlyDictionary<string, 
 /// <summary>Unknown, malformed or removed subscriptions, and unknown price-entry ids.</summary>
 public sealed class SubscriptionNotFoundException() : Exception("Subscription not found.");
 
+/// <summary>
+/// A command that the subscription's current state does not allow: pausing a paused subscription, or resuming one that is not
+/// paused. Maps to HTTP 409. The message is English and never shown by the UI.
+/// </summary>
+public sealed class SubscriptionStateException : Exception
+{
+    private SubscriptionStateException(string message)
+        : base(message)
+    {
+    }
+
+    public static SubscriptionStateException AlreadyPaused() => new("The subscription is already paused.");
+
+    public static SubscriptionStateException NotPaused() => new("The subscription is not paused.");
+}
+
 internal sealed class FieldErrors
 {
     private readonly Dictionary<string, List<string>> _errors = new(StringComparer.Ordinal);

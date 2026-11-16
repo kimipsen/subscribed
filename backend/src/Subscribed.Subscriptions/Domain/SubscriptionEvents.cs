@@ -35,6 +35,9 @@ public sealed record SubscriptionPriceEntryRemoved(string EntryId, DateTimeOffse
 
 public sealed record SubscriptionRemoved(DateTimeOffset RecordedAt);
 
+public sealed record SubscriptionPaused(DateTimeOffset RecordedAt);
+
+public sealed record SubscriptionResumed(DateTimeOffset RecordedAt);
 /// <summary>Links the subscription to a catalog entry, or unlinks it when <paramref name="CatalogId"/> is null.</summary>
 public sealed record SubscriptionCatalogLinked(string? CatalogId, DateTimeOffset RecordedAt);
 
@@ -55,6 +58,8 @@ public static class SubscriptionEventTypes
     public const string PriceEntryCorrected = "subscription.price_entry_corrected.v1";
     public const string PriceEntryRemoved = "subscription.price_entry_removed.v1";
     public const string Removed = "subscription.removed.v1";
+    public const string Paused = "subscription.paused.v1";
+    public const string Resumed = "subscription.resumed.v1";
     public const string CatalogLinked = "subscription.catalog_linked.v1";
 
     public static readonly IReadOnlyDictionary<string, Type> ByAlias = new Dictionary<string, Type>(StringComparer.Ordinal)
@@ -67,6 +72,8 @@ public static class SubscriptionEventTypes
         [PriceEntryCorrected] = typeof(SubscriptionPriceEntryCorrected),
         [PriceEntryRemoved] = typeof(SubscriptionPriceEntryRemoved),
         [Removed] = typeof(SubscriptionRemoved),
+        [Paused] = typeof(SubscriptionPaused),
+        [Resumed] = typeof(SubscriptionResumed),
         [CatalogLinked] = typeof(SubscriptionCatalogLinked),
     };
 

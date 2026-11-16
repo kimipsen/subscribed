@@ -40,6 +40,8 @@ public static class SubscriptionEndpoints
         group.MapPost("{id}/prices", AddPriceAsync);
         group.MapPut("{id}/prices/{entryId}", CorrectPriceAsync);
         group.MapDelete("{id}/prices/{entryId}", RemovePriceAsync);
+        group.MapPost("{id}/pause", PauseAsync);
+        group.MapPost("{id}/resume", ResumeAsync);
         return endpoints;
     }
 
@@ -127,6 +129,16 @@ public static class SubscriptionEndpoints
                 state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK))
             : Task.FromResult(NotFound());
 
+    private static Task<IResult> PauseAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
+        MutateNoBodyAsync(id, context, service, loggers,
+            (bare, version, write) => service.PauseAsync(bare, version, write, context.RequestAborted),
+            state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
+
+    private static Task<IResult> ResumeAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
+        MutateNoBodyAsync(id, context, service, loggers,
+            (bare, version, write) => service.ResumeAsync(bare, version, write, context.RequestAborted),
+            state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
+
     private static Task<IResult> RemoveAsync(string id, HttpContext context, SubscriptionService service, ILoggerFactory loggers) =>
         MutateNoBodyAsync(id, context, service, loggers,
             (bare, version, write) => service.RemoveAsync(bare, version, write, context.RequestAborted),
@@ -138,7 +150,7 @@ public static class SubscriptionEndpoints
 
     /// <summary>
     /// Mutating requests are processed in this order: 1 id format (404), 2 If-Match (428 / 400), 3 body (413, 415, 400), 4 field
-    /// shape (400), then the service: 5 load (404), 6 stale version (412), 7 invariants (400), 8 append (412 on a race).
+    /// shape (400), then the service: 5 load (404), 6 stale version (412), 7 invariants (400 validation, 409 state), 8 append (412 on a race).
     /// </summary>
     private static async Task<IResult> MutateAsync<TRequest, TCommand>(
         string id,
@@ -220,6 +232,14 @@ public static class SubscriptionEndpoints
         catch (SubscriptionValidationException ex)
         {
             return Invalid(ex);
+        }
+        catch (SubscriptionStateException)
+        {
+            var current = await service.GetAsync(bare, context.RequestAborted).ConfigureAwait(false);
+            return current is null
+                ? NotFound()
+                : Problem.Result(409, ProblemCodes.InvalidSubscriptionState, "The subscription is not in a state that allows this change.",
+                    new Dictionary<string, object?> { ["currentVersion"] = current.Version });
         }
         catch (EventStoreException ex) when (ex.Failure.Kind == EventStoreFailureKind.ConcurrencyConflict)
         {
