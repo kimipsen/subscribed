@@ -61,6 +61,7 @@ export class SubscriptionDetailPage {
   readonly saving = signal(false);
   readonly conflict = signal(false);
   readonly problem = signal<Message | null>(null);
+  readonly notice = signal<Message | null>(null);
   readonly traceId = signal<string | undefined>(undefined);
 
   // Price-entry form.
@@ -281,6 +282,32 @@ export class SubscriptionDetailPage {
     return Object.keys(errors).length === 0;
   }
 
+  // ---- pause and resume ------------------------------------------------------------------------------
+
+  /** Pause is offered on active subscriptions only. Resume follows the flag, so it stays reachable when the dates show `ended` or `not-started`. */
+  canPause(detail: SubscriptionDetail): boolean {
+    return detail.status === 'active' && !detail.paused;
+  }
+
+  pause(): void {
+    this.togglePause(true);
+  }
+
+  resume(): void {
+    this.togglePause(false);
+  }
+
+  private togglePause(pausing: boolean): void {
+    const detail = this.detail();
+    if (!detail || this.saving() || !(pausing ? this.canPause(detail) : detail.paused)) return;
+    this.clearProblems();
+    const request = pausing ? this.service.pause(detail.id, detail.version) : this.service.resume(detail.id, detail.version);
+    this.run(request, 'other', () => {
+      this.notice.set({ key: pausing ? 'subscriptions.paused' : 'subscriptions.resumed', params: { name: detail.name } });
+      this.focusLater('#pause-toggle');
+    });
+  }
+
   // ---- end, reinstate, remove ------------------------------------------------------------------------
 
   openEnd(): void {
@@ -383,6 +410,10 @@ export class SubscriptionDetailPage {
       this.problem.set({ key: 'subscriptions.form.forbidden' });
     } else if (error.status === 404) {
       this.notFound.set(true);
+    } else if (error.status === 409) {
+      // Only pause and resume answer 409 (the state was already as asked). Show the message and reload the subscription.
+      this.problem.set({ key: 'subscriptions.pauseInvalid' });
+      this.refresh();
     } else if (error.status === 400 && area === 'entry' && body?.errors && this.mapEntryErrors(body.errors)) {
       this.focusLater('.entry-form [aria-invalid="true"]');
     } else if (error.status === 400 && area === 'end' && body?.errors && Object.hasOwn(body.errors, 'endDate')) {
@@ -391,6 +422,16 @@ export class SubscriptionDetailPage {
     } else {
       this.problem.set({ key: 'subscriptions.form.saveFailed' });
     }
+  }
+
+  /** Replaces the detail without touching the messages: a plain `load()` would clear the problem it follows. */
+  private refresh(): void {
+    this.service.detail(this.id).subscribe({
+      next: (detail) => this.detail.set(detail),
+      error: (error: HttpErrorResponse) => {
+        if (error.status === 404) this.notFound.set(true);
+      },
+    });
   }
 
   private mapEntryErrors(errors: Record<string, string[]>): boolean {
@@ -410,6 +451,7 @@ export class SubscriptionDetailPage {
 
   private clearProblems(): void {
     this.problem.set(null);
+    this.notice.set(null);
     this.conflict.set(false);
     this.traceId.set(undefined);
     this.entryErrors.set({});

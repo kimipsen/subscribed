@@ -418,6 +418,123 @@ describe('SubscriptionDetailPage', () => {
     expect(root.textContent).not.toContain(en['subscriptions.form.conflict']);
   });
 
+  // ---- pause and resume ------------------------------------------------------------------------------
+
+  const pauseRequest = (detail: SubscriptionDetail, action: 'pause' | 'resume') =>
+    http.expectOne({ method: 'POST', url: `/api/subscriptions/${detail.id}/${action}` });
+  const toggle = (root: HTMLElement) => root.querySelector<HTMLButtonElement>('#pause-toggle');
+
+  it('offers Pause on an active subscription and sends a body-less POST with the version in If-Match', async () => {
+    const { harness, root, detail } = await open();
+    expect(detail.status).toBe('active');
+    expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.pause']);
+    toggle(root)!.click();
+    const req = pauseRequest(detail, 'pause');
+    expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
+    expect(req.request.body).toBeNull();
+    await respond(harness, req, bump(detail, { status: 'paused', paused: true }));
+
+    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.paused']);
+    expect(el(root, '.summary .badge').classList.contains('status-paused')).toBe(true);
+    expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
+    expect(el(root, '[role=status].status').textContent).toContain(`${detail.name} is paused.`);
+    expect(document.activeElement).toBe(toggle(root));
+    http.expectNone(() => true);
+  });
+
+  it('resumes a paused subscription with the new version and offers Pause again', async () => {
+    const paused = { ...detailFixture(), status: 'paused' as const, paused: true };
+    const { harness, root, detail } = await open(paused);
+    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.paused']);
+    toggle(root)!.click();
+    const req = pauseRequest(detail, 'resume');
+    expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
+    await respond(harness, req, bump(detail, { status: 'active', paused: false }));
+    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.active']);
+    expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.pause']);
+    expect(el(root, '[role=status].status').textContent).toContain(`${detail.name} was resumed.`);
+  });
+
+  for (const status of ['ended', 'not-started'] as const) {
+    it(`offers no Pause for a ${status} subscription`, async () => {
+      const { root } = await open({ ...detailFixture(), status, paused: false });
+      expect(toggle(root)).toBeNull();
+    });
+
+    it(`offers Resume for a ${status} subscription whose pause flag is set, so the flag cannot get stuck`, async () => {
+      const { root } = await open({ ...detailFixture(), status, paused: true });
+      expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
+      expect(el(root, '.summary .badge').textContent?.trim()).toBe(en[`subscriptions.status.${status}`]);
+    });
+  }
+
+  it('sends exactly one request for a double click and keeps the button disabled while it is in flight', async () => {
+    const { harness, root, detail } = await open();
+    const button = toggle(root)!;
+    button.click();
+    button.click();
+    harness.detectChanges();
+    expect(toggle(root)?.disabled).toBe(true);
+    const req = pauseRequest(detail, 'pause');
+    await respond(harness, req, bump(detail, { status: 'paused', paused: true }));
+    expect(toggle(root)?.disabled).toBe(false);
+  });
+
+  it('shows the conflict banner on a 412 and reloads on request', async () => {
+    const { harness, root, detail } = await open();
+    toggle(root)!.click();
+    pauseRequest(detail, 'pause').flush({ traceId: 't', currentVersion: detail.version + 1 }, { status: 412, statusText: 'Precondition Failed' });
+    await settle(harness);
+    expect(el(root, '.notice[role=alert]').textContent).toContain(en['subscriptions.form.conflict']);
+    expect(root.querySelector('[role=status].status')).toBeNull();
+    buttonByText(root, en['subscriptions.form.reloadLatest']).click();
+    request(detail).flush(bump(detail, { status: 'paused', paused: true }));
+    await settle(harness);
+    expect(root.textContent).not.toContain(en['subscriptions.form.conflict']);
+    expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
+  });
+
+  it('shows the invalid-state message on a 409 and reloads the subscription without clearing the message', async () => {
+    const { harness, root, detail } = await open();
+    toggle(root)!.click();
+    pauseRequest(detail, 'pause').flush({ traceId: 'trace-409', currentVersion: detail.version + 1 }, { status: 409, statusText: 'Conflict' });
+    request(detail).flush(bump(detail, { status: 'paused', paused: true }));
+    await settle(harness);
+    expect(el(root, 'p.error[role=alert]').textContent).toContain(en['subscriptions.pauseInvalid']);
+    expect(root.textContent).toContain('trace-409');
+    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.paused']);
+    expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
+    expect(el(root, 'p.error[role=alert]').textContent).not.toContain(en['subscriptions.form.saveFailed']);
+  });
+
+  it('shows the generic failure with the trace id for any other error, never backend English', async () => {
+    const { harness, root, detail } = await open();
+    toggle(root)!.click();
+    pauseRequest(detail, 'pause').flush({ traceId: 'trace-500', title: 'Backend English' }, { status: 500, statusText: 'Server Error' });
+    await settle(harness);
+    expect(el(root, 'p.error[role=alert]').textContent).toContain(en['subscriptions.form.saveFailed']);
+    expect(root.textContent).toContain('trace-500');
+    expect(root.textContent).not.toContain('Backend English');
+    expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.pause']);
+    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.active']);
+  });
+
+  it('shows "not found" when the subscription was removed meanwhile (404)', async () => {
+    const { harness, root, detail } = await open();
+    toggle(root)!.click();
+    pauseRequest(detail, 'pause').flush({ traceId: 't' }, { status: 404, statusText: 'Not Found' });
+    await settle(harness);
+    expect(root.textContent).toContain(en['subscriptions.notFound']);
+  });
+
+  it('renders a paused subscription in Danish with no English application copy', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const { root } = await open({ ...detailFixture(), status: 'paused', paused: true });
+    expect(el(root, '.summary .badge').textContent?.trim()).toBe(da['subscriptions.status.paused']);
+    expect(toggle(root)?.textContent?.trim()).toBe(da['subscriptions.resume']);
+    expect(englishLeftovers(root)).toEqual([]);
+  });
+
   // ---- language --------------------------------------------------------------------------------------
 
   it('renders in Danish with no English application copy', async () => {

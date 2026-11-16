@@ -92,7 +92,7 @@ describe('SubscriptionOverviewComponent', () => {
   it('has a caption, column headers, row headers that link to the detail page, and a focusable scroll region', async () => {
     const root = element(await render());
     expect(root.querySelector('caption')?.textContent).toContain(en['subscriptions.tableCaption']);
-    expect(root.querySelectorAll('thead th[scope=col]').length).toBe(6);
+    expect(root.querySelectorAll('thead th[scope=col]').length).toBe(7);
     const link = rowFor(root, 'StreamCo').querySelector('th[scope=row] a');
     expect(link?.getAttribute('href')).toMatch(/^\/subscriptions\/[0-9a-f]{32}$/);
     const region = root.querySelector('.table-scroll');
@@ -155,5 +155,176 @@ describe('SubscriptionOverviewComponent', () => {
     expect(rowFor(root, 'StreamCo').querySelector('.badge')?.textContent?.trim()).toBe(da['subscriptions.status.active']);
     expect(englishLeftovers(root)).toEqual([]);
     http.expectNone(() => true);
+  });
+
+  // ---- pause and resume ------------------------------------------------------------------------------
+
+  describe('pause and resume', () => {
+    /** StreamCo is active, KidsClub not-started, SportsLive ended, VideoTube paused; versions are distinct so the header is checkable. */
+    function data(): SubscriptionOverview {
+      const overview = overviewFixture();
+      const by = (name: string) => overview.subscriptions.find((s) => s.name === name)!;
+      by('StreamCo').version = 7;
+      by('VideoTube').status = 'paused';
+      by('VideoTube').paused = true;
+      by('VideoTube').version = 5;
+      return overview;
+    }
+
+    const actionFor = (root: HTMLElement, name: string) => rowFor(root, name).querySelector('td button') as HTMLButtonElement | null;
+    const idOf = (overview: SubscriptionOverview, name: string) => overview.subscriptions.find((s) => s.name === name)!.id;
+
+    it('offers Pause on active rows and Resume on paused rows only, with names that identify the row', async () => {
+      const root = element(await render(data()));
+      expect(actionFor(root, 'StreamCo')?.textContent?.trim()).toBe(en['subscriptions.pause']);
+      expect(actionFor(root, 'StreamCo')?.getAttribute('aria-label')).toBe('Pause StreamCo');
+      expect(actionFor(root, 'VideoTube')?.textContent?.trim()).toBe(en['subscriptions.resume']);
+      expect(actionFor(root, 'VideoTube')?.getAttribute('aria-label')).toBe('Resume VideoTube');
+      expect(rowFor(root, 'VideoTube').querySelector('.status-paused')?.textContent?.trim()).toBe(en['subscriptions.status.paused']);
+      expect(actionFor(root, 'KidsClub')).toBeNull();
+      expect(actionFor(root, 'SportsLive')).toBeNull();
+      expect(root.textContent).toContain(en['subscriptions.col.actions']);
+    });
+
+    it('keeps Resume reachable when the flag is set but the dates show ended or not-started', async () => {
+      const overview = data();
+      for (const [name, status] of [['KidsClub', 'not-started'], ['SportsLive', 'ended']] as const) {
+        const row = overview.subscriptions.find((s) => s.name === name)!;
+        row.paused = true;
+        expect(row.status).toBe(status);
+      }
+      const root = element(await render(overview));
+      expect(actionFor(root, 'KidsClub')?.textContent?.trim()).toBe(en['subscriptions.resume']);
+      expect(actionFor(root, 'SportsLive')?.textContent?.trim()).toBe(en['subscriptions.resume']);
+      expect(rowFor(root, 'SportsLive').querySelector('.status-ended')).toBeTruthy();
+    });
+
+    it('posts the pause with the row version in If-Match and no body, reloads and says so politely', async () => {
+      const overview = data();
+      const fixture = await render(overview);
+      const root = element(fixture);
+      actionFor(root, 'StreamCo')!.click();
+      const post = http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'StreamCo')}/pause` });
+      expect(post.request.headers.get('If-Match')).toBe('"7"');
+      expect(post.request.body).toBeNull();
+
+      const after = structuredClone(overview);
+      const row = after.subscriptions.find((s) => s.name === 'StreamCo')!;
+      row.status = 'paused';
+      row.paused = true;
+      row.version = 8;
+      post.flush({});
+      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(after);
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(rowFor(root, 'StreamCo').querySelector('.status-paused')).toBeTruthy();
+      expect(actionFor(root, 'StreamCo')?.textContent?.trim()).toBe(en['subscriptions.resume']);
+      expect(root.querySelector('[role=status].status')?.textContent).toContain('StreamCo is paused.');
+      expect(root.querySelector('[role=alert]')).toBeNull();
+    });
+
+    it('posts the resume for a paused row and then offers Pause again', async () => {
+      const overview = data();
+      const fixture = await render(overview);
+      const root = element(fixture);
+      actionFor(root, 'VideoTube')!.click();
+      const post = http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'VideoTube')}/resume` });
+      expect(post.request.headers.get('If-Match')).toBe('"5"');
+      expect(post.request.body).toBeNull();
+
+      const after = structuredClone(overview);
+      const row = after.subscriptions.find((s) => s.name === 'VideoTube')!;
+      row.status = 'active';
+      row.paused = false;
+      row.version = 6;
+      post.flush({});
+      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(after);
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(actionFor(root, 'VideoTube')?.textContent?.trim()).toBe(en['subscriptions.pause']);
+      expect(root.querySelector('[role=status].status')?.textContent).toContain('VideoTube was resumed.');
+    });
+
+    it('sends exactly one request for a double click and disables every action button while it is in flight', async () => {
+      const overview = data();
+      const fixture = await render(overview);
+      const root = element(fixture);
+      const button = actionFor(root, 'StreamCo')!;
+      button.click();
+      button.click();
+      actionFor(root, 'VideoTube')!.click();
+      fixture.detectChanges();
+      const post = http.expectOne((r) => r.method === 'POST');
+      expect(Array.from(root.querySelectorAll<HTMLButtonElement>('td button')).every((b) => b.disabled)).toBe(true);
+      post.flush({});
+      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(overview);
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(Array.from(root.querySelectorAll<HTMLButtonElement>('td button')).every((b) => !b.disabled)).toBe(true);
+    });
+
+    it('shows the conflict message on a 412 and reloads the overview for the new version', async () => {
+      const overview = data();
+      const fixture = await render(overview);
+      const root = element(fixture);
+      actionFor(root, 'StreamCo')!.click();
+      http.expectOne((r) => r.method === 'POST').flush({ traceId: 'trace-412', currentVersion: 9 }, { status: 412, statusText: 'Precondition Failed' });
+      const reloaded = structuredClone(overview);
+      reloaded.subscriptions.find((s) => s.name === 'StreamCo')!.version = 9;
+      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(reloaded);
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(root.querySelector('[role=alert]')?.textContent).toContain(en['subscriptions.form.conflict']);
+      expect(root.querySelector('[role=status].status')).toBeNull();
+
+      actionFor(root, 'StreamCo')!.click();
+      const retry = http.expectOne((r) => r.method === 'POST');
+      expect(retry.request.headers.get('If-Match')).toBe('"9"');
+      retry.flush({});
+      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(reloaded);
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(root.querySelector('[role=alert]')).toBeNull();
+    });
+
+    it('shows the invalid-state message on a 409 and reloads the overview', async () => {
+      const overview = data();
+      const fixture = await render(overview);
+      const root = element(fixture);
+      actionFor(root, 'VideoTube')!.click();
+      http.expectOne((r) => r.method === 'POST').flush({ traceId: 't', currentVersion: 5 }, { status: 409, statusText: 'Conflict' });
+      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(overview);
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(root.querySelector('[role=alert]')?.textContent).toContain(en['subscriptions.pauseInvalid']);
+    });
+
+    it('shows the generic failure with the trace id for any other error and never backend English', async () => {
+      const overview = data();
+      const fixture = await render(overview);
+      const root = element(fixture);
+      actionFor(root, 'StreamCo')!.click();
+      http.expectOne((r) => r.method === 'POST').flush({ traceId: 'trace-500', title: 'Backend English' }, { status: 500, statusText: 'Server Error' });
+      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(overview);
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const alert = root.querySelector('[role=alert]')?.textContent ?? '';
+      expect(alert).toContain(en['subscriptions.form.saveFailed']);
+      expect(alert).toContain('trace-500');
+      expect(alert).not.toContain('Backend English');
+    });
+
+    it('renders the paused row and the action labels in Danish with no English application copy', async () => {
+      TestBed.inject(LanguageService).setLanguage('da');
+      const root = element(await render(data()));
+      expect(rowFor(root, 'VideoTube').querySelector('.status-paused')?.textContent?.trim()).toBe(da['subscriptions.status.paused']);
+      expect(actionFor(root, 'VideoTube')?.textContent?.trim()).toBe(da['subscriptions.resume']);
+      expect(actionFor(root, 'VideoTube')?.getAttribute('aria-label')).toBe('Genoptag VideoTube');
+      expect(actionFor(root, 'StreamCo')?.textContent?.trim()).toBe(da['subscriptions.pause']);
+      expect(englishLeftovers(root)).toEqual([]);
+    });
   });
 });
