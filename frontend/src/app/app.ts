@@ -8,6 +8,7 @@ import { LanguageService, MessageKey } from './i18n/i18n';
 import { SUPPORTED_LANGUAGES, isLanguage } from './i18n/languages';
 import { TranslatePipe } from './i18n/translate.pipe';
 import { THEME_MODES, ThemeMode, ThemeService, isThemeMode } from './theme/theme';
+import { APP_VERSION } from './version';
 
 @Component({
   selector: 'app-root',
@@ -29,6 +30,8 @@ export class App {
   readonly session = inject(SessionService);
   readonly router = inject(Router);
   readonly menuOpen = signal(false);
+  protected readonly version = APP_VERSION;
+  protected readonly repoUrl = 'https://github.com/kimipsen/subscribed';
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
 
   onLanguage(value: string): void {

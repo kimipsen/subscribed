@@ -318,6 +318,111 @@ public sealed class EventStoreTests(PostgresFixture pg)
         Assert.NotNull(revoked.FindMember(Issuer, "subject-b"));
     }
 
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Fact]
+    public async Task Relabel_bumps_version_stores_actor_and_updates_only_that_member_in_the_view()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var changedAt = new DateTimeOffset(2026, 3, 4, 5, 6, 7, TimeSpan.Zero);
+        var service = new HouseholdService(store, new FixedTimeProvider(changedAt));
+        var created = await InitAsync(service);
+        var granted = await service.GrantAsync(Issuer, "subject-b", "Member B", Admin, Ct);
+        var memberA = created.Members.Single().MemberId;
+        var memberB = granted.FindMember(Issuer, "subject-b")!.MemberId;
+        var actor = WriteContext.Member(memberA, "corr-relabel");
+
+        var relabeled = await service.ChangeMemberLabelAsync(granted.Version, memberB, "  Better B  ", actor, Ct);
+
+        Assert.Equal(granted.Version + 1, relabeled.Version);
+        Assert.Equal("Better B", relabeled.FindMember(Issuer, "subject-b")!.DisplayLabel);
+        Assert.Equal("Member A", relabeled.FindMember(Issuer, "subject-a")!.DisplayLabel);
+        Assert.Equal(granted.FindMember(Issuer, "subject-b")!.GrantedAt, relabeled.FindMember(Issuer, "subject-b")!.GrantedAt);
+        Assert.Equal(memberB, relabeled.FindMember(Issuer, "subject-b")!.MemberId);
+
+        var type = await db.ScalarAsMigratorAsync<string>($"SELECT type FROM subscribed.mt_events WHERE stream_id = 'household-default' AND version = {relabeled.Version}");
+        Assert.Equal("household.member_label_changed.v1", type);
+        var headers = await db.ScalarAsMigratorAsync<string>($"SELECT headers::text FROM subscribed.mt_events WHERE stream_id = 'household-default' AND version = {relabeled.Version}");
+        Assert.Contains($"member:{memberA}", headers, StringComparison.Ordinal);
+        Assert.Contains("corr-relabel", headers, StringComparison.Ordinal);
+        var aggregate = await service.LoadAggregateAsync(Ct);
+        Assert.Equal(relabeled.Version, aggregate.Version);
+    }
+
+    [Fact]
+    public async Task Relabel_with_a_stale_expected_version_is_a_concurrency_conflict()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new HouseholdService(store, TimeProvider.System);
+        var created = await InitAsync(service);
+        var memberId = created.Members.Single().MemberId;
+        await service.RenameAsync(created.Version, "Moved On", Admin, Ct);
+
+        var ex = await Assert.ThrowsAsync<EventStoreException>(() => service.ChangeMemberLabelAsync(created.Version, memberId, "Stale", Admin, Ct));
+        Assert.Equal(EventStoreFailureKind.ConcurrencyConflict, ex.Failure.Kind);
+        Assert.Equal("Member A", (await service.GetViewAsync(Ct))!.Members.Single().DisplayLabel);
+    }
+
+    [Fact]
+    public async Task Relabel_to_the_current_label_is_a_noop_without_a_new_event()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new HouseholdService(store, TimeProvider.System);
+        var created = await InitAsync(service);
+        var memberId = created.Members.Single().MemberId;
+
+        var same = await service.ChangeMemberLabelAsync(null, memberId, " Member A ", Admin, Ct);
+
+        Assert.Equal(created.Version, same.Version);
+        Assert.Equal(created.Version, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM subscribed.mt_events WHERE stream_id = 'household-default'"));
+    }
+
+    [Fact]
+    public async Task Relabel_after_projection_rebuild_reproduces_the_new_label_in_the_view_row()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new HouseholdService(store, TimeProvider.System);
+        var created = await InitAsync(service);
+        var memberId = created.Members.Single().MemberId;
+        var relabeled = await service.ChangeMemberLabelAsync(null, memberId, "After Rebuild", Admin, Ct);
+        var before = await db.ScalarAsMigratorAsync<string>("SELECT data::text FROM subscribed.mt_doc_household_view WHERE id = 'household-default'");
+
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_household_view");
+        await using (var migrator = MigratorStore(db))
+        {
+            Assert.Equal(1, await HouseholdProjectionRebuilder.RebuildAsync(migrator, Ct));
+        }
+
+        var rebuilt = await service.GetViewAsync(Ct);
+        Assert.Equal("After Rebuild", rebuilt!.Members.Single().DisplayLabel);
+        Assert.Equal(relabeled.Version, rebuilt.Version);
+        Assert.Equal(before, await db.ScalarAsMigratorAsync<string>("SELECT data::text FROM subscribed.mt_doc_household_view WHERE id = 'household-default'"));
+    }
+
+    [Fact]
+    public async Task Relabel_of_a_revoked_or_unknown_member_is_not_a_member()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new HouseholdService(store, TimeProvider.System);
+        var created = await InitAsync(service);
+        var ownerId = created.Members.Single().MemberId;
+        await service.GrantAsync(Issuer, "subject-b", "Member B", Admin, Ct);
+        await service.RevokeAsync(ownerId, Admin, Ct);
+
+        var revoked = await Assert.ThrowsAsync<HouseholdDomainException>(() => service.ChangeMemberLabelAsync(null, ownerId, "Ghost", Admin, Ct));
+        Assert.Equal(HouseholdErrorCodes.NotAMember, revoked.Code);
+        var unknown = await Assert.ThrowsAsync<HouseholdDomainException>(() => service.ChangeMemberLabelAsync(null, "0000000000000000", "Ghost", Admin, Ct));
+        Assert.Equal(HouseholdErrorCodes.NotAMember, unknown.Code);
+    }
+
     private static async Task<Exception?> Capture(Task task)
     {
         try

@@ -58,6 +58,15 @@ public sealed class HouseholdViewProjection : SingleStreamProjection<HouseholdVi
     }
 
     public static void Apply(HouseholdMemberRevoked e, HouseholdView view) => view.Members.RemoveAll(m => m.MemberId == e.MemberId);
+
+    public static void Apply(HouseholdMemberLabelChanged e, HouseholdView view)
+    {
+        var member = view.Members.FirstOrDefault(m => m.MemberId == e.MemberId);
+        if (member is not null)
+        {
+            member.DisplayLabel = e.DisplayLabel;
+        }
+    }
 }
 
 /// <summary>Registers the household events, aliases, view document and inline projection.</summary>

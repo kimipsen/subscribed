@@ -1,7 +1,8 @@
 /// <reference lib="es2023.intl" />
 
 // Money in the browser is text only: it is parsed from input, formatted for display, and sent as a canonical decimal string
-// (a dot, no grouping). It never goes through Number, parseFloat or arithmetic (TS-005).
+// (a dot, no grouping). It never goes through Number or parseFloat (TS-005). The one arithmetic allowed is exact integer
+// BigInt addition of canonical strings in sumDecimalStrings (used for per-category group totals).
 
 /** The active language's decimal separator, without Intl grouping: "." for en-GB and "," for da-DK. */
 export function decimalSeparator(locale: string): string {
@@ -59,4 +60,33 @@ export function parseAmountInput(text: string, locale: string, minorUnit: number
 /** Field text for a canonical decimal string: the dot becomes the language's separator and nothing else changes (never grouped). */
 export function toAmountInput(canonical: string, locale: string): string {
   return canonical.replace('.', decimalSeparator(locale));
+}
+
+const CANONICAL_DECIMAL = /^[0-9]+(?:\.[0-9]+)?$/;
+
+/** Parses a canonical non-negative decimal string into whole minor units, or null when it is malformed for this minor unit. */
+function toMinorUnits(value: string, minorUnit: number): bigint | null {
+  if (!CANONICAL_DECIMAL.test(value)) return null;
+  const [integer, fraction = ''] = value.split('.');
+  if (fraction.length > minorUnit) return null;
+  return BigInt(integer + fraction.padEnd(minorUnit, '0'));
+}
+
+/**
+ * Exactly sums canonical decimal strings in whole minor units (BigInt: no Number, no float) and returns a canonical decimal
+ * string, or null when any input is malformed (empty, "1,50", "abc", a leading "+", or more fraction digits than the minor unit).
+ * It never throws, so a bad value cannot blank a computed view. An empty list sums to zero.
+ *
+ * This is the exact sum of the given (already rounded) strings. It can differ from the server's round-once totals.
+ */
+export function sumDecimalStrings(values: string[], minorUnit: number): string | null {
+  let total = 0n;
+  for (const value of values) {
+    const minor = toMinorUnits(value, minorUnit);
+    if (minor === null) return null;
+    total += minor;
+  }
+  const digits = total.toString().padStart(minorUnit + 1, '0');
+  if (minorUnit === 0) return digits;
+  return `${digits.slice(0, -minorUnit)}.${digits.slice(-minorUnit)}`;
 }

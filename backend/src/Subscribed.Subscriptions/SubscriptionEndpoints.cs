@@ -32,6 +32,7 @@ public static class SubscriptionEndpoints
         var group = endpoints.MapGroup("/api/subscriptions").RequireAuthorization(HouseholdMembership.PolicyName);
         group.MapGet("", OverviewAsync);
         group.MapGet("options", OptionsAsync);
+        group.MapGet("catalog", CatalogAsync);
         group.MapPost("", AddAsync);
         group.MapGet("{id}", GetAsync);
         group.MapPut("{id}", UpdateAsync);
@@ -44,10 +45,11 @@ public static class SubscriptionEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> OverviewAsync(HttpContext context, SubscriptionService service, TimeProvider time)
+    private static async Task<IResult> OverviewAsync(HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers)
     {
         var subscriptions = await service.ListAsync(context.RequestAborted).ConfigureAwait(false);
-        return Json(context, SubscriptionOverviewDto.From(subscriptions, SubscriptionCalculator.Today(time)));
+        CatalogLog.WarnIfAnyDangling(loggers.CreateLogger(CatalogLog.Category), subscriptions, catalog);
+        return Json(context, SubscriptionOverviewDto.From(subscriptions, SubscriptionCalculator.Today(time), catalog));
     }
 
     private static async Task<IResult> OptionsAsync(HttpContext context, SubscriptionService service)
@@ -56,7 +58,9 @@ public static class SubscriptionEndpoints
         return Json(context, SubscriptionOptionsDto.From(subscriptions));
     }
 
-    private static async Task<IResult> GetAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time)
+    private static IResult CatalogAsync(HttpContext context, Catalog catalog) => Json(context, CatalogDto.From(catalog));
+
+    private static async Task<IResult> GetAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers)
     {
         if (!SubscriptionIds.TryParse(id, out var bare))
         {
@@ -64,10 +68,10 @@ public static class SubscriptionEndpoints
         }
 
         var state = await service.GetAsync(bare, context.RequestAborted).ConfigureAwait(false);
-        return state is null ? NotFound() : Detail(context, state, time, StatusCodes.Status200OK);
+        return state is null ? NotFound() : Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK);
     }
 
-    private static async Task<IResult> AddAsync(HttpContext context, SubscriptionService service, TimeProvider time)
+    private static async Task<IResult> AddAsync(HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers)
     {
         var body = await JsonRequest.ReadAsync<AddSubscriptionRequest>(context, RequestJson).ConfigureAwait(false);
         if (body.Error is { } error)
@@ -90,7 +94,7 @@ public static class SubscriptionEndpoints
         {
             var created = await service.AddAsync(command, WriteContext.Member(memberId, Problem.TraceId(context)), context.RequestAborted).ConfigureAwait(false);
             context.Response.Headers.Location = "/api/subscriptions/" + SubscriptionIds.Bare(created.Id);
-            return Detail(context, created, time, StatusCodes.Status201Created);
+            return Detail(context, created, time, catalog, loggers, StatusCodes.Status201Created);
         }
         catch (SubscriptionValidationException ex)
         {
@@ -98,42 +102,42 @@ public static class SubscriptionEndpoints
         }
     }
 
-    private static Task<IResult> UpdateAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, ILoggerFactory loggers) =>
+    private static Task<IResult> UpdateAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateAsync<UpdateSubscriptionRequest, DetailsUpdate>(id, context, service, loggers,
             request => SubscriptionDecisions.ParseUpdate(request.ToInput()),
             (bare, version, command, write) => service.UpdateAsync(bare, version, command, write, context.RequestAborted),
-            state => Detail(context, state, time, StatusCodes.Status200OK));
+            state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
-    private static Task<IResult> AddPriceAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, ILoggerFactory loggers) =>
+    private static Task<IResult> AddPriceAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateAsync<PriceEntryRequest, PriceEntryChange>(id, context, service, loggers,
             request => SubscriptionDecisions.ParsePriceEntry(request.ToInput()),
             (bare, version, command, write) => service.AddPriceEntryAsync(bare, version, command, write, context.RequestAborted),
-            state => Detail(context, state, time, StatusCodes.Status200OK));
+            state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
-    private static Task<IResult> CorrectPriceAsync(string id, string entryId, HttpContext context, SubscriptionService service, TimeProvider time, ILoggerFactory loggers) =>
+    private static Task<IResult> CorrectPriceAsync(string id, string entryId, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         SubscriptionIds.TryParse(entryId, out var entry)
             ? MutateAsync<PriceEntryRequest, PriceEntryChange>(id, context, service, loggers,
                 request => SubscriptionDecisions.ParsePriceEntry(request.ToInput()),
                 (bare, version, command, write) => service.CorrectPriceEntryAsync(bare, version, entry, command, write, context.RequestAborted),
-                state => Detail(context, state, time, StatusCodes.Status200OK))
+                state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK))
             : Task.FromResult(NotFound());
 
-    private static Task<IResult> RemovePriceAsync(string id, string entryId, HttpContext context, SubscriptionService service, TimeProvider time, ILoggerFactory loggers) =>
+    private static Task<IResult> RemovePriceAsync(string id, string entryId, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         SubscriptionIds.TryParse(entryId, out var entry)
             ? MutateNoBodyAsync(id, context, service, loggers,
                 (bare, version, write) => service.RemovePriceEntryAsync(bare, version, entry, write, context.RequestAborted),
-                state => Detail(context, state, time, StatusCodes.Status200OK))
+                state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK))
             : Task.FromResult(NotFound());
 
-    private static Task<IResult> PauseAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, ILoggerFactory loggers) =>
+    private static Task<IResult> PauseAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateNoBodyAsync(id, context, service, loggers,
             (bare, version, write) => service.PauseAsync(bare, version, write, context.RequestAborted),
-            state => Detail(context, state, time, StatusCodes.Status200OK));
+            state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
-    private static Task<IResult> ResumeAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, ILoggerFactory loggers) =>
+    private static Task<IResult> ResumeAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateNoBodyAsync(id, context, service, loggers,
             (bare, version, write) => service.ResumeAsync(bare, version, write, context.RequestAborted),
-            state => Detail(context, state, time, StatusCodes.Status200OK));
+            state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
     private static Task<IResult> RemoveAsync(string id, HttpContext context, SubscriptionService service, ILoggerFactory loggers) =>
         MutateNoBodyAsync(id, context, service, loggers,
@@ -248,11 +252,12 @@ public static class SubscriptionEndpoints
         }
     }
 
-    private static IResult Detail(HttpContext context, SubscriptionState state, TimeProvider time, int status)
+    private static IResult Detail(HttpContext context, SubscriptionState state, TimeProvider time, Catalog catalog, ILoggerFactory loggers, int status)
     {
+        CatalogLog.WarnIfDangling(loggers.CreateLogger(CatalogLog.Category), state, catalog);
         context.Response.Headers.ETag = EntityTags.Format(state.Version);
         context.Response.Headers.CacheControl = "no-store";
-        return Results.Json(SubscriptionDetailDto.From(state, SubscriptionCalculator.Today(time)), statusCode: status);
+        return Results.Json(SubscriptionDetailDto.From(state, SubscriptionCalculator.Today(time), catalog), statusCode: status);
     }
 
     private static IResult Json<T>(HttpContext context, T value)

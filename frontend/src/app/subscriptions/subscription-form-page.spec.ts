@@ -11,9 +11,9 @@ import { da } from '../i18n/catalog.da';
 import { SessionService, csrfInterceptor } from '../session';
 import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionFormPage } from './subscription-form-page';
-import { SubscriptionDetail, SubscriptionOptions } from './subscription.models';
+import { Catalog, CatalogPlan, CatalogService, SubscriptionDetail, SubscriptionOptions, SubscriptionOverview } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
-import { detailFixture, optionsFixture, validationProblemFixture } from './testing/fixtures';
+import { catalogFixture, detailFixture, optionsFixture, overviewFixture, overviewWith, validationProblemFixture } from './testing/fixtures';
 import './../app.config';
 
 describe('SubscriptionFormPage', () => {
@@ -38,18 +38,37 @@ describe('SubscriptionFormPage', () => {
 
   const options = (defaultCurrency: string | null = 'DKK'): SubscriptionOptions => ({ ...optionsFixture(), defaultCurrency });
 
-  async function openAdd(data: SubscriptionOptions = options()) {
+  /** The overview the form reads for category suggestions, or 'fail' for a server error. */
+  type OverviewReply = SubscriptionOverview | 'fail';
+  const flushOverview = (reply: OverviewReply) => {
+    const req = http.expectOne('/api/subscriptions');
+    if (reply === 'fail') req.flush({ traceId: 't' }, { status: 503, statusText: 'Unavailable' });
+    else req.flush(reply);
+  };
+
+  /** The catalog request is answered with the fixture, a custom catalog, or a 500 ('fail'). */
+  function flushCatalog(catalog: Catalog | 'fail') {
+    const req = http.expectOne('/api/subscriptions/catalog');
+    if (catalog === 'fail') req.flush({}, { status: 500, statusText: 'Server Error' });
+    else req.flush(catalog);
+  }
+
+  async function openAdd(data: SubscriptionOptions = options(), overview: OverviewReply = overviewFixture(), catalog: Catalog | 'fail' = catalogFixture()) {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(data);
+    flushOverview(overview);
+    flushCatalog(catalog);
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement };
   }
 
-  async function openEdit(detail: SubscriptionDetail = detailFixture()) {
+  async function openEdit(detail: SubscriptionDetail = detailFixture(), overview: OverviewReply = overviewFixture(), catalog: Catalog | 'fail' = catalogFixture()) {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}/edit`, SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(options());
+    flushOverview(overview);
+    flushCatalog(catalog);
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement };
@@ -99,7 +118,7 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.headers.get('X-CSRF')).toBe('1');
     expect(req.request.body).toEqual({
       name: 'StreamCo', category: null, notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
-      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1,
+      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null,
     });
     const created = detailFixture();
     await finishSave(harness, req, created, 201);
@@ -202,7 +221,7 @@ describe('SubscriptionFormPage', () => {
     expect(root.textContent).toContain(en['subscriptions.form.forbidden']);
   });
 
-  it('edits with If-Match and exactly six keys: non-null category and notes are echoed, endDate is an explicit null (D-10)', async () => {
+  it('edits with If-Match and exactly seven keys: non-null category and notes are echoed, endDate is an explicit null (D-10)', async () => {
     const detail = detailFixture();
     const { harness, root } = await openEdit(detail);
     expect(input(root, 'name').value).toBe(detail.name);
@@ -214,7 +233,7 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.method).toBe('PUT');
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     expect(req.request.body).toEqual({
-      name: 'FilmPlus HD', category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null,
+      name: 'FilmPlus HD', category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null, catalogId: null,
     });
     await finishSave(harness, req, { ...detail, name: 'FilmPlus HD', version: detail.version + 1 });
     expect(TestBed.inject(Router).url).toBe(`/subscriptions/${detail.id}`);
@@ -232,6 +251,8 @@ describe('SubscriptionFormPage', () => {
     expect(input(root, 'name').value).toBe('My edit');
     (Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === en['subscriptions.form.reloadLatest']) as HTMLButtonElement).click();
     http.expectOne(`/api/subscriptions/${detail.id}`).flush({ ...detail, name: 'Server name', version: detail.version + 1 });
+    // The overview from the first load is reused, like the options: no second GET /api/subscriptions.
+    http.expectNone('/api/subscriptions');
     await settle(harness);
     expect(input(root, 'name').value).toBe('Server name');
     expect(root.textContent).not.toContain(en['subscriptions.form.conflict']);
@@ -279,5 +300,388 @@ describe('SubscriptionFormPage', () => {
     const { root } = await openAdd();
     expect(root.querySelector('h1')?.textContent).toContain(da['subscriptions.form.addHeading']);
     expect(englishLeftovers(root)).toEqual([]);
+  });
+
+  describe('category suggestions', () => {
+    const datalistValues = (root: HTMLElement) =>
+      Array.from(root.querySelectorAll('datalist#category-suggestions option')).map((option) => (option as HTMLOptionElement).value);
+
+    it('offers the distinct existing categories, never Uncategorized (AC6, AC3)', async () => {
+      const overview = overviewWith([
+        { category: 'Streaming' },
+        { category: ' streaming ' },
+        { category: 'Food  Court' },
+        { category: 'food court' },
+        { category: null },
+        { category: '' },
+        { category: '   ' },
+      ]);
+      const { root } = await openAdd(options(), overview);
+      expect(input(root, 'category').getAttribute('list')).toBe('category-suggestions');
+      expect(datalistValues(root)).toEqual(['Streaming', 'Food Court']);
+    });
+
+    it('still submits free text that is not in the list', async () => {
+      const { harness, root } = await openAdd();
+      await fillValidAdd(root);
+      type(root, 'category', 'Brand new category');
+      await submit(harness);
+      const req = lastRequest('/api/subscriptions');
+      expect((req.request.body as { category: string }).category).toBe('Brand new category');
+      await finishSave(harness, req, detailFixture(), 201);
+    });
+
+    it('also suggests when editing, including the subscription\'s own category', async () => {
+      const { root } = await openEdit();
+      expect(datalistValues(root)).toContain('Streaming');
+    });
+
+    it('works without suggestions when the overview request fails', async () => {
+      const { harness, root } = await openAdd(options(), 'fail');
+      expect(root.querySelector('form')).toBeTruthy();
+      expect(root.querySelector('[role=alert]')).toBeNull();
+      expect(datalistValues(root)).toEqual([]);
+      await fillValidAdd(root);
+      type(root, 'category', 'Anything');
+      await submit(harness);
+      const req = lastRequest('/api/subscriptions');
+      expect(req.request.body).toMatchObject({ category: 'Anything' });
+      await finishSave(harness, req, detailFixture(), 201);
+    });
+
+    it('refetches the overview on retry after a failed load, then reuses it', async () => {
+      const detail = detailFixture();
+      const harness = await RouterTestingHarness.create();
+      const component = await harness.navigateByUrl(`/subscriptions/${detail.id}/edit`, SubscriptionFormPage);
+      http.expectOne('/api/subscriptions/options').flush(options());
+      flushOverview('fail');
+      flushCatalog(catalogFixture());
+      http.expectOne(`/api/subscriptions/${detail.id}`).flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+      await settle(harness);
+      expect(component.loadFailed()).toBe(true);
+      expect(component.overview()).toBeNull();
+
+      component.load();
+      // The options came with an unsuccessful load, so they are fetched again too.
+      http.expectOne('/api/subscriptions/options').flush(options());
+      flushOverview(overviewFixture());
+      flushCatalog(catalogFixture());
+      http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+      await settle(harness);
+      expect(datalistValues(harness.routeNativeElement as HTMLElement)).toContain('Streaming');
+
+      component.load();
+      http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+      http.expectNone('/api/subscriptions');
+      await settle(harness);
+    });
+  });
+});
+
+describe('SubscriptionFormPage catalog picker', () => {
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(withInterceptors([csrfInterceptor])),
+        provideHttpClientTesting(),
+        { provide: BROWSER_LANGUAGES, useValue: ['en'] },
+        { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    TestBed.inject(SessionService).current.set({ state: 'member', user: { displayName: 'Synthetic', memberId: '1' }, expiresAt: '' });
+  });
+  afterEach(() => http.verify());
+
+  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
+  const plan = (over: Partial<CatalogPlan> = {}): CatalogPlan => ({
+    country: 'DK', name: 'Basic', currency: 'DKK', minorUnit: 2, amount: '99.00', cadenceUnit: 'month', cadenceCount: 1, upcomingChange: null, ...over,
+  });
+  const service = (id: string, name: string, plans: CatalogPlan[], category = 'Streaming'): CatalogService => ({
+    id, name, category, logoUrl: null, lastVerified: '2026-11-01', plans,
+  });
+  const catalogOf = (...services: CatalogService[]): Catalog => ({ services, defaultCountry: 'DK' });
+
+  async function settle(harness: RouterTestingHarness) {
+    harness.detectChanges();
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+  }
+
+  async function openAdd(catalog: Catalog | 'fail' = catalogFixture(), defaultCurrency: string | null = 'DKK') {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
+    http.expectOne('/api/subscriptions/options').flush({ ...optionsFixture(), defaultCurrency });
+    http.expectOne('/api/subscriptions').flush(overviewFixture());
+    const req = http.expectOne('/api/subscriptions/catalog');
+    if (catalog === 'fail') req.flush({}, { status: 500, statusText: 'Server Error' });
+    else req.flush(catalog);
+    await settle(harness);
+    return { harness, root: harness.routeNativeElement as HTMLElement };
+  }
+
+  async function openEdit(detail: SubscriptionDetail, catalog: Catalog = catalogFixture()) {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/subscriptions/${detail.id}/edit`, SubscriptionFormPage);
+    http.expectOne('/api/subscriptions/options').flush(optionsFixture());
+    http.expectOne('/api/subscriptions').flush(overviewFixture());
+    http.expectOne('/api/subscriptions/catalog').flush(catalog);
+    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    await settle(harness);
+    return { harness, root: harness.routeNativeElement as HTMLElement };
+  }
+
+  const field = (root: HTMLElement, id: string) => root.querySelector(`#${id}`) as HTMLInputElement & HTMLSelectElement;
+  const results = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLButtonElement>('.picker-result'));
+
+  function type(root: HTMLElement, id: string, value: string) {
+    const element = field(root, id);
+    element.value = value;
+    element.dispatchEvent(new Event('input'));
+  }
+
+  async function pick(harness: RouterTestingHarness, root: HTMLElement, name: string) {
+    const button = results(root).find((b) => b.textContent?.includes(name));
+    expect(button, `result ${name}`).toBeDefined();
+    button?.click();
+    await settle(harness);
+  }
+
+  async function submit(harness: RouterTestingHarness) {
+    (harness.routeNativeElement?.querySelector('form') as HTMLFormElement).dispatchEvent(new Event('submit'));
+    await settle(harness);
+  }
+
+  it('picking prefills the fields, which stay editable, and the add posts the catalog id', async () => {
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'StreamCo');
+    expect(field(root, 'name').value).toBe('StreamCo');
+    expect(field(root, 'category').value).toBe('Streaming');
+    expect(field(root, 'currency').value).toBe('DKK');
+    expect(field(root, 'amount').value).toBe('129.00');
+    expect((field(root, 'cadence-month') as HTMLInputElement).checked).toBe(true);
+
+    type(root, 'name', 'Our StreamCo');
+    type(root, 'amount', '139.00');
+    type(root, 'startDate', '2024-03-01');
+    await submit(harness);
+    const req = http.expectOne('/api/subscriptions');
+    expect(req.request.body).toEqual({
+      name: 'Our StreamCo', category: 'Streaming', notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
+      amount: '139.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: 'streamco',
+    });
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('editing a prefilled field does not change the catalog id', async () => {
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'Music Box');
+    type(root, 'name', 'Renamed');
+    type(root, 'startDate', '2024-03-01');
+    await submit(harness);
+    const req = http.expectOne('/api/subscriptions');
+    expect((req.request.body as { catalogId: string }).catalogId).toBe('music-box');
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('the catalog is not applied again after the pick: later changes are never overwritten', async () => {
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'StreamCo');
+    type(root, 'amount', '5.00');
+    type(root, 'picker-search', 'zzz');
+    await settle(harness);
+    expect(field(root, 'amount').value).toBe('5.00');
+  });
+
+  it('filters case- and diacritic-insensitively, shows at most eight, and announces the count politely', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => service(`svc-${i}`, `Café ${String.fromCharCode(65 + i)}`, [plan()]));
+    const { harness, root } = await openAdd(catalogOf(...many, service('other', 'Other', [plan()])));
+    expect(results(root)).toHaveLength(8);
+    type(root, 'picker-search', 'CAFE');
+    await settle(harness);
+    expect(results(root)).toHaveLength(8);
+    type(root, 'picker-search', 'cafe l');
+    await settle(harness);
+    expect(results(root).map((b) => b.textContent)).toEqual([expect.stringContaining('Café L')]);
+    const live = root.querySelector('#picker-count') as HTMLElement;
+    expect(live.getAttribute('aria-live')).toBe('polite');
+    expect(live.textContent).toContain('1 services found');
+    type(root, 'picker-search', 'nothing like it');
+    await settle(harness);
+    expect(live.textContent).toContain(en['subscriptions.picker.none']);
+  });
+
+  it('is keyboard operable: native buttons and a search field that does not submit on Enter', async () => {
+    const { harness, root } = await openAdd();
+    const search = field(root, 'picker-search');
+    expect(search.type).toBe('search');
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true });
+    search.dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(true);
+    await settle(harness);
+    for (const button of results(root)) {
+      expect(button.tagName).toBe('BUTTON');
+      expect(button.type).toBe('button');
+      expect(button.tabIndex).toBeGreaterThanOrEqual(0);
+    }
+    expect(root.querySelector('[role="search"]')).not.toBeNull();
+  });
+
+  it('a catalog load failure still allows a free-form add and hides the picker', async () => {
+    const { harness, root } = await openAdd('fail');
+    expect(root.querySelector('[role="search"]')).toBeNull();
+    expect(root.querySelector('#picker-failed')?.textContent).toContain(en['subscriptions.picker.loadFailed']);
+    type(root, 'name', 'Free');
+    type(root, 'startDate', '2024-03-01');
+    type(root, 'amount', '10.00');
+    await submit(harness);
+    const req = http.expectOne('/api/subscriptions');
+    expect((req.request.body as { catalogId: unknown }).catalogId).toBeNull();
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('"Don\'t link" clears the id and the hints but keeps typed values', async () => {
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'StreamCo');
+    expect(root.querySelector('#catalog-verified')).not.toBeNull();
+    (root.querySelector('#picker-unlink') as HTMLButtonElement).click();
+    await settle(harness);
+    expect(root.querySelector('#catalog-verified')).toBeNull();
+    expect(root.querySelector('#picker-unlink')).toBeNull();
+    expect(field(root, 'name').value).toBe('StreamCo');
+    expect(field(root, 'amount').value).toBe('129.00');
+    type(root, 'startDate', '2024-03-01');
+    await submit(harness);
+    const req = http.expectOne('/api/subscriptions');
+    expect((req.request.body as { catalogId: unknown }).catalogId).toBeNull();
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('prefers the plan in the household default currency', async () => {
+    const svc = service('multi', 'Multi', [plan({ name: 'Euro', currency: 'EUR', amount: '9.99' }), plan({ name: 'Krone', amount: '75.00' })]);
+    const { harness, root } = await openAdd(catalogOf(svc), 'EUR');
+    await pick(harness, root, 'Multi');
+    expect(field(root, 'currency').value).toBe('EUR');
+    expect(field(root, 'amount').value).toBe('9.99');
+  });
+
+  it('falls back to the first DK plan, then to the first plan', async () => {
+    const dk = service('dk', 'Dk Service', [plan({ country: 'SE', currency: 'SEK', amount: '99.00', name: 'Swedish' }), plan({ name: 'Danish', amount: '79.00' })]);
+    const other = service('other', 'Other Service', [plan({ country: 'SE', currency: 'SEK', amount: '99.00', name: 'Swedish' }), plan({ country: 'NO', currency: 'NOK', amount: '89.00', name: 'Norwegian' })]);
+    const { harness, root } = await openAdd(catalogOf(dk, other), 'USD');
+    await pick(harness, root, 'Dk Service');
+    expect(field(root, 'currency').value).toBe('DKK');
+    expect(field(root, 'amount').value).toBe('79.00');
+    await pick(harness, root, 'Other Service');
+    expect(field(root, 'currency').value).toBe('SEK');
+    expect(field(root, 'amount').value).toBe('99.00');
+  });
+
+  it('a service with no plans prefills only name and category and leaves the price empty', async () => {
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'No Plans');
+    expect(field(root, 'name').value).toBe('No Plans');
+    expect(field(root, 'category').value).toBe('Other');
+    expect(field(root, 'amount').value).toBe('');
+    expect(root.querySelector('#picker-plan')).toBeNull();
+  });
+
+  it('several plans in one market use the default plan and offer a select', async () => {
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'StreamCo');
+    const select = field(root, 'picker-plan');
+    expect(select.options).toHaveLength(2);
+    expect(field(root, 'amount').value).toBe('129.00');
+    select.value = '1';
+    select.dispatchEvent(new Event('change'));
+    await settle(harness);
+    expect(field(root, 'amount').value).toBe('89.00');
+  });
+
+  it('shows the verified date and an upcoming change, and hides a past one', async () => {
+    const future = service('f', 'Future', [plan({ upcomingChange: { amount: '119.00', effectiveFrom: day(30) } })]);
+    const past = service('p', 'Past', [plan({ upcomingChange: { amount: '119.00', effectiveFrom: day(-30) } })]);
+    const { harness, root } = await openAdd(catalogOf(future, past));
+    await pick(harness, root, 'Future');
+    expect(root.querySelector('#catalog-verified')?.textContent).toContain('Nov 2026');
+    expect(root.querySelector('#catalog-upcoming')?.textContent).toContain('119.00');
+    expect(root.querySelector('#catalog-upcoming button')).toBeNull();
+    await pick(harness, root, 'Past');
+    expect(root.querySelector('#catalog-verified')).not.toBeNull();
+    expect(root.querySelector('#catalog-upcoming')).toBeNull();
+  });
+
+  it('a second pick replaces the first pick instead of merging', async () => {
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'StreamCo');
+    await pick(harness, root, 'Music Box');
+    expect(field(root, 'name').value).toBe('Music Box');
+    expect(field(root, 'category').value).toBe('Music');
+    expect(field(root, 'amount').value).toBe('119.00');
+    expect(root.querySelector('#picker-plan')).toBeNull();
+    await pick(harness, root, 'No Plans');
+    expect(field(root, 'amount').value).toBe('');
+  });
+
+  it('prefills the amount with the decimal comma in Danish', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'StreamCo');
+    expect(field(root, 'amount').value).toBe('129,00');
+    expect(englishLeftovers(root)).toEqual([]);
+  });
+
+  it('edit mode keeps the link on save', async () => {
+    const detail = { ...detailFixture(), catalogId: 'streamco', logoUrl: '/logos/streamco.svg' };
+    const { harness, root } = await openEdit(detail);
+    expect(root.querySelector('#linked-service')?.textContent).toContain('StreamCo');
+    expect(root.querySelector('#picker-search')).toBeNull();
+    await submit(harness);
+    const req = http.expectOne(`/api/subscriptions/${detail.id}`);
+    expect((req.request.body as { catalogId: unknown }).catalogId).toBe('streamco');
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('edit mode removes the link on request', async () => {
+    const detail = { ...detailFixture(), catalogId: 'streamco', logoUrl: null };
+    const { harness, root } = await openEdit(detail);
+    (root.querySelector('#picker-remove-link') as HTMLButtonElement).click();
+    await settle(harness);
+    expect(root.querySelector('#linked-service')).toBeNull();
+    await submit(harness);
+    const req = http.expectOne(`/api/subscriptions/${detail.id}`);
+    expect((req.request.body as { catalogId: unknown }).catalogId).toBeNull();
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('edit mode with a dangling catalog id keeps the linked line and submits the stored id unchanged', async () => {
+    const detail = { ...detailFixture(), catalogId: 'gone-service', logoUrl: null };
+    const { harness, root } = await openEdit(detail);
+    expect(root.querySelector('#linked-service')?.textContent).toContain('gone-service');
+    await submit(harness);
+    const req = http.expectOne(`/api/subscriptions/${detail.id}`);
+    expect((req.request.body as { catalogId: unknown }).catalogId).toBe('gone-service');
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('maps a catalogId field error to a localized message', async () => {
+    const { harness, root } = await openAdd();
+    await pick(harness, root, 'StreamCo');
+    type(root, 'startDate', '2024-03-01');
+    await submit(harness);
+    http.expectOne('/api/subscriptions').flush({ traceId: 't', errors: { catalogId: ['x'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(root.textContent).toContain(en['subscriptions.error.catalogId']);
   });
 });

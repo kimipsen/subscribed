@@ -208,6 +208,204 @@ describe('Foundation UI', () => {
     }
   });
 
+  describe('member label editor', () => {
+    const members = [
+      { memberId: 'aa11', displayLabel: 'Kim', grantedAt: '2026-03-05T12:00:00Z' },
+      { memberId: 'b/b 2', displayLabel: 'Sam', grantedAt: '2026-03-06T12:00:00Z' },
+    ];
+    const household = (version: number, list: Household['members'] = members, name = 'Before') =>
+      ({ id: 'household-default', name, version, members: list });
+
+    function text(harness: { routeNativeElement: HTMLElement | null }, selector: string): string {
+      return harness.routeNativeElement?.querySelector(selector)?.textContent ?? '';
+    }
+
+    it('opens with the current label, saves with URL, body and If-Match and shows the new label', async () => {
+      const { harness, page } = await openHousehold(members);
+      harness.detectChanges();
+      const edit = harness.routeNativeElement?.querySelector('.members li button') as HTMLButtonElement;
+      expect(edit.textContent).toContain(en['household.memberEdit']);
+      edit.click();
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      const input = harness.routeNativeElement?.querySelector('input[name=memberLabel]') as HTMLInputElement;
+      expect(input.value).toBe('Kim');
+      expect(harness.routeNativeElement?.querySelector(`label[for=${input.id}]`)).toBeTruthy();
+      expect(input.getAttribute('maxlength')).toBe('64');
+      input.value = '  Kim Ipsen ';
+      input.dispatchEvent(new Event('input'));
+      await harness.fixture.whenStable();
+      page.saveLabel(members[0]);
+      const request = http.expectOne('/api/household/members/aa11/label');
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toEqual({ displayLabel: 'Kim Ipsen' });
+      expect(request.request.headers.get('If-Match')).toBe('"1"');
+      expect(request.request.headers.get('X-CSRF')).toBe('1');
+      request.flush(household(2, [{ ...members[0], displayLabel: 'Kim Ipsen' }, members[1]]));
+      harness.detectChanges();
+      expect(page.editingMemberId()).toBeNull();
+      expect(page.household()?.version).toBe(2);
+      expect(text(harness, '.members')).toContain('Kim Ipsen');
+      expect(text(harness, '.members')).toContain('Sam');
+      expect(harness.routeNativeElement?.textContent).toContain(en['household.memberSaved']);
+      expect(page.name).toBe('Before');
+    });
+
+    it('url-encodes the member id path segment', async () => {
+      const { page } = await openHousehold(members);
+      page.startEdit(members[1]);
+      page.labelDraft = 'Sam 2';
+      page.saveLabel(members[1]);
+      http.expectOne('/api/household/members/b%2Fb%202/label').flush(household(2));
+    });
+
+    it('cancel restores the list without a request', async () => {
+      const { harness, page } = await openHousehold(members);
+      page.startEdit(members[0]);
+      page.labelDraft = 'Changed';
+      page.cancelEdit();
+      harness.detectChanges();
+      expect(page.editingMemberId()).toBeNull();
+      expect(harness.routeNativeElement?.querySelector('input[name=memberLabel]')).toBeNull();
+      expect(text(harness, '.members')).toContain('Kim');
+      http.expectNone('/api/household/members/aa11/label');
+    });
+
+    it('disables Save for invalid labels and does not send them', async () => {
+      const { harness, page } = await openHousehold(members);
+      page.startEdit(members[0]);
+      for (const bad of ['', '   ', 'x'.repeat(65), 'bad\u0007label']) {
+        page.labelDraft = bad;
+        harness.detectChanges();
+        const save = harness.routeNativeElement?.querySelector('form.member-edit button[type=submit]') as HTMLButtonElement;
+        expect(save.disabled).toBe(true);
+        page.saveLabel(members[0]);
+        expect(page.labelError()).toEqual({ key: 'household.memberLabelInvalid' });
+      }
+      http.expectNone('/api/household/members/aa11/label');
+    });
+
+    it('maps a 400 displayLabel error to the field error', async () => {
+      const { harness, page } = await openHousehold(members);
+      page.startEdit(members[0]);
+      page.labelDraft = 'Valid';
+      page.saveLabel(members[0]);
+      http.expectOne('/api/household/members/aa11/label').flush({
+        type: 'urn:subscribed:problem:validation-failed', errors: { displayLabel: ['Backend English'] }, traceId: 'ref-1',
+      }, { status: 400, statusText: 'Bad request' });
+      harness.detectChanges();
+      expect(page.labelError()).toEqual({ key: 'household.memberLabelInvalid' });
+      expect(harness.routeNativeElement?.querySelector('input[name=memberLabel][aria-invalid=true]')).toBeTruthy();
+      expect(text(harness, '#member-label-error')).toContain(en['household.memberLabelInvalid']);
+      expect(text(harness, '#member-label-error')).not.toContain('Backend English');
+      expect(text(harness, '#member-label-error code')).toBe('ref-1');
+      expect(page.fieldError()).toBeNull();
+    });
+
+    it('keeps the draft on 412, offers reload, and resets the draft and conflict after load()', async () => {
+      const { harness, page } = await openHousehold(members);
+      page.startEdit(members[0]);
+      page.labelDraft = 'My edit';
+      page.saveLabel(members[0]);
+      http.expectOne('/api/household/members/aa11/label').flush({ currentVersion: 2 }, { status: 412, statusText: 'Precondition failed' });
+      harness.detectChanges();
+      expect(page.labelConflict()).toBe(true);
+      expect(page.labelDraft).toBe('My edit');
+      expect(text(harness, '.members .notice')).toContain(en['household.conflict']);
+      expect(page.conflict()).toBe(false);
+      page.load();
+      http.expectOne('/api/household').flush(household(2, [{ ...members[0], displayLabel: 'Kim (server)' }, members[1]]));
+      harness.detectChanges();
+      expect(page.labelConflict()).toBe(false);
+      expect(page.labelDraft).toBe('Kim (server)');
+      expect(page.editingMemberId()).toBe('aa11');
+    });
+
+    it('shows household.saveFailed for 404, 428 and other errors', async () => {
+      const { harness, page } = await openHousehold(members);
+      page.startEdit(members[0]);
+      page.labelDraft = 'Valid';
+      for (const status of [404, 428, 500]) {
+        page.saveLabel(members[0]);
+        http.expectOne('/api/household/members/aa11/label').flush({}, { status, statusText: 'Failure' });
+        harness.detectChanges();
+        expect(page.labelError()).toEqual({ key: 'household.saveFailed' });
+        expect(page.labelConflict()).toBe(false);
+        expect(text(harness, '#member-label-error')).toContain(en['household.saveFailed']);
+      }
+    });
+
+    it('ignores a second submit while saving', async () => {
+      const { page } = await openHousehold(members);
+      page.startEdit(members[0]);
+      page.labelDraft = 'Valid';
+      page.saveLabel(members[0]);
+      page.saveLabel(members[0]);
+      const request = http.expectOne('/api/household/members/aa11/label');
+      expect(page.labelSaving()).toBe(true);
+      page.cancelEdit();
+      expect(page.editingMemberId()).toBe('aa11');
+      request.flush(household(2));
+      expect(page.labelSaving()).toBe(false);
+    });
+
+    it('clears the editor when load() removes the member being edited', async () => {
+      const { page } = await openHousehold(members);
+      page.startEdit(members[1]);
+      page.load();
+      http.expectOne('/api/household').flush(household(2, [members[0]]));
+      expect(page.editingMemberId()).toBeNull();
+      expect(page.labelDraft).toBe('');
+    });
+
+    it('never shows or clears the rename banners and does not touch the rename field', async () => {
+      const { harness, page } = await openHousehold(members);
+      page.name = 'Unsaved rename';
+      page.saved.set(true);
+      page.conflict.set(true);
+      page.problem.set({ key: 'household.saveFailed' });
+      page.fieldError.set({ key: 'household.nameInvalid' });
+      page.startEdit(members[0]);
+      page.labelDraft = 'Valid';
+      page.saveLabel(members[0]);
+      http.expectOne('/api/household/members/aa11/label').flush({}, { status: 412, statusText: 'Precondition failed' });
+      harness.detectChanges();
+      expect(page.labelConflict()).toBe(true);
+      expect(page.conflict()).toBe(true);
+      expect(page.saved()).toBe(true);
+      expect(page.problem()).toEqual({ key: 'household.saveFailed' });
+      expect(page.fieldError()).toEqual({ key: 'household.nameInvalid' });
+      expect(page.name).toBe('Unsaved rename');
+      page.labelDraft = 'Valid';
+      page.saveLabel(members[0]);
+      http.expectOne('/api/household/members/aa11/label').flush(household(2, [{ ...members[0], displayLabel: 'Valid' }, members[1]], 'Server name'));
+      expect(page.name).toBe('Unsaved rename');
+      expect(page.saved()).toBe(true);
+      expect(page.conflict()).toBe(true);
+    });
+
+    it('keeps the rename 400 name mapping working with errorDetail', async () => {
+      const { page } = await openHousehold(members);
+      page.name = 'Valid name';
+      page.save();
+      http.expectOne('/api/household/name').flush({
+        type: 'urn:subscribed:problem:validation-failed', errors: { name: ['Server validation'] },
+      }, { status: 400, statusText: 'Bad request' });
+      expect(page.fieldError()).toEqual({ key: 'household.nameInvalid' });
+      expect(page.labelError()).toBeNull();
+    });
+
+    it('has matching en and da keys for the label editor', () => {
+      const keys = Object.keys(en).filter((key) => key.startsWith('household.member'));
+      expect(keys.length).toBeGreaterThanOrEqual(8);
+      for (const key of keys) {
+        expect(Object.hasOwn(da, key)).toBe(true);
+        expect((da as Record<string, string>)[key]).not.toBe('');
+      }
+      expect(Object.keys(da).sort()).toEqual(Object.keys(en).sort());
+    });
+  });
+
   it('retranslates clipboard feedback, not account references', async () => {
     session.current.set({ state: 'not-member', user: { displayName: 'Synthetic', subject: 'unchanged-ref' }, expiresAt: '' });
     const harness = await RouterTestingHarness.create();

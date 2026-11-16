@@ -1,4 +1,5 @@
 using Marten;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Authorization;
@@ -82,6 +83,7 @@ public static class SubscribedApp
         services.TryAddSingletonTimeProvider();
         services.AddSingleton<IDocumentStore>(_ => SubscribedStore.Create(settings.AppConnectionString, settings.Schema, StoreRole.App, Modules));
         services.AddSingleton<HouseholdService>();
+        services.TryAddSingleton(sp => CatalogLoader.LoadEmbedded(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<SubscriptionService>();
         services.AddSingleton<MartenXmlRepository>();
         services.AddDataProtection().SetApplicationName("subscribed");
@@ -115,6 +117,9 @@ public static class SubscribedApp
         }
 
         var app = builder.Build();
+        // Eager validation: a bad catalog fails the process at startup, not the first request.
+        var catalog = app.Services.GetRequiredService<Catalog>();
+        CatalogLog.LogLoaded(app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(CatalogLog.Category), catalog);
         ConfigurePipeline(app, settings);
         return app;
     }

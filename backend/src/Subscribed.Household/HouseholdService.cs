@@ -50,6 +50,10 @@ public sealed class HouseholdService(IDocumentStore store, TimeProvider time)
     public Task<HouseholdView> RevokeAsync(string memberId, WriteContext context, CancellationToken ct = default) =>
         WriteAsync(null, h => h.Revoke(memberId, time.GetUtcNow()), context, ct);
 
+    /// <summary>Null expected version means "latest" (admin CLI); the endpoint passes the If-Match version.</summary>
+    public Task<HouseholdView> ChangeMemberLabelAsync(long? expectedVersion, string memberId, string label, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(expectedVersion, h => h.ChangeMemberLabel(memberId, label, time.GetUtcNow()), context, ct);
+
     /// <summary>
     /// Load (optimistic, no lock) → decide → append at the loaded version → commit. The events, the
     /// stream version bump and the inline view upsert commit in one transaction.

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
 using Subscribed.TestSupport;
 using Xunit;
 using static Subscribed.Api.Tests.SubscriptionApiTests;
@@ -18,7 +19,7 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
     /// <summary>Properties the DTOs declare nullable: a null on either side matches any kind there.</summary>
     private static readonly HashSet<string> Nullable = new(StringComparer.Ordinal)
     {
-        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency",
+        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange",
     };
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -114,6 +115,18 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
         Assert.ThrowsAny<Exception>(() => AssertSameShape(golden, JsonElement.Parse("""{"a":1,"b":{"c":[3,4]},"category":null}"""), "t"));
         Assert.ThrowsAny<Exception>(() => AssertSameShape(golden, JsonElement.Parse("""{"a":"y","b":{"c":[3]},"category":null}"""), "t"));
         Assert.ThrowsAny<Exception>(() => AssertSameShape(JsonElement.Parse("""{"a":"x"}"""), JsonElement.Parse("""{"a":null}"""), "t"));
+    }
+
+    [Fact]
+    public async Task The_catalog_matches_the_golden_file()
+    {
+        // The standard test catalog has a plan with an upcoming change, a plan without one, and a service with zero plans.
+        await using var host = await ApiTestHost.StartAsync(pg, services: s => s.AddSingleton(TestCatalog.Standard()));
+        await host.InitHouseholdAsync("subject-owner");
+        (await host.LoginAsync("subject-owner")).Dispose();
+        using var response = await host.SendAsync(HttpMethod.Get, Base + "/catalog");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Compare("catalog.json", await ApiTestHost.JsonAsync(response));
     }
 
     [Fact]

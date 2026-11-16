@@ -14,6 +14,8 @@ public sealed record HouseholdMemberGranted(string MemberId, string Issuer, stri
 
 public sealed record HouseholdMemberRevoked(string MemberId, DateTimeOffset RevokedAt);
 
+public sealed record HouseholdMemberLabelChanged(string MemberId, string DisplayLabel, DateTimeOffset ChangedAt);
+
 public sealed class UnknownEventAliasException(string alias)
     : Exception($"Unknown household event alias '{alias}'. Stored events are never skipped.")
 {
@@ -27,6 +29,7 @@ public static class HouseholdEventTypes
     public const string Renamed = "household.renamed.v1";
     public const string MemberGranted = "household.member_granted.v1";
     public const string MemberRevoked = "household.member_revoked.v1";
+    public const string MemberLabelChanged = "household.member_label_changed.v1";
 
     public static readonly IReadOnlyDictionary<string, Type> ByAlias = new Dictionary<string, Type>(StringComparer.Ordinal)
     {
@@ -34,6 +37,7 @@ public static class HouseholdEventTypes
         [Renamed] = typeof(HouseholdRenamed),
         [MemberGranted] = typeof(HouseholdMemberGranted),
         [MemberRevoked] = typeof(HouseholdMemberRevoked),
+        [MemberLabelChanged] = typeof(HouseholdMemberLabelChanged),
     };
 
     /// <summary>The same JSON shape Marten is configured with (System.Text.Json, camelCase).</summary>

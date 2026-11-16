@@ -3,16 +3,16 @@ using System.Globalization;
 namespace Subscribed.Subscriptions.Domain;
 
 /// <summary>Raw request fields, exactly as the client sent them. Omitted means null (D-10).</summary>
-public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount);
+public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount, string? CatalogId = null);
 
-public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate);
+public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId = null);
 
 public sealed record PriceInput(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount);
 
 /// <summary>Fields that passed the shape rules.</summary>
-public sealed record NewSubscription(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, decimal Amount, Cadence Cadence);
+public sealed record NewSubscription(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, decimal Amount, Cadence Cadence, string? CatalogId = null);
 
-public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate);
+public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, string? CatalogId = null);
 
 public sealed record PriceEntryChange(DateOnly EffectiveFrom, decimal Amount, Cadence Cadence);
 
@@ -36,8 +36,9 @@ public static class SubscriptionDecisions
         var start = Date(input.StartDate, "startDate", true, errors);
         var end = Date(input.EndDate, "endDate", false, errors);
         var (amount, cadence) = PriceFields(input.Amount, input.CadenceUnit, input.CadenceCount, currency, errors);
+        var catalogId = CatalogId(input.CatalogId, errors);
         errors.ThrowIfAny();
-        return new NewSubscription(name!, category, notes, currency!, start!.Value, end, amount!.Value, cadence!.Value);
+        return new NewSubscription(name!, category, notes, currency!, start!.Value, end, amount!.Value, cadence!.Value, catalogId);
     }
 
     public static DetailsUpdate ParseUpdate(UpdateInput input)
@@ -50,8 +51,9 @@ public static class SubscriptionDecisions
         var currency = Currency(input.Currency, errors);
         var start = Date(input.StartDate, "startDate", true, errors);
         var end = Date(input.EndDate, "endDate", false, errors);
+        var catalogId = CatalogId(input.CatalogId, errors);
         errors.ThrowIfAny();
-        return new DetailsUpdate(name!, category, notes, currency!, start!.Value, end);
+        return new DetailsUpdate(name!, category, notes, currency!, start!.Value, end, catalogId);
     }
 
     /// <summary>Shape only. The minor-unit rule needs the subscription's currency and runs with the invariants.</summary>
@@ -80,7 +82,7 @@ public static class SubscriptionDecisions
         }
 
         errors.ThrowIfAny();
-        return [added];
+        return command.CatalogId is null ? [added] : [added, new SubscriptionCatalogLinked(command.CatalogId, now.ToUniversalTime())];
     }
 
     public static IReadOnlyList<object> UpdateDetails(IReadOnlyList<object> history, DetailsUpdate command, DateTimeOffset now)
@@ -104,6 +106,11 @@ public static class SubscriptionDecisions
         if (command.StartDate != current.StartDate || command.EndDate != current.EndDate)
         {
             events.Add(new SubscriptionPeriodChanged(command.StartDate, command.EndDate, at));
+        }
+
+        if (!string.Equals(command.CatalogId, current.CatalogId, StringComparison.Ordinal))
+        {
+            events.Add(new SubscriptionCatalogLinked(command.CatalogId, at));
         }
 
         if (events.Count == 0)
@@ -293,6 +300,24 @@ public static class SubscriptionDecisions
         }
 
         errors.Add("notes", $"Notes must be at most {SubscriptionText.MaxNotes} characters, with line feeds as the only control characters.");
+        return null;
+    }
+
+    /// <summary>Trimmed; empty becomes null (no link). Otherwise the same shape as a catalog service id.</summary>
+    private static string? CatalogId(string? raw, FieldErrors errors)
+    {
+        var trimmed = (raw ?? "").Trim();
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        if (CatalogLoader.IsValidId(trimmed))
+        {
+            return trimmed;
+        }
+
+        errors.Add("catalogId", $"The catalog id must be lowercase letters, digits and single hyphens, at most {CatalogLoader.MaxIdLength} characters.");
         return null;
     }
 

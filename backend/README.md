@@ -75,7 +75,7 @@ creates the table, records version 2 and re-applies `grants.sql`, and readiness 
 | --- | --- |
 | `src/Subscribed.Platform` | `SubscribedStore` (only Marten configuration), `EventStoreErrors.Map` (only library-aware error code), `Database/grants.sql` (embedded, single source), `SchemaMigrator` + `SchemaVersion`, `ReadinessProbe`, `MartenXmlRepository` (DP keys), RFC 9457 `Problem`, `MemberIdentity`, `SecurityLog` |
 | `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler |
-| `src/Subscribed.Subscriptions` | ten `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, DTOs and `/api/subscriptions` endpoints |
+| `src/Subscribed.Subscriptions` | eleven `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints |
 | `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli` |
 | `tests/Subscribed.UnitTests` | invariants (AC7), golden event fixtures + unknown alias (AC6), validators, error map |
 | `tests/Subscribed.Persistence.Tests` | AC1–AC5, AC19, AC20 on PostgreSQL 18 as the least-privilege role |
@@ -112,6 +112,32 @@ subscription that is already paused answers `412`, not `409`.
   Deploy the backend before or together with the frontend: the new UI reads `version` from the overview rows, which an old backend does not send.
 - **Existing data.** Existing streams and snapshot rows are valid as they are: a stored snapshot without `paused` or `pausedAt`
   loads as not paused, and `admin projections rebuild` reproduces the flag from the events. No migration is needed.
+## Subscription catalog
+
+A curated, read-only catalog of known services lives in
+`src/Subscribed.Subscriptions/Catalog/catalog.json`, an embedded resource. It is loaded and validated once at startup
+(`Catalog` is a singleton); invalid data stops the process, and one log line reports the service count and the oldest
+`lastVerified`. Nothing is fetched automatically and catalog data never overwrites household data. How to add or update an
+entry, and what counts as verification: [`docs/subscription-catalog.md`](../docs/subscription-catalog.md).
+
+**`GET /api/subscriptions/catalog`** (household members only, `Cache-Control: no-store`) returns
+`{ services, defaultCountry }`. Services and their plans keep the file order. Each service has `id`, `name`, `category`,
+`logoUrl` (or null), `lastVerified` and `plans`; each plan has `country`, `name`, `currency`, `minorUnit`, `amount` (a decimal
+string), `cadenceUnit`, `cadenceCount` and `upcomingChange` (`{ amount, effectiveFrom }` or null). `sourceUrl` is not exposed.
+
+**Linking a subscription.** `POST /api/subscriptions` and `PUT /api/subscriptions/{id}` accept an optional string `catalogId`;
+responses carry `catalogId` and `logoUrl` on the overview rows and on the detail.
+
+* The id is trimmed; an empty value means no link. Its shape is lowercase kebab-case, at most 64 characters.
+* An unknown id is a 400 with the error under `catalogId`. On `PUT` the id is only checked when it differs from the stored one,
+  so a subscription whose catalog entry was removed can still be edited without touching its link.
+* `PUT` keeps its full-replace semantics: **an omitted or null `catalogId` unlinks**. The frontend always sends it. An older
+  frontend that omits it would unlink; the frontend and the backend ship together, so this is accepted.
+* The link is stored as the event `subscription.catalog_linked.v1` (`catalogId`, null for unlinked). An add with a catalog id
+  appends `subscription.added.v1` and `subscription.catalog_linked.v1` in one write. No existing event shape changed.
+* A stored id that is no longer in the catalog never breaks a read: `catalogId` is returned as stored, `logoUrl` is null, and the
+  API logs a warning that names the subscription id and the catalog id (the detail logs one per read, the overview at most one
+  per request).
 
 ## Configuration (validated before the host starts)
 
@@ -150,7 +176,22 @@ configuration, 2 usage/domain error, 3 conflict (e.g. already initialized), 4 da
 | `household init --name <n> --owner-subject <sub> --owner-label <l>` | app | creates the household and grants the first member |
 | `household grant --subject <sub> --label <l>` | app | grants membership (no self-registration exists anywhere) |
 | `household revoke --member-id <id>` | app | revokes; effective on the member's next request; the last member cannot be revoked |
+| `household relabel --member-id <id> --label <l>` | app | changes a member's display label; member id, subscriptions and history are unaffected; an unchanged label is a no-op (no event, version unchanged); unknown member ids and invalid labels exit 2 |
 | `household show` | app | lists members, ids and subjects |
+
+Household changes are stored as events in the `household-default` stream: `household.created.v1`,
+`household.renamed.v1`, `household.member_granted.v1`, `household.member_revoked.v1` and
+`household.member_label_changed.v1`. Members are relabelled over HTTP with
+`PUT /api/household/members/{memberId}/label` (body `{"displayLabel": "…"}`, `If-Match` required,
+the same authorization and concurrency rules as `PUT /api/household/name`; 404 `not-found` for an
+unknown member) or with `household relabel`.
+
+> **Rollout note: roll forward only.** Once the first `household.member_label_changed.v1` event is
+> stored, a binary without that alias cannot load the household: `RehydrateAsync` throws
+> `UnknownEventAliasException` (alias `household.member_label_changed.v1`) on every household load,
+> which also breaks authentication/membership checks, and clients see a generic 500 (the stream id is
+> not logged). Deploy the new version first and do not relabel anyone until the release is settled.
+> Rolling back the binary is not supported; recovery is redeploying the new version.
 
 The issuer stored with a member is `Oidc:Authority` without trailing slash; the subject is the
 `sub` a denied user sees on the access-denied page (`/bff/session` `not-member` state).

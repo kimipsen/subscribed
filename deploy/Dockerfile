@@ -10,6 +10,8 @@ ENV CI=true NG_CLI_ANALYTICS=false
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+ARG APP_VERSION=""
+ENV APP_VERSION=$APP_VERSION
 RUN npm run build && test -f dist/subscribed/browser/index.html
 
 # --- 2. API -------------------------------------------------------------------------------
