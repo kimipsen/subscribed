@@ -3,10 +3,11 @@
 A self-hosted household subscription tracker. Household members can track any subscription: a name,
 an optional category and notes, a currency, an amount and a billing cadence, with a full price history
 (backdated, corrected and upcoming prices), per-currency monthly and yearly totals, and English and
-Danish screens. Underneath: Keycloak sign-in through a backend-for-frontend (HttpOnly cookie, no
-tokens in the browser), app-owned household membership, event-sourced `Household` and subscription
-streams on PostgreSQL (Marten), health/config validation, tests and a single-container Docker
-deployment.
+Danish screens. A subscription can be paused and resumed: a paused subscription stays in the
+overview but is left out of the monthly and yearly totals, and its price history is untouched.
+Underneath: Keycloak sign-in through a backend-for-frontend (HttpOnly cookie, no tokens in the
+browser), app-owned household membership, event-sourced `Household` and subscription streams on
+PostgreSQL (Marten), health/config validation, tests and a single-container Docker deployment.
 
 | Path | Contents |
 | --- | --- |
