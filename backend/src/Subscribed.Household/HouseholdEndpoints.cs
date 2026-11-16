@@ -26,6 +26,8 @@ public sealed record HouseholdDto(string Id, string Name, long Version, IReadOnl
 
 public sealed record RenameRequest(string? Name);
 
+public sealed record ChangeLabelRequest(string? DisplayLabel);
+
 public static class HouseholdEndpoints
 {
     public const int MaxBodyBytes = 16 * 1024;
@@ -35,6 +37,7 @@ public static class HouseholdEndpoints
         var group = endpoints.MapGroup("/api/household").RequireAuthorization(HouseholdMembership.PolicyName);
         group.MapGet("", GetAsync);
         group.MapPut("/name", RenameAsync);
+        group.MapPut("/members/{memberId}/label", ChangeMemberLabelAsync);
         return endpoints;
     }
 
@@ -62,7 +65,7 @@ public static class HouseholdEndpoints
             return ValidationProblem("If-Match", "If-Match must be a quoted version, for example \"3\".");
         }
 
-        var body = await ReadBodyAsync(context).ConfigureAwait(false);
+        var body = await ReadBodyAsync<RenameRequest>(context, "name", "Name must be 1–80 characters.").ConfigureAwait(false);
         if (body.Error is { } error)
         {
             return error;
@@ -94,6 +97,58 @@ public static class HouseholdEndpoints
         }
     }
 
+    private static async Task<IResult> ChangeMemberLabelAsync(string memberId, HttpContext context, HouseholdService service, ILoggerFactory loggers)
+    {
+        var view = HouseholdMembership.ViewFor(context);
+        var actorId = HouseholdMembership.MemberIdFor(context);
+
+        var ifMatch = context.Request.Headers.IfMatch.ToString();
+        if (string.IsNullOrWhiteSpace(ifMatch))
+        {
+            return Problem.Result(428, ProblemCodes.IfMatchRequired, "An If-Match header with the current version is required.");
+        }
+
+        if (!TryParseETag(ifMatch, out var expectedVersion))
+        {
+            return ValidationProblem("If-Match", "If-Match must be a quoted version, for example \"3\".");
+        }
+
+        var body = await ReadBodyAsync<ChangeLabelRequest>(context, "displayLabel", "Label must be 1–64 characters.").ConfigureAwait(false);
+        if (body.Error is { } error)
+        {
+            return error;
+        }
+
+        string label;
+        try
+        {
+            label = Domain.Household.NormalizeLabel(body.Request!.DisplayLabel);
+        }
+        catch (HouseholdDomainException ex)
+        {
+            return ValidationProblem(ex.Field, ex.Message);
+        }
+
+        try
+        {
+            var updated = await service.ChangeMemberLabelAsync(expectedVersion, memberId, label, WriteContext.Member(actorId, Problem.TraceId(context)), context.RequestAborted).ConfigureAwait(false);
+            context.Response.Headers.ETag = ETag(updated.Version);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Json(HouseholdDto.From(updated));
+        }
+        catch (HouseholdDomainException ex) when (ex.Code == HouseholdErrorCodes.NotAMember)
+        {
+            return Problem.Result(404, ProblemCodes.NotFound, "Member not found.");
+        }
+        catch (EventStoreException ex) when (ex.Failure.Kind == EventStoreFailureKind.ConcurrencyConflict)
+        {
+            SecurityLog.Info(loggers.CreateLogger(SecurityEvents.Category), SecurityEvents.ConcurrencyConflict, actorId);
+            var current = await service.GetViewAsync(context.RequestAborted).ConfigureAwait(false);
+            return Problem.Result(412, ProblemCodes.ConcurrencyConflict, "The household was changed by someone else.",
+                new Dictionary<string, object?> { ["currentVersion"] = current?.Version ?? view.Version });
+        }
+    }
+
     public static string ETag(long version) => $"\"{version.ToString(CultureInfo.InvariantCulture)}\"";
 
     public static bool TryParseETag(string value, out long version)
@@ -108,7 +163,8 @@ public static class HouseholdEndpoints
         Problem.Result(400, ProblemCodes.ValidationFailed, "Validation failed",
             new Dictionary<string, object?> { ["errors"] = new Dictionary<string, string[]> { [JsonNamingPolicy.CamelCase.ConvertName(field)] = [message] } });
 
-    private static async Task<(RenameRequest? Request, IResult? Error)> ReadBodyAsync(HttpContext context)
+    private static async Task<(T? Request, IResult? Error)> ReadBodyAsync<T>(HttpContext context, string field, string message)
+        where T : class
     {
         if (context.Request.ContentLength > MaxBodyBytes)
         {
@@ -135,12 +191,12 @@ public static class HouseholdEndpoints
 
         try
         {
-            var request = JsonSerializer.Deserialize<RenameRequest>(buffer.AsSpan(0, total), HouseholdEventTypes.Json);
-            return request is null ? (null, ValidationProblem("name", "Name must be 1–80 characters.")) : (request, null);
+            var request = JsonSerializer.Deserialize<T>(buffer.AsSpan(0, total), HouseholdEventTypes.Json);
+            return request is null ? (null, ValidationProblem(field, message)) : (request, null);
         }
         catch (JsonException)
         {
-            return (null, ValidationProblem("name", "Name must be 1–80 characters."));
+            return (null, ValidationProblem(field, message));
         }
     }
 }
