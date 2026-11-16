@@ -5,6 +5,7 @@ using Subscribed.Household;
 using Subscribed.Platform.Database;
 using Subscribed.Platform.EventStore;
 using Subscribed.Subscriptions;
+using Subscribed.Subscriptions.PaymentOptions;
 using Subscribed.Subscriptions.Domain;
 using Subscribed.TestSupport;
 using Xunit;
@@ -14,7 +15,7 @@ namespace Subscribed.Persistence.Tests;
 /// <summary>Runs as the least-privilege app role, like <see cref="EventStoreTests"/>.</summary>
 public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
 {
-    private static readonly IReadOnlyList<IEventStoreModule> Modules = [new HouseholdModule(), new SubscriptionsModule()];
+    private static readonly IReadOnlyList<IEventStoreModule> Modules = [new HouseholdModule(), new SubscriptionsModule(), new PaymentOptionsModule()];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -318,6 +319,59 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         Assert.Contains("privilege-missing:UPDATE:subscribed.mt_doc_subscription_view", missing.Problems);
     }
 
+    [Fact]
+    public async Task Readiness_names_a_missing_grant_on_the_payment_option_view()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await db.ExecuteAsMigratorAsync($"REVOKE UPDATE ON subscribed.mt_doc_payment_option_view FROM {pg.AppRole}");
+        var missing = await ReadinessProbe.CheckAsync(db.AppConnectionString, PostgresFixture.Schema, Ct);
+        Assert.False(missing.Privileges);
+        Assert.Contains("privilege-missing:UPDATE:subscribed.mt_doc_payment_option_view", missing.Problems);
+    }
+
+    [Fact]
+    public async Task Readiness_fails_when_the_migration_was_skipped_stored_version_2_and_no_payment_option_table()
+    {
+        // The object check runs before the version check, so a skipped migration names the missing table.
+        await using var db = await pg.CreateDatabaseAsync();
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.schema_migrations; INSERT INTO subscribed.schema_migrations (version, description) VALUES (2, 'old'); DROP TABLE subscribed.mt_doc_payment_option_view");
+        var result = await ReadinessProbe.CheckAsync(db.AppConnectionString, PostgresFixture.Schema, Ct);
+        Assert.False(result.Schema);
+        Assert.Contains("schema-object-missing:mt_doc_payment_option_view", result.Problems);
+    }
+
+    [Fact]
+    public async Task Readiness_reports_schema_version_mismatch_when_the_stored_version_is_still_2()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.schema_migrations; INSERT INTO subscribed.schema_migrations (version, description) VALUES (2, 'old')");
+        var result = await ReadinessProbe.CheckAsync(db.AppConnectionString, PostgresFixture.Schema, Ct);
+        Assert.False(result.Schema);
+        Assert.Contains("schema-version-mismatch", result.Problems);
+    }
+
+    [Fact]
+    public async Task Readiness_stays_strict_when_the_stored_version_is_newer_than_this_binary_expects()
+    {
+        // Rolling back by redeploying an older binary after `db migrate` is unsupported: restore the backup instead. The check
+        // is deliberately `!=`, not `>=`, so it keeps catching a skipped migration for every future version.
+        await using var db = await pg.CreateDatabaseAsync();
+        await db.ExecuteAsMigratorAsync($"INSERT INTO subscribed.schema_migrations (version, description) VALUES ({SchemaVersion.Current + 1}, 'newer')");
+        var result = await ReadinessProbe.CheckAsync(db.AppConnectionString, PostgresFixture.Schema, Ct);
+        Assert.False(result.Schema);
+        Assert.Contains("schema-version-mismatch", result.Problems);
+    }
+
+    [Theory]
+    [InlineData("DELETE FROM subscribed.mt_doc_payment_option_view")]
+    [InlineData("TRUNCATE subscribed.mt_doc_payment_option_view")]
+    public async Task The_app_role_cannot_delete_payment_option_documents(string sql)
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() => db.ExecuteAsAppAsync(sql));
+        Assert.Equal(Npgsql.PostgresErrorCodes.InsufficientPrivilege, ex.SqlState);
+    }
+
     [Theory]
     [InlineData("DELETE FROM subscribed.mt_doc_subscription_view")]
     [InlineData("TRUNCATE subscribed.mt_doc_subscription_view")]
@@ -329,16 +383,17 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     }
 
     [Fact]
-    public async Task Migration_is_idempotent_at_schema_version_2_with_no_drift_for_either_module()
+    public async Task Migration_is_idempotent_at_schema_version_3_with_no_drift_for_every_module()
     {
         await using var db = await pg.CreateDatabaseAsync();
         await SchemaMigrator.MigrateAsync(db.MigratorConnectionString, PostgresFixture.Schema, pg.AppRole, Modules, Ct);
         await using var migrator = MigratorStore(db);
         await migrator.Storage.Database.AssertDatabaseMatchesConfigurationAsync(Ct);
 
-        Assert.Equal(2, SchemaVersion.Current);
-        Assert.Equal(2, await db.ScalarAsMigratorAsync<int>("SELECT max(version) FROM subscribed.schema_migrations"));
+        Assert.Equal(3, SchemaVersion.Current);
+        Assert.Equal(3, await db.ScalarAsMigratorAsync<int>("SELECT max(version) FROM subscribed.schema_migrations"));
         Assert.Equal(1, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM pg_tables WHERE schemaname = 'subscribed' AND tablename = 'mt_doc_subscription_view'"));
+        Assert.Equal(1, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM pg_tables WHERE schemaname = 'subscribed' AND tablename = 'mt_doc_payment_option_view'"));
     }
 
     [Fact]
