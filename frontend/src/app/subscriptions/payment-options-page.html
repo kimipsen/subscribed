@@ -6,7 +6,7 @@
     <p class="muted">{{ 'paymentOptions.intro' | t }}</p>
 
     @if (loading()) {
-      <p role="status">{{ 'paymentOptions.loading' | t }}</p>
+      <p><output>{{ 'paymentOptions.loading' | t }}</output></p>
       <div class="skeleton" aria-hidden="true"></div>
     } @else if (loadFailed()) {
       <div class="notice" role="alert">
@@ -79,14 +79,14 @@
       <section class="panel" aria-labelledby="add-option-heading">
         <h2 id="add-option-heading">{{ 'paymentOptions.addHeading' | t }}</h2>
         @if (suggestions().length > 0) {
-          <div class="suggestions" role="group" [attr.aria-label]="'paymentOptions.suggestions' | t">
-            <p class="muted">{{ 'paymentOptions.suggestions' | t }}</p>
+          <fieldset class="suggestions">
+            <legend class="muted">{{ 'paymentOptions.suggestions' | t }}</legend>
             <p class="actions">
               @for (suggestion of suggestions(); track suggestion.id) {
                 <button type="button" class="secondary suggestion" [id]="'suggest-' + suggestion.id" (click)="pick(suggestion)">{{ suggestion.name }}</button>
               }
             </p>
-          </div>
+          </fieldset>
         }
         <form class="add-form form" (ngSubmit)="add()" novalidate>
           <div class="field">

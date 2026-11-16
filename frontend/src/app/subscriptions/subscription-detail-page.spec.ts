@@ -379,7 +379,7 @@ describe('SubscriptionDetailPage', () => {
     expect(cells[0]).toBe(`Old card ${en['detail.paymentOption.removed']}`);
     const current = detail.priceHistory.findIndex((e) => e.current);
     expect(cells[current]).toBe('Visa · Joint account');
-    expect(cells.filter((c) => c === '—').length).toBe(detail.priceHistory.length - 2);
+    expect(cells.filter((c) => c === '—')).toHaveLength(detail.priceHistory.length - 2);
   });
 
   it('resolves a history row by id, so a renamed option shows its new name in old rows', async () => {

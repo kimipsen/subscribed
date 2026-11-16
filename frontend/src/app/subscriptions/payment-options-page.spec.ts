@@ -1,7 +1,7 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { vi } from 'vitest';
 import { routes } from '../app.routes';
@@ -105,7 +105,7 @@ describe('PaymentOptionsPage', () => {
     await settle(harness);
     await reload(harness, [...paymentOptionListFixture().options, created('PayPal')]);
     expect(root.querySelector('output.status')?.textContent).toContain('PayPal was added.');
-    expect(items(root).length).toBe(2);
+    expect(items(root)).toHaveLength(2);
     expect(el<HTMLInputElement>(root, '#option-name').value).toBe('');
   });
 
@@ -119,7 +119,7 @@ describe('PaymentOptionsPage', () => {
     req.flush(created('Company card', 'Finance'), { status: 201, statusText: 'Created' });
     await settle(harness);
     await reload(harness, [created('Company card', 'Finance')]);
-    expect(items(root).length).toBe(1);
+    expect(items(root)).toHaveLength(1);
   });
 
   it('rejects a card-number-like name or label before any request, with the localized card message', async () => {
@@ -203,7 +203,7 @@ describe('PaymentOptionsPage', () => {
     req.flush(null, { status: 204, statusText: 'No Content' });
     await settle(harness);
     await reload(harness, [{ ...paymentOptionListFixture().options[0], removed: true }]);
-    expect(items(root).length).toBe(0);
+    expect(items(root)).toHaveLength(0);
     expect(root.textContent).toContain(en['paymentOptions.empty']);
     expect(root.querySelector('output.status')?.textContent).toContain('Visa was removed.');
   });
@@ -215,7 +215,7 @@ describe('PaymentOptionsPage', () => {
     buttonByText(root, en['detail.keep']).click();
     await settle(harness);
     expect(root.querySelector('#confirm-option')).toBeNull();
-    expect(items(root).length).toBe(1);
+    expect(items(root)).toHaveLength(1);
   });
 
   it('shows the conflict notice on a 412 and reloads on request', async () => {
@@ -245,7 +245,7 @@ describe('PaymentOptionsPage', () => {
     await settle(harness);
     await reload(harness, []);
     expect(el(root, 'p.error[role=alert]').textContent).toContain(en['paymentOptions.gone']);
-    expect(items(root).length).toBe(0);
+    expect(items(root)).toHaveLength(0);
   });
 
   it('shows the generic failure with the trace id for any other error, never backend English', async () => {
@@ -274,7 +274,7 @@ describe('PaymentOptionsPage', () => {
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne('/api/payment-options/suggestions').flush(suggestionListFixture());
     await settle(harness);
-    expect(items(root).length).toBe(1);
+    expect(items(root)).toHaveLength(1);
   });
 
   it('still works without suggestions when that request fails', async () => {
@@ -301,5 +301,6 @@ describe('PaymentOptionsPage', () => {
     TestBed.inject(SessionService).current.set({ state: 'anonymous' });
     await RouterTestingHarness.create('/payment-options');
     http.expectNone((request: { url: string }) => request.url.startsWith('/api/payment-options'));
+    expect(TestBed.inject(Router).url).toBe('/welcome?returnUrl=%2Fpayment-options');
   });
 });
