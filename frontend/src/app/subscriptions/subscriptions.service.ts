@@ -48,6 +48,14 @@ export class SubscriptionsService {
     return this.http.delete<void>(`${BASE}/${id}`, ifMatch(version));
   }
 
+  pause(id: string, version: number): Observable<SubscriptionDetail> {
+    return this.http.post<SubscriptionDetail>(`${BASE}/${id}/pause`, null, ifMatch(version));
+  }
+
+  resume(id: string, version: number): Observable<SubscriptionDetail> {
+    return this.http.post<SubscriptionDetail>(`${BASE}/${id}/resume`, null, ifMatch(version));
+  }
+
   addPrice(id: string, version: number, body: PriceEntryBody): Observable<SubscriptionDetail> {
     return this.http.post<SubscriptionDetail>(`${BASE}/${id}/prices`, body, ifMatch(version));
   }

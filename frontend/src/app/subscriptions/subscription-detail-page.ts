@@ -28,6 +28,7 @@ const STATUS_KEYS: Readonly<Record<SubscriptionStatus, MessageKey>> = {
   active: 'subscriptions.status.active',
   'not-started': 'subscriptions.status.not-started',
   ended: 'subscriptions.status.ended',
+  paused: 'subscriptions.status.paused',
 };
 
 const ENTRY_ERRORS: Readonly<Record<string, MessageKey>> = {

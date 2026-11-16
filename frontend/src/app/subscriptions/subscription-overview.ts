@@ -11,6 +11,7 @@ const STATUS_KEYS: Readonly<Record<SubscriptionStatus, MessageKey>> = {
   active: 'subscriptions.status.active',
   'not-started': 'subscriptions.status.not-started',
   ended: 'subscriptions.status.ended',
+  paused: 'subscriptions.status.paused',
 };
 
 /** Cadence as a catalog message: "Monthly", "Every 3 months", ... */
