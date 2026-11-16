@@ -12,6 +12,9 @@ public sealed class PriceEntryState
 
     public int CadenceCount { get; set; }
 
+    /// <summary>The payment option of this entry, or null. Snapshots written before this property existed read as null.</summary>
+    public string? PaymentOptionId { get; set; }
+
     public Cadence Cadence => new(CadenceUnit, CadenceCount);
 }
 
@@ -138,6 +141,20 @@ public sealed class SubscriptionState
         Entries.Remove(Entry(e.EntryId));
     }
 
+    /// <summary>
+    /// Looks the entry up without throwing: an event naming an unknown or since-removed entry is a no-op, so replay never throws
+    /// and a removed entry never reappears.
+    /// </summary>
+    public void Apply(SubscriptionPriceEntryPaymentChanged e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        var entry = Entries.FirstOrDefault(x => string.Equals(x.EntryId, e.EntryId, StringComparison.Ordinal));
+        if (entry is not null)
+        {
+            entry.PaymentOptionId = e.PaymentOptionId;
+        }
+    }
+
     public void Apply(SubscriptionCatalogLinked e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -201,6 +218,7 @@ public sealed class SubscriptionState
                     case SubscriptionPaused x: target.Apply(x); break;
                     case SubscriptionResumed x: target.Apply(x); break;
                     case SubscriptionCatalogLinked x: target.Apply(x); break;
+                    case SubscriptionPriceEntryPaymentChanged x: target.Apply(x); break;
                     default: throw new InvalidOperationException($"Unsupported subscription event {e.GetType().Name}.");
                 }
             }

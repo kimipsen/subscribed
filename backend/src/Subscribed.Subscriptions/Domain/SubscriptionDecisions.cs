@@ -1,20 +1,21 @@
 using System.Globalization;
+using Subscribed.Subscriptions.PaymentOptions;
 
 namespace Subscribed.Subscriptions.Domain;
 
 /// <summary>Raw request fields, exactly as the client sent them. Omitted means null (D-10).</summary>
-public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount, string? CatalogId = null);
+public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount, string? CatalogId = null, string? PaymentOptionId = null);
 
 public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId = null);
 
-public sealed record PriceInput(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount);
+public sealed record PriceInput(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount, string? PaymentOptionId = null);
 
 /// <summary>Fields that passed the shape rules.</summary>
-public sealed record NewSubscription(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, decimal Amount, Cadence Cadence, string? CatalogId = null);
+public sealed record NewSubscription(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, decimal Amount, Cadence Cadence, string? CatalogId = null, string? PaymentOptionId = null);
 
 public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, string? CatalogId = null);
 
-public sealed record PriceEntryChange(DateOnly EffectiveFrom, decimal Amount, Cadence Cadence);
+public sealed record PriceEntryChange(DateOnly EffectiveFrom, decimal Amount, Cadence Cadence, string? PaymentOptionId = null);
 
 /// <summary>
 /// Commands to events. Each command runs in two steps so a rejected change applies nothing: <c>Parse*</c> checks the shape of
@@ -37,8 +38,9 @@ public static class SubscriptionDecisions
         var end = Date(input.EndDate, "endDate", false, errors);
         var (amount, cadence) = PriceFields(input.Amount, input.CadenceUnit, input.CadenceCount, currency, errors);
         var catalogId = CatalogId(input.CatalogId, errors);
+        var paymentOptionId = PaymentOptionId(input.PaymentOptionId, errors);
         errors.ThrowIfAny();
-        return new NewSubscription(name!, category, notes, currency!, start!.Value, end, amount!.Value, cadence!.Value, catalogId);
+        return new NewSubscription(name!, category, notes, currency!, start!.Value, end, amount!.Value, cadence!.Value, catalogId, paymentOptionId);
     }
 
     public static DetailsUpdate ParseUpdate(UpdateInput input)
@@ -63,8 +65,9 @@ public static class SubscriptionDecisions
         var errors = new FieldErrors();
         var from = Date(input.EffectiveFrom, "effectiveFrom", true, errors);
         var (amount, cadence) = PriceFields(input.Amount, input.CadenceUnit, input.CadenceCount, null, errors);
+        var paymentOptionId = PaymentOptionId(input.PaymentOptionId, errors);
         errors.ThrowIfAny();
-        return new PriceEntryChange(from!.Value, amount!.Value, cadence!.Value);
+        return new PriceEntryChange(from!.Value, amount!.Value, cadence!.Value, paymentOptionId);
     }
 
     // ---- step 2: decisions ---------------------------------------------------------------------------
@@ -82,7 +85,18 @@ public static class SubscriptionDecisions
         }
 
         errors.ThrowIfAny();
-        return command.CatalogId is null ? [added] : [added, new SubscriptionCatalogLinked(command.CatalogId, now.ToUniversalTime())];
+        var events = new List<object> { added };
+        if (command.CatalogId is not null)
+        {
+            events.Add(new SubscriptionCatalogLinked(command.CatalogId, now.ToUniversalTime()));
+        }
+
+        if (command.PaymentOptionId is not null)
+        {
+            events.Add(new SubscriptionPriceEntryPaymentChanged(entryId, command.PaymentOptionId, now.ToUniversalTime()));
+        }
+
+        return events;
     }
 
     public static IReadOnlyList<object> UpdateDetails(IReadOnlyList<object> history, DetailsUpdate command, DateTimeOffset now)
@@ -152,7 +166,14 @@ public static class SubscriptionDecisions
         var errors = new FieldErrors();
         CheckEntry(current, command, null, errors);
         errors.ThrowIfAny();
-        return [new SubscriptionPriceEntryAdded(entryId, command.EffectiveFrom, command.Amount, command.Cadence.Unit, command.Cadence.Count, now.ToUniversalTime())];
+        var at = now.ToUniversalTime();
+        var events = new List<object> { new SubscriptionPriceEntryAdded(entryId, command.EffectiveFrom, command.Amount, command.Cadence.Unit, command.Cadence.Count, at) };
+        if (command.PaymentOptionId is not null)
+        {
+            events.Add(new SubscriptionPriceEntryPaymentChanged(entryId, command.PaymentOptionId, at));
+        }
+
+        return events;
     }
 
     public static IReadOnlyList<object> CorrectPriceEntry(IReadOnlyList<object> history, string entryId, PriceEntryChange command, DateTimeOffset now)
@@ -163,12 +184,20 @@ public static class SubscriptionDecisions
         var errors = new FieldErrors();
         CheckEntry(current, command, entry, errors);
         errors.ThrowIfAny();
-        if (entry.EffectiveFrom == command.EffectiveFrom && entry.Amount == command.Amount && entry.Cadence == command.Cadence)
+        var at = now.ToUniversalTime();
+        var events = new List<object>();
+        if (entry.EffectiveFrom != command.EffectiveFrom || entry.Amount != command.Amount || entry.Cadence != command.Cadence)
         {
-            return [];
+            events.Add(new SubscriptionPriceEntryCorrected(entryId, command.EffectiveFrom, command.Amount, command.Cadence.Unit, command.Cadence.Count, at));
         }
 
-        return [new SubscriptionPriceEntryCorrected(entryId, command.EffectiveFrom, command.Amount, command.Cadence.Unit, command.Cadence.Count, now.ToUniversalTime())];
+        // A changed option, including non-null to null, is its own event. Neither differing means no events at all.
+        if (!string.Equals(entry.PaymentOptionId, command.PaymentOptionId, StringComparison.Ordinal))
+        {
+            events.Add(new SubscriptionPriceEntryPaymentChanged(entryId, command.PaymentOptionId, at));
+        }
+
+        return events;
     }
 
     public static IReadOnlyList<object> RemovePriceEntry(IReadOnlyList<object> history, string entryId, DateTimeOffset now)
@@ -318,6 +347,24 @@ public static class SubscriptionDecisions
         }
 
         errors.Add("catalogId", $"The catalog id must be lowercase letters, digits and single hyphens, at most {CatalogLoader.MaxIdLength} characters.");
+        return null;
+    }
+
+    /// <summary>Trimmed; empty becomes null (no payment option). Otherwise the same 32-hex shape as every other id.</summary>
+    private static string? PaymentOptionId(string? raw, FieldErrors errors)
+    {
+        var trimmed = (raw ?? "").Trim();
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        if (PaymentOptionIds.TryParse(trimmed, out var id))
+        {
+            return id;
+        }
+
+        errors.Add("paymentOptionId", "The payment option id is not valid.");
         return null;
     }
 

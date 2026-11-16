@@ -16,9 +16,10 @@ public sealed record AddSubscriptionRequest(
     string? Amount,
     string? CadenceUnit,
     int? CadenceCount,
-    string? CatalogId)
+    string? CatalogId,
+    string? PaymentOptionId = null)
 {
-    public AddInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, Amount, CadenceUnit, CadenceCount, CatalogId);
+    public AddInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, Amount, CadenceUnit, CadenceCount, CatalogId, PaymentOptionId);
 }
 
 /// <summary>Fully replaces the editable details: a null <c>endDate</c> reinstates the subscription and a null or omitted <c>catalogId</c> unlinks it (P7).</summary>
@@ -27,15 +28,16 @@ public sealed record UpdateSubscriptionRequest(string? Name, string? Category, s
     public UpdateInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, CatalogId);
 }
 
-public sealed record PriceEntryRequest(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount)
+/// <summary>A null or omitted <c>paymentOptionId</c> means "no payment option": the same full-replace semantics as <c>catalogId</c> (D9).</summary>
+public sealed record PriceEntryRequest(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount, string? PaymentOptionId = null)
 {
-    public PriceInput ToInput() => new(EffectiveFrom, Amount, CadenceUnit, CadenceCount);
+    public PriceInput ToInput() => new(EffectiveFrom, Amount, CadenceUnit, CadenceCount, PaymentOptionId);
 }
 
-public sealed record PriceDto(string EntryId, DateOnly EffectiveFrom, string Amount, string CadenceUnit, int CadenceCount)
+public sealed record PriceDto(string EntryId, DateOnly EffectiveFrom, string Amount, string CadenceUnit, int CadenceCount, string? PaymentOptionId = null)
 {
     public static PriceDto From(PriceEntryState entry, int minorUnit) =>
-        new(entry.EntryId, entry.EffectiveFrom, Money.FormatAmount(entry.Amount, minorUnit), entry.CadenceUnit, entry.CadenceCount);
+        new(entry.EntryId, entry.EffectiveFrom, Money.FormatAmount(entry.Amount, minorUnit), entry.CadenceUnit, entry.CadenceCount, entry.PaymentOptionId);
 }
 
 public sealed record PriceChangeDto(string Amount, string? Percent);
@@ -52,7 +54,8 @@ public sealed record HistoryEntryDto(
     string NormalizedYearly,
     PriceChangeDto? Change,
     bool Current,
-    bool Upcoming);
+    bool Upcoming,
+    string? PaymentOptionId = null);
 
 public sealed record SubscriptionSummaryDto(
     string Id,
@@ -162,7 +165,8 @@ public sealed record SubscriptionDetailDto(
                 Money.FormatAmount(r.NormalizedYearly, minor),
                 r.Change is { } c ? new PriceChangeDto(Money.FormatAmount(c.Amount, minor), c.Percent is { } p ? Money.FormatAmount(p, 1) : null) : null,
                 r.Current,
-                r.Upcoming))]);
+                r.Upcoming,
+                r.Entry.PaymentOptionId))]);
     }
 }
 
