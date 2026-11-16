@@ -6,7 +6,7 @@
       "name": "Spotify",
       "category": "Music",
       "logo": null,
-      "lastVerified": "2026-11-15",
+      "lastVerified": "2026-11-16",
       "sourceUrl": "https://www.spotify.com/dk/premium/",
       "plans": [
         { "country": "DK", "name": "Premium Individual", "currency": "DKK", "amount": "129.00", "cadenceUnit": "month", "cadenceCount": 1 },
@@ -36,6 +36,70 @@
       "sourceUrl": "https://one.google.com/about/plans?hl=da&gl=DK",
       "plans": [
         { "country": "DK", "name": "Basic (100 GB)", "currency": "DKK", "amount": "17.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "viaplay",
+      "name": "Viaplay",
+      "category": "Streaming",
+      "logo": null,
+      "lastVerified": "2026-11-16",
+      "sourceUrl": "https://viaplay.dk/",
+      "plans": [
+        { "country": "DK", "name": "Film & Serier med reklamer", "currency": "DKK", "amount": "99.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "tv-2-play",
+      "name": "TV 2 Play",
+      "category": "Streaming",
+      "logo": null,
+      "lastVerified": "2026-11-16",
+      "sourceUrl": "https://play.tv2.dk/",
+      "plans": [
+        { "country": "DK", "name": "Basis med reklamer", "currency": "DKK", "amount": "69.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Basis uden reklamer", "currency": "DKK", "amount": "99.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Favorit med reklamer", "currency": "DKK", "amount": "149.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Favorit uden reklamer", "currency": "DKK", "amount": "179.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Favorit + Sport med reklamer", "currency": "DKK", "amount": "219.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Favorit + Sport uden reklamer", "currency": "DKK", "amount": "249.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "apple-tv-plus",
+      "name": "Apple TV",
+      "category": "Streaming",
+      "logo": null,
+      "lastVerified": "2026-11-16",
+      "sourceUrl": "https://www.apple.com/dk/apple-tv-plus/",
+      "plans": [
+        { "country": "DK", "name": "Apple TV", "currency": "DKK", "amount": "79.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "apple-music",
+      "name": "Apple Music",
+      "category": "Music",
+      "logo": null,
+      "lastVerified": "2026-11-16",
+      "sourceUrl": "https://www.apple.com/dk/apple-music/",
+      "plans": [
+        { "country": "DK", "name": "Enkeltperson", "currency": "DKK", "amount": "119.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Familie", "currency": "DKK", "amount": "199.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "mofibo",
+      "name": "Mofibo",
+      "category": "Books",
+      "logo": null,
+      "lastVerified": "2026-11-16",
+      "sourceUrl": "https://mofibo.com/dk/da",
+      "plans": [
+        { "country": "DK", "name": "Flex", "currency": "DKK", "amount": "89.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Premium", "currency": "DKK", "amount": "129.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Unlimited", "currency": "DKK", "amount": "159.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Family (dig + 1 familiemedlem)", "currency": "DKK", "amount": "179.00", "cadenceUnit": "month", "cadenceCount": 1 }
       ]
     }
   ]
