@@ -29,7 +29,7 @@ projection, a DP key document. The migrator applied the schema; the app role the
 stream, append at the expected version, rehydrate + load the view, insert + query DP keys, and
 the three E6 conflict cases. Objects created: tables `mt_events`, `mt_streams`,
 `mt_event_progression`, `mt_event_projection_floors`, `mt_high_water_skips`,
-`mt_doc_deadletterevent`, the two document tables, and sequence `mt_events_sequence`; 24
+`mt_doc_deadletterevent`, the document tables (the household and subscription views at the time of the probe; the payment option view of schema version 3 follows the same pattern), and sequence `mt_events_sequence`; 24
 functions (`mt_quick_append_events`, `mt_archive_stream`, `mt_mark_event_progression`,
 `mt_jsonb_*`, …), **all `SECURITY INVOKER` and owned by the migrator**. Rich mode executes none of
 them, so `grants.sql` revokes EXECUTE from PUBLIC and grants none.
@@ -55,7 +55,7 @@ Npgsql store of §5.1 was therefore **not** implemented. If the approver rejects
 library-aware code to change besides `SubscribedStore`.
 
 Marten-specific consequences: `grants.sql` names Marten's tables (`mt_events`, `mt_streams`,
-`mt_events_sequence`, `mt_doc_household_view`, `mt_doc_subscription_view`, `mt_doc_dp_key`) instead of §5.1's
+`mt_events_sequence`, `mt_doc_household_view`, `mt_doc_subscription_view`, `mt_doc_payment_option_view`, `mt_doc_dp_key`) instead of §5.1's
 `events/streams/views/dp_keys`; Marten 9 supports only asynchronous data access, so the synchronous
 `IXmlRepository` bridges with `Task.Run(...).GetAwaiter().GetResult()` (no synchronization context
 in ASP.NET Core; the key ring is cached).
@@ -66,8 +66,9 @@ shown necessary and sufficient for the household view applies unchanged. The sub
 as the same least-privilege role, readiness verifies the new grant, and the app role still has no
 `DELETE` on any table (a removed subscription is flagged `removed = true`, never deleted).
 
-Schema version 2 (`SchemaVersion.Current`) adds that document table and grant; `admin db migrate`
-creates the table, records version 2 and re-applies `grants.sql`, and readiness stays at 503 until it has run.
+Schema version 2 added that document table and grant. Schema version 3 (`SchemaVersion.Current`) adds `mt_doc_payment_option_view`
+with the same `SELECT, INSERT, UPDATE` grant, for the payment option view (see "Payment options" below); `admin db migrate`
+creates the table, records version 3 and re-applies `grants.sql`, and readiness stays at 503 until it has run.
 
 ## Projects
 
@@ -75,7 +76,7 @@ creates the table, records version 2 and re-applies `grants.sql`, and readiness 
 | --- | --- |
 | `src/Subscribed.Platform` | `SubscribedStore` (only Marten configuration), `EventStoreErrors.Map` (only library-aware error code), `Database/grants.sql` (embedded, single source), `SchemaMigrator` + `SchemaVersion`, `ReadinessProbe`, `MartenXmlRepository` (DP keys), RFC 9457 `Problem`, `MemberIdentity`, `SecurityLog` |
 | `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler |
-| `src/Subscribed.Subscriptions` | eleven `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints |
+| `src/Subscribed.Subscriptions` | twelve `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints; `PaymentOptions/` holds the three `payment_option.*.v1` events, `PaymentOptionState`, `PaymentOptionDecisions`, `PaymentOptionService`, its rebuilder and the `/api/payment-options` endpoints |
 | `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli` |
 | `tests/Subscribed.UnitTests` | invariants (AC7), golden event fixtures + unknown alias (AC6), validators, error map |
 | `tests/Subscribed.Persistence.Tests` | AC1–AC5, AC19, AC20 on PostgreSQL 18 as the least-privilege role |
@@ -112,6 +113,66 @@ subscription that is already paused answers `412`, not `409`.
   Deploy the backend before or together with the frontend: the new UI reads `version` from the overview rows, which an old backend does not send.
 - **Existing data.** Existing streams and snapshot rows are valid as they are: a stored snapshot without `paused` or `pausedAt`
   loads as not paused, and `admin projections rebuild` reproduces the flag from the events. No migration is needed.
+## Payment options
+
+A household keeps its own payment options (a card, PayPal, MobilePay/Vipps, anything) and can record which one pays each
+price entry. History is kept: the option belongs to a price entry, so a later price entry can name a different option. The
+read model exposes `paymentOptionId` on `currentPrice` and on every `priceHistory` row, so charges can later be grouped by it.
+
+| Endpoint | Success | Notes |
+| --- | --- | --- |
+| `GET /api/payment-options` | `200` `{ "options": [...] }` | every option, removed ones included (`removed: true`), by name |
+| `GET /api/payment-options/suggestions` | `200` `{ "suggestions": [...] }` | a static list: `paypal`, `visa`, `mastercard`, `dankort`, `mobilepay-vipps` (one MobilePay/Vipps entry) |
+| `GET /api/payment-options/{id}` | `200` with an `ETag` | `404` for an unknown, malformed or other-household option |
+| `POST /api/payment-options` | `201`, `Location` and `ETag` | body `{ "name", "label" }` |
+| `PUT /api/payment-options/{id}` | `200` with a new `ETag` | needs `If-Match`; `404` on a removed option |
+| `DELETE /api/payment-options/{id}` | `204` | needs `If-Match`; a soft remove |
+
+Writes use the same order as the subscription writes: malformed id `404`, `If-Match` missing `428` or malformed `400`, body
+`413`/`415`/`400`, field shape `400`, then unknown, removed or other-household option `404`, stale version `412`.
+
+- **Events.** `payment_option.created.v1`, `payment_option.changed.v1` and `payment_option.removed.v1`, one stream per option
+  (`paymentoption-<id>`), with a self-aggregating inline snapshot `payment_option_view`. These aliases are registered only in
+  `PaymentOptionEventTypes.ByAlias`, not in `SubscriptionEventTypes.ByAlias`.
+- **The link to a price entry** is a new event, `subscription.price_entry_payment_changed.v1`. No existing v1 event changed, so
+  the existing golden fixtures are byte-identical and old streams replay unchanged. A price entry request carries an optional
+  `paymentOptionId`: omitted or `null` means "no option" (full replace, like `catalogId`), and the bundled frontend always sends the key.
+  The details `PUT` carries no option and neither sets nor clears one. `Version` rises by one per event, so a `PUT` that changes both
+  price and option raises the stream version by 2: use the returned `ETag`.
+- **A new assignment** must name an existing, non-removed option of the household (`400` on `paymentOptionId`); an unchanged
+  reference to a since-removed option stays allowed, so old entries remain editable. The check runs after the `404` and `412` checks.
+  A concurrent removal between the check and the append is accepted: the id still resolves, shown as removed.
+- **Removal is a soft remove.** A removed option is hidden from pickers and cannot be assigned, but it keeps resolving by id, so
+  history is never rewritten. Renaming or relabelling applies everywhere the option appears, old rows included.
+- **Card numbers are never stored.** A name or label with a run of **13 or more digits** is rejected with `400`, where any Unicode
+  decimal digit counts (fullwidth and Arabic-Indic too), a letter resets the run and spaces, dashes, dots, slashes and underscores
+  do not. So "4111 1111 1111 1111" is rejected, while "Visa ·· 4242", "Last 4 digits" and a 12-digit reference pass. The rule is
+  deliberately conservative: a legitimate name or label with a long reference number is rejected too. The `400` carries a fixed
+  message and never the input. A name is 1-40 characters and a label at most 40, neither with control characters.
+- **Nothing is logged but reason codes.** The name and label are never logged. The signals are `payment_option.created` and
+  `payment_option.removed` (with the opaque option id) and `payment_option.rejected` with one reason code:
+  `card_number_like`, `invalid_length` or `control_characters`. Support can use the reason code to explain a rejected label.
+- **Frontend.** `/payment-options` manages the options, and the add form and the price-entry form of the detail page have an
+  option select. A client-side card-number check gives early feedback only: the server rule is the authority.
+
+**Rollout order.** Schema version 3 adds `mt_doc_payment_option_view` and its grant, so:
+
+1. Take a database backup.
+2. Run `admin db migrate` **before** the new app version starts. Until it has run, readiness reports
+   not-ready (`schema-object-missing:mt_doc_payment_option_view`, and `schema-version-mismatch` once the table exists) and the app
+   does not take traffic, so a skipped migration fails visibly at readiness instead of with `42501` on the first request.
+3. Start the new app version.
+
+**Rollback.** Redeploying the old binary after `db migrate` is **not supported**. `ReadinessProbe` reports
+`schema-version-mismatch` whenever the stored version differs from `SchemaVersion.Current` (the check is deliberately strict, not
+`>=`, so it keeps catching a skipped migration for every future version), so an older binary never becomes ready. Once an option has
+been assigned, `subscription.price_entry_payment_changed.v1` events exist and an older binary cannot read those streams
+(`UnknownSubscriptionEventAliasException`). To roll back, restore the backup taken before `db migrate` and redeploy the older
+binary. Changes made after the migration are lost on restore.
+
+**Existing data.** Existing streams and snapshot rows are valid as they are: a stored subscription snapshot without
+`paymentOptionId` on its entries loads as no option, and `admin projections rebuild` reproduces both view tables from the events.
+
 ## Subscription catalog
 
 A curated, read-only catalog of known services lives in
@@ -172,7 +233,7 @@ configuration, 2 usage/domain error, 3 conflict (e.g. already initialized), 4 da
 | --- | --- | --- |
 | `db migrate` | migrator | Marten DDL (diff, never drops), `schema_migrations` version, then re-applies `grants.sql` |
 | `db patch --output <file>` | migrator | writes pending DDL for DBA review; executes nothing |
-| `projections rebuild` | migrator | deletes the household and subscription view documents and reprojects each from events in one transaction (prints both counts) |
+| `projections rebuild` | migrator | deletes the household, subscription and payment option view documents and reprojects each from events (prints the three counts) |
 | `household init --name <n> --owner-subject <sub> --owner-label <l>` | app | creates the household and grants the first member |
 | `household grant --subject <sub> --label <l>` | app | grants membership (no self-registration exists anywhere) |
 | `household revoke --member-id <id>` | app | revokes; effective on the member's next request; the last member cannot be revoked |
