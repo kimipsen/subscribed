@@ -19,9 +19,15 @@ public sealed record SubscriptionAdded(
     decimal Amount,
     string CadenceUnit,
     int CadenceCount,
-    DateTimeOffset RecordedAt);
+    DateTimeOffset RecordedAt,
+    string? UnsubscribeUrl = null);
 
-public sealed record SubscriptionDetailsChanged(string Name, string? Category, string? Notes, DateTimeOffset RecordedAt);
+/// <summary>
+/// Full replacement of the editable text details. <paramref name="UnsubscribeUrl"/> is the user-specified unsubscribe link (null
+/// clears it); it is placed after <paramref name="RecordedAt"/> because a v1 event may only gain trailing optional fields. Payloads
+/// stored before it existed lack the key and read as null.
+/// </summary>
+public sealed record SubscriptionDetailsChanged(string Name, string? Category, string? Notes, DateTimeOffset RecordedAt, string? UnsubscribeUrl = null);
 
 public sealed record SubscriptionCurrencyCorrected(string Currency, DateTimeOffset RecordedAt);
 

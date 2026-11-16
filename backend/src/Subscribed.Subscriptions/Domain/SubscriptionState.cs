@@ -43,6 +43,9 @@ public sealed class SubscriptionState
     /// <summary>The linked catalog entry, or null. Snapshots written before this property existed read as null.</summary>
     public string? CatalogId { get; set; }
 
+    /// <summary>The user-specified unsubscribe link, or null. Snapshots written before this property existed read as null.</summary>
+    public string? UnsubscribeUrl { get; set; }
+
     public List<PriceEntryState> Entries { get; set; } = [];
 
     public DateTimeOffset AddedAt { get; set; }
@@ -67,6 +70,7 @@ public sealed class SubscriptionState
             Name = e.Name,
             Category = e.Category,
             Notes = e.Notes,
+            UnsubscribeUrl = e.UnsubscribeUrl,
             Currency = e.Currency,
             StartDate = e.StartDate,
             EndDate = e.EndDate,
@@ -92,6 +96,7 @@ public sealed class SubscriptionState
         Name = e.Name;
         Category = e.Category;
         Notes = e.Notes;
+        UnsubscribeUrl = e.UnsubscribeUrl;
     }
 
     public void Apply(SubscriptionCurrencyCorrected e)

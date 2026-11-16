@@ -118,7 +118,7 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.headers.get('X-CSRF')).toBe('1');
     expect(req.request.body).toEqual({
       name: 'StreamCo', category: null, notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
-      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null,
+      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null, unsubscribeUrl: null,
     });
     const created = detailFixture();
     await finishSave(harness, req, created, 201);
@@ -234,6 +234,7 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     expect(req.request.body).toEqual({
       name: 'FilmPlus HD', category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null, catalogId: null,
+      unsubscribeUrl: 'https://example.com/cancel',
     });
     await finishSave(harness, req, { ...detail, name: 'FilmPlus HD', version: detail.version + 1 });
     expect(TestBed.inject(Router).url).toBe(`/subscriptions/${detail.id}`);
@@ -376,6 +377,81 @@ describe('SubscriptionFormPage', () => {
       await settle(harness);
     });
   });
+
+  // ---- unsubscribe link ------------------------------------------------------------------------------
+
+  const putBody = (req: TestRequest) => req.request.body as { unsubscribeUrl: unknown };
+
+  it('pre-fills the edit field from the detail and sends the trimmed value', async () => {
+    const detail = detailFixture();
+    const { harness, root } = await openEdit(detail);
+    expect(input(root, 'unsubscribeUrl').value).toBe('https://example.com/cancel');
+    type(root, 'unsubscribeUrl', '  https://other.example/stop  ');
+    await submit(harness);
+    const req = http.expectOne(`/api/subscriptions/${detail.id}`);
+    expect(putBody(req).unsubscribeUrl).toBe('https://other.example/stop');
+    req.flush({}, { status: 500, statusText: 'x' });
+  });
+
+  it('sets the link on add', async () => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    type(root, 'unsubscribeUrl', 'https://example.com/cancel');
+    await submit(harness);
+    expect(putBody(http.expectOne('/api/subscriptions')).unsubscribeUrl).toBe('https://example.com/cancel');
+  });
+
+  it('clears the link: an emptied field sends an explicit null in the real request body', async () => {
+    const detail = detailFixture();
+    const { harness, root } = await openEdit(detail);
+    type(root, 'unsubscribeUrl', '   ');
+    await submit(harness);
+    const req = http.expectOne(`/api/subscriptions/${detail.id}`);
+    expect(req.request.body).toHaveProperty('unsubscribeUrl', null);
+    expect(putBody(req).unsubscribeUrl).toBeNull();
+  });
+
+  it.each(['HTTPS://Example.com/cancel', 'Https://example.com/cancel'])('accepts %s and sends it as typed', async (url) => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    type(root, 'unsubscribeUrl', url);
+    await submit(harness);
+    expect(putBody(http.expectOne('/api/subscriptions')).unsubscribeUrl).toBe(url);
+  });
+
+  it.each([
+    'http://example.com/cancel',
+    'javascript:alert(1)',
+    'https://',
+    'https://u@a.example/x',
+    'https://a.example\\@b.example',
+    'https://example.com/a b',
+    'example.com/cancel',
+    'https://example.com/' + 'a'.repeat(2048),
+  ])('rejects %s before sending anything and shows a localized error', async (url) => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    type(root, 'unsubscribeUrl', url);
+    await submit(harness);
+    http.expectNone('/api/subscriptions');
+    expect(root.querySelector('#unsubscribeUrl-error')?.textContent).toContain(en['subscriptions.error.unsubscribeUrl']);
+    expect(input(root, 'unsubscribeUrl').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('maps a server unsubscribeUrl error to a localized message', async () => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    await submit(harness);
+    http.expectOne('/api/subscriptions').flush({ traceId: 't', errors: { unsubscribeUrl: ['x'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(root.querySelector('#unsubscribeUrl-error')?.textContent).toContain(en['subscriptions.error.unsubscribeUrl']);
+    expect(root.textContent).not.toContain('"x"');
+  });
+
+  it('does not pre-fill the field from the catalog: the effective URL already falls back server-side', async () => {
+    const { root } = await openEdit({ ...detailFixture(), unsubscribeUrl: null, effectiveUnsubscribeUrl: 'https://catalog.example/cancel' });
+    expect(input(root, 'unsubscribeUrl').value).toBe('');
+  });
 });
 
 describe('SubscriptionFormPage catalog picker', () => {
@@ -402,7 +478,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     country: 'DK', name: 'Basic', currency: 'DKK', minorUnit: 2, amount: '99.00', cadenceUnit: 'month', cadenceCount: 1, upcomingChange: null, ...over,
   });
   const service = (id: string, name: string, plans: CatalogPlan[], category = 'Streaming'): CatalogService => ({
-    id, name, category, logoUrl: null, lastVerified: '2026-11-01', plans,
+    id, name, category, logoUrl: null, lastVerified: '2026-11-01', plans, unsubscribeUrl: null,
   });
   const catalogOf = (...services: CatalogService[]): Catalog => ({ services, defaultCountry: 'DK' });
 
@@ -472,7 +548,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     const req = http.expectOne('/api/subscriptions');
     expect(req.request.body).toEqual({
       name: 'Our StreamCo', category: 'Streaming', notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
-      amount: '139.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: 'streamco',
+      amount: '139.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: 'streamco', unsubscribeUrl: null,
     });
     req.flush({}, { status: 400, statusText: 'Bad Request' });
     await settle(harness);
@@ -684,4 +760,5 @@ describe('SubscriptionFormPage catalog picker', () => {
     await settle(harness);
     expect(root.textContent).toContain(en['subscriptions.error.catalogId']);
   });
+
 });

@@ -37,8 +37,8 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
     }
 
     internal static object NewBody(ApiTestHost host, string name = "StreamCo", string currency = "DKK", string amount = "129.00", string unit = "month", int count = 1,
-        string? start = null, string? end = null, string? category = null, string? notes = null) =>
-        new { name, category, notes, currency, startDate = start ?? Day(host, -100), endDate = end, amount, cadenceUnit = unit, cadenceCount = count };
+        string? start = null, string? end = null, string? category = null, string? notes = null, string? unsubscribeUrl = null) =>
+        new { name, category, notes, currency, startDate = start ?? Day(host, -100), endDate = end, amount, cadenceUnit = unit, cadenceCount = count, unsubscribeUrl };
 
     internal static async Task<JsonElement> AddAsync(ApiTestHost host, object body)
     {

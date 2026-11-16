@@ -100,6 +100,13 @@
           @if (err('notes'); as e) { <p class="field-error" id="notes-error">{{ e.key | t: e.params }}</p> }
         </div>
         <div class="field">
+          <label for="unsubscribeUrl">{{ 'subscriptions.field.unsubscribeUrl' | t }}</label>
+          <input id="unsubscribeUrl" name="unsubscribeUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://" [(ngModel)]="unsubscribeUrl"
+            [attr.aria-invalid]="err('unsubscribeUrl') ? 'true' : null" [attr.aria-describedby]="describedBy('unsubscribeUrl', 'unsubscribeUrl-hint')" />
+          <p class="muted" id="unsubscribeUrl-hint">{{ 'subscriptions.field.unsubscribeUrlHint' | t }}</p>
+          @if (err('unsubscribeUrl'); as e) { <p class="field-error" id="unsubscribeUrl-error">{{ e.key | t: e.params }}</p> }
+        </div>
+        <div class="field">
           <label for="currency">{{ 'subscriptions.field.currency' | t }}</label>
           <select id="currency" name="currency" [(ngModel)]="currency"
             [attr.aria-invalid]="err('currency') ? 'true' : null" [attr.aria-describedby]="describedBy('currency')">

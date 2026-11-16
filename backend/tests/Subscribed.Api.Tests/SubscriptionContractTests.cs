@@ -19,7 +19,7 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
     /// <summary>Properties the DTOs declare nullable: a null on either side matches any kind there.</summary>
     private static readonly HashSet<string> Nullable = new(StringComparer.Ordinal)
     {
-        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange",
+        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange", "unsubscribeUrl", "effectiveUnsubscribeUrl",
     };
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -136,8 +136,8 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
         await host.InitHouseholdAsync("subject-owner");
         (await host.LoginAsync("subject-owner")).Dispose();
 
-        // Detail: FilmPlus with the EX-007 history, one upcoming entry, a category and notes.
-        var film = await AddAsync(host, NewBody(host, "FilmPlus", amount: "59.00", start: Day(host, -1000), category: "Streaming", notes: "Family plan"));
+        // Detail: FilmPlus with the EX-007 history, one upcoming entry, a category, notes and a user unsubscribe URL.
+        var film = await AddAsync(host, NewBody(host, "FilmPlus", amount: "59.00", start: Day(host, -1000), category: "Streaming", notes: "Family plan", unsubscribeUrl: "https://example.com/cancel"));
         var filmId = film.GetProperty("id").GetString()!;
         var s1 = await SendOkAsync(host, HttpMethod.Post, $"{Base}/{filmId}/prices", new { effectiveFrom = Day(host, -700), amount = "69.00", cadenceUnit = "month", cadenceCount = 1 }, ETag(film));
         var s2 = await SendOkAsync(host, HttpMethod.Post, $"{Base}/{filmId}/prices", new { effectiveFrom = Day(host, -300), amount = "79.00", cadenceUnit = "month", cadenceCount = 1 }, ETag(s1));
