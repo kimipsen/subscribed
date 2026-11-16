@@ -219,7 +219,11 @@ public sealed class PaymentOptionApiTests(PostgresFixture pg)
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var text = await response.Content.ReadAsStringAsync(Ct);
         Assert.DoesNotContain(value, text, StringComparison.Ordinal);
-        Assert.DoesNotContain("1111", text, StringComparison.Ordinal);
+
+        // The random hex traceId can contain "1111" by chance, so leave it out of the digit check.
+        using var problem = JsonDocument.Parse(text);
+        var traceId = problem.RootElement.GetProperty("traceId").GetString()!;
+        Assert.DoesNotContain("1111", text.Replace(traceId, "", StringComparison.Ordinal), StringComparison.Ordinal);
         Assert.Contains($"\"{field}\"", text, StringComparison.Ordinal);
         Assert.Equal(0, (await ListAsync(host)).GetArrayLength());
 
