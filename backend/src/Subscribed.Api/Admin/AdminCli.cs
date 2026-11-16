@@ -28,6 +28,7 @@ public static class AdminCli
           household init --name <n> --owner-subject <sub> --owner-label <label>
           household grant --subject <sub> --label <label>
           household revoke --member-id <id>
+          household relabel --member-id <id> --label <label>
           household show
         """;
 
@@ -49,7 +50,7 @@ public static class AdminCli
             "db migrate" => ConfigScope.MigratorDatabase | ConfigScope.AppRole,
             "db patch" or "projections rebuild" => ConfigScope.MigratorDatabase,
             "household init" or "household grant" => ConfigScope.AppDatabase | ConfigScope.Authority,
-            "household revoke" or "household show" => ConfigScope.AppDatabase,
+            "household revoke" or "household relabel" or "household show" => ConfigScope.AppDatabase,
             _ => (ConfigScope?)null,
         };
         if (scope is null || options is null)
@@ -138,6 +139,11 @@ public static class AdminCli
             case "household revoke" when Opt("member-id") is { } memberId:
                 var revoked = await RetryOnceAsync(() => service.RevokeAsync(memberId, context));
                 await stdout.WriteLineAsync($"Revoked. Version {revoked.Version}.");
+                return Ok;
+            case "household relabel" when Opt("member-id") is { } relabelId && Opt("label") is { } newLabel:
+                var relabeled = await RetryOnceAsync(() => service.ChangeMemberLabelAsync(null, relabelId, newLabel, context));
+                var current = relabeled.Members.First(m => m.MemberId == relabelId).DisplayLabel;
+                await stdout.WriteLineAsync($"Relabeled. Version {relabeled.Version}; member id {relabelId}; label \"{current}\".");
                 return Ok;
             case "household show":
                 var view = await service.GetViewAsync();

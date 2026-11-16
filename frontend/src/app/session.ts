@@ -17,7 +17,7 @@ export type Session =
 export interface Problem {
   type?: string;
   traceId?: string;
-  errors?: { name?: string[] };
+  errors?: { name?: string[]; displayLabel?: string[] };
   currentVersion?: number;
 }
 
@@ -71,6 +71,11 @@ export function logoutDestination(value: unknown, development = false): string {
 export function validHouseholdName(name: string): boolean {
   const trimmed = name.trim();
   return trimmed.length >= 1 && trimmed.length <= 80 && !containsControlCharacters(name);
+}
+
+export function validMemberLabel(label: string): boolean {
+  const trimmed = label.trim();
+  return trimmed.length >= 1 && trimmed.length <= 64 && !containsControlCharacters(label);
 }
 
 @Injectable({ providedIn: 'root' })

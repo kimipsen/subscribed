@@ -53,6 +53,58 @@ public sealed class AdminCliTests(PostgresFixture pg)
     }
 
     [Fact]
+    public async Task Relabel_changes_the_label_of_the_last_remaining_member_and_is_visible_in_show()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        var config = Config(db);
+        Assert.Equal(AdminCli.Ok, (await RunAsync(config, "household", "init", "--name", "Home", "--owner-subject", "subject-a", "--owner-label", "Owner")).Exit);
+        var memberId = Platform.Identity.MemberIdentity.MemberId("https://idp.example.invalid/realms/synthetic", "subject-a");
+
+        var relabel = await RunAsync(config, "household", "relabel", "--member-id", memberId, "--label", "  Kim  ");
+
+        Assert.True(relabel.Exit == AdminCli.Ok, relabel.Err);
+        Assert.Equal($"Relabeled. Version 3; member id {memberId}; label \"Kim\".{Environment.NewLine}", relabel.Out);
+        var show = await RunAsync(config, "household", "show");
+        Assert.Contains("version 3", show.Out, StringComparison.Ordinal);
+        Assert.Contains($"{memberId}  Kim  granted", show.Out, StringComparison.Ordinal);
+        Assert.Contains("subject subject-a", show.Out, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Relabel_to_the_current_label_is_a_noop_that_states_the_current_version()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        var config = Config(db);
+        Assert.Equal(AdminCli.Ok, (await RunAsync(config, "household", "init", "--name", "Home", "--owner-subject", "subject-a", "--owner-label", "Owner")).Exit);
+        var memberId = Platform.Identity.MemberIdentity.MemberId("https://idp.example.invalid/realms/synthetic", "subject-a");
+
+        var same = await RunAsync(config, "household", "relabel", "--member-id", memberId, "--label", "Owner");
+
+        Assert.True(same.Exit == AdminCli.Ok, same.Err);
+        Assert.Equal($"Relabeled. Version 2; member id {memberId}; label \"Owner\".{Environment.NewLine}", same.Out);
+        Assert.Contains("version 2", (await RunAsync(config, "household", "show")).Out, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Relabel_rejects_unknown_members_invalid_labels_and_missing_options_with_a_usage_error()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        var config = Config(db);
+        Assert.Equal(AdminCli.Ok, (await RunAsync(config, "household", "init", "--name", "Home", "--owner-subject", "subject-a", "--owner-label", "Owner")).Exit);
+        var memberId = Platform.Identity.MemberIdentity.MemberId("https://idp.example.invalid/realms/synthetic", "subject-a");
+
+        Assert.Equal(AdminCli.UsageError, (await RunAsync(config, "household", "relabel", "--member-id", "0000000000000000", "--label", "X")).Exit);
+        Assert.Equal(AdminCli.UsageError, (await RunAsync(config, "household", "relabel", "--member-id", memberId, "--label", new string('l', 65))).Exit);
+        Assert.Equal(AdminCli.UsageError, (await RunAsync(config, "household", "relabel", "--member-id", memberId, "--label", "   ")).Exit);
+
+        var missingLabel = await RunAsync(config, "household", "relabel", "--member-id", memberId);
+        Assert.Equal(AdminCli.UsageError, missingLabel.Exit);
+        Assert.Contains("household relabel --member-id <id> --label <label>", missingLabel.Err, StringComparison.Ordinal);
+        Assert.Equal(AdminCli.UsageError, (await RunAsync(config, "household", "relabel", "--label", "X")).Exit);
+        Assert.Contains("Owner", (await RunAsync(config, "household", "show")).Out, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Missing_configuration_lists_keys_only_and_exits_1()
     {
         var (exit, stdout, stderr) = await RunAsync(new Dictionary<string, string?> { ["Database:AppRole"] = "Bad-Role-SENTINEL" }, "db", "migrate");

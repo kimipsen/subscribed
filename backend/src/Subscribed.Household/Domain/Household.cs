@@ -68,6 +68,14 @@ public sealed class Household
             case HouseholdMemberRevoked e:
                 _members.Remove(e.MemberId);
                 break;
+            case HouseholdMemberLabelChanged e:
+                if (!_members.TryGetValue(e.MemberId, out var existing))
+                {
+                    throw new InvalidOperationException($"Member label changed for unknown member '{e.MemberId}'; the event stream is corrupt.");
+                }
+
+                _members[e.MemberId] = existing with { DisplayLabel = e.DisplayLabel };
+                break;
             default:
                 throw new InvalidOperationException($"Event type {@event?.GetType().Name ?? "null"} is not a household event.");
         }
@@ -126,6 +134,21 @@ public sealed class Household
         }
 
         return [new HouseholdMemberRevoked(memberId, now.ToUniversalTime())];
+    }
+
+    /// <summary>Changing to the current label (after trim normalization) is a no-op (no event).</summary>
+    public IReadOnlyList<object> ChangeMemberLabel(string memberId, string label, DateTimeOffset now)
+    {
+        RequireExists();
+        if (!_members.TryGetValue(memberId, out var member))
+        {
+            throw new HouseholdDomainException(HouseholdErrorCodes.NotAMember, "memberId", "The member is not an active member.");
+        }
+
+        var normalized = NormalizeLabel(label);
+        return string.Equals(normalized, member.DisplayLabel, StringComparison.Ordinal)
+            ? []
+            : [new HouseholdMemberLabelChanged(memberId, normalized, now.ToUniversalTime())];
     }
 
     public static string NormalizeName(string? name)
