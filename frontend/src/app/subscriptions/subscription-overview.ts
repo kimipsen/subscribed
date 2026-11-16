@@ -36,6 +36,13 @@ export function cadenceMessage(unit: Price['cadenceUnit'], count: number): Messa
   return { key, params: { count: String(count) } };
 }
 
+const FAILURE_KEYS: Record<number, MessageKey> = {
+  412: 'subscriptions.form.conflict',
+  409: 'subscriptions.pauseInvalid',
+  403: 'subscriptions.form.forbidden',
+  404: 'subscriptions.notFound',
+};
+
 @Component({
   selector: 'app-subscription-overview',
   imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo],
@@ -147,12 +154,7 @@ export class SubscriptionOverviewComponent {
 
   private fail(error: HttpErrorResponse): void {
     this.actionTrace.set((error.error as ApiProblem | null)?.traceId);
-    this.actionProblem.set(
-      error.status === 412 ? { key: 'subscriptions.form.conflict' } :
-      error.status === 409 ? { key: 'subscriptions.pauseInvalid' } :
-      error.status === 403 ? { key: 'subscriptions.form.forbidden' } :
-      error.status === 404 ? { key: 'subscriptions.notFound' } :
-      { key: 'subscriptions.form.saveFailed' });
+    this.actionProblem.set({ key: FAILURE_KEYS[error.status] ?? 'subscriptions.form.saveFailed' });
   }
 
   selectCategory(value: string): void {

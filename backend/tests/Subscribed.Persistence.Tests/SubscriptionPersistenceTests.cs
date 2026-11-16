@@ -254,7 +254,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
         var clock = new TestClock(DateTimeOffset.Parse("2026-11-13T09:30:00Z", CultureInfo.InvariantCulture));
-        var service = new SubscriptionService(store, clock);
+        var service = new SubscriptionService(store, clock, TestCatalog.Standard());
         var added = await service.AddAsync(Sub(), Member, Ct);
         var id = SubscriptionIds.Bare(added.Id);
 
@@ -288,7 +288,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
         var added = await service.AddAsync(Sub(), Member, Ct);
         var id = SubscriptionIds.Bare(added.Id);
 

@@ -92,7 +92,7 @@ describe('SubscriptionOverviewComponent', () => {
   it('has a caption, column headers, row headers that link to the detail page, and a focusable scroll region', async () => {
     const root = element(await render());
     expect(root.querySelector('caption')?.textContent).toContain(en['subscriptions.tableCaption']);
-    expect(root.querySelectorAll('thead th[scope=col]').length).toBe(7);
+    expect(root.querySelectorAll('thead th[scope=col]')).toHaveLength(7);
     const link = rowFor(root, 'StreamCo').querySelector('th[scope=row] a');
     expect(link?.getAttribute('href')).toMatch(/^\/subscriptions\/[0-9a-f]{32}$/);
     const region = root.querySelector('.table-scroll');

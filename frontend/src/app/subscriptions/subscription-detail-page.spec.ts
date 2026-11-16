@@ -454,7 +454,7 @@ describe('SubscriptionDetailPage', () => {
     expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.paused']);
     expect(el(root, '.summary .badge').classList.contains('status-paused')).toBe(true);
     expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
-    expect(el(root, '[role=status].status').textContent).toContain(`${detail.name} is paused.`);
+    expect(el(root, 'output.status').textContent).toContain(`${detail.name} is paused.`);
     expect(document.activeElement).toBe(toggle(root));
     http.expectNone(() => true);
   });
@@ -469,7 +469,7 @@ describe('SubscriptionDetailPage', () => {
     await respond(harness, req, bump(detail, { status: 'active', paused: false }));
     expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.active']);
     expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.pause']);
-    expect(el(root, '[role=status].status').textContent).toContain(`${detail.name} was resumed.`);
+    expect(el(root, 'output.status').textContent).toContain(`${detail.name} was resumed.`);
   });
 
   for (const status of ['ended', 'not-started'] as const) {
@@ -503,7 +503,7 @@ describe('SubscriptionDetailPage', () => {
     pauseRequest(detail, 'pause').flush({ traceId: 't', currentVersion: detail.version + 1 }, { status: 412, statusText: 'Precondition Failed' });
     await settle(harness);
     expect(el(root, '.notice[role=alert]').textContent).toContain(en['subscriptions.form.conflict']);
-    expect(root.querySelector('[role=status].status')).toBeNull();
+    expect(root.querySelector('output.status')).toBeNull();
     buttonByText(root, en['subscriptions.form.reloadLatest']).click();
     request(detail).flush(bump(detail, { status: 'paused', paused: true }));
     await settle(harness);

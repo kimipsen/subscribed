@@ -31,7 +31,7 @@
           <button type="button" class="secondary" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
         </div>
       }
-      @if (notice(); as message) { <p class="status" role="status">{{ message.key | t: message.params }}</p> }
+      @if (notice(); as message) { <output class="status">{{ message.key | t: message.params }}</output> }
       @if (problem(); as message) { <p class="error" role="alert">{{ message.key | t: message.params }}</p> }
       @if (traceId() && (conflict() || problem())) {
         <p class="muted">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p>
