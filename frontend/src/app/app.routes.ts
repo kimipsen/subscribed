@@ -39,6 +39,11 @@ export const routes: Routes = [
     canActivate: [householdGuard],
     loadComponent: () => import('./subscriptions/subscription-detail-page').then((m) => m.SubscriptionDetailPage),
   },
+  {
+    path: 'payment-options',
+    canActivate: [householdGuard],
+    loadComponent: () => import('./subscriptions/payment-options-page').then((m) => m.PaymentOptionsPage),
+  },
   { path: 'welcome', component: FoundationPage, data: { page: 'welcome' } },
   { path: 'access-denied', component: FoundationPage, data: { page: 'access-denied' } },
   { path: 'signed-out', component: FoundationPage, data: { page: 'signed-out' } },

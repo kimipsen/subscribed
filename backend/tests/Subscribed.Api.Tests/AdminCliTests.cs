@@ -3,6 +3,7 @@ using Subscribed.Household;
 using Subscribed.Api.Admin;
 using Subscribed.Platform.EventStore;
 using Subscribed.Subscriptions;
+using Subscribed.Subscriptions.PaymentOptions;
 using Subscribed.Subscriptions.Domain;
 using Subscribed.TestSupport;
 using Xunit;
@@ -163,19 +164,36 @@ public sealed class AdminCliTests(PostgresFixture pg)
             await service.AddPriceEntryAsync(SubscriptionIds.Bare(active.Id), active.Version, SubscriptionDecisions.ParsePriceEntry(new PriceInput("2025-01-01", "139.00", "month", 1)), context, TestContext.Current.CancellationToken);
             var removed = await service.AddAsync(Sub("Removed"), context, TestContext.Current.CancellationToken);
             await service.RemoveAsync(SubscriptionIds.Bare(removed.Id), removed.Version, context, TestContext.Current.CancellationToken);
+
+            var options = new PaymentOptionService(store, TimeProvider.System);
+            var visa = await options.CreateAsync(PaymentOptionDecisions.ParseCreate(new PaymentOptionInput("Visa", "Joint")), context, TestContext.Current.CancellationToken);
+            var gone = await options.CreateAsync(PaymentOptionDecisions.ParseCreate(new PaymentOptionInput("Gone", null)), context, TestContext.Current.CancellationToken);
+            await options.RemoveAsync(PaymentOptionIds.Bare(gone.Id), gone.Version, context, TestContext.Current.CancellationToken);
+            await service.AddAsync(
+                SubscriptionDecisions.ParseAdd(new AddInput("Paid", null, null, "DKK", "2024-03-01", null, "5.00", "month", 1, PaymentOptionId: PaymentOptionIds.Bare(visa.Id))),
+                context,
+                TestContext.Current.CancellationToken);
         }
 
         const string sql = "SELECT string_agg(id || ':' || data::text, '|' ORDER BY id) FROM subscribed.mt_doc_subscription_view";
         var before = await db.ScalarAsMigratorAsync<string>(sql);
         Assert.NotNull(before);
-        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
+        const string optionSql = "SELECT string_agg(id || ':' || data::text, '|' ORDER BY id) FROM subscribed.mt_doc_payment_option_view";
+        var optionsBefore = await db.ScalarAsMigratorAsync<string>(optionSql);
+        Assert.NotNull(optionsBefore);
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view; DELETE FROM subscribed.mt_doc_payment_option_view");
         Assert.Null(await db.ScalarAsMigratorAsync<string>(sql));
+        Assert.Null(await db.ScalarAsMigratorAsync<string>(optionSql));
 
         var rebuild = await RunAsync(config, "projections", "rebuild");
 
         Assert.True(rebuild.Exit == AdminCli.Ok, rebuild.Err);
         Assert.Equal(before, await db.ScalarAsMigratorAsync<string>(sql));
+
+        // A forgotten rebuilder call would leave this table empty.
+        Assert.Equal(optionsBefore, await db.ScalarAsMigratorAsync<string>(optionSql));
         Assert.Contains("Rebuilt 1 household view document(s).", rebuild.Out, StringComparison.Ordinal);
-        Assert.Contains("Rebuilt 2 subscription view document(s).", rebuild.Out, StringComparison.Ordinal);
+        Assert.Contains("Rebuilt 3 subscription view document(s).", rebuild.Out, StringComparison.Ordinal);
+        Assert.Contains("Rebuilt 2 payment option view document(s).", rebuild.Out, StringComparison.Ordinal);
     }
 }

@@ -19,6 +19,7 @@ public sealed class SubscriptionEventTests
     [InlineData(SubscriptionEventTypes.Paused, typeof(SubscriptionPaused))]
     [InlineData(SubscriptionEventTypes.Resumed, typeof(SubscriptionResumed))]
     [InlineData(SubscriptionEventTypes.CatalogLinked, typeof(SubscriptionCatalogLinked))]
+    [InlineData(SubscriptionEventTypes.PriceEntryPaymentChanged, typeof(SubscriptionPriceEntryPaymentChanged))]
     public void Golden_fixtures_deserialize_and_round_trip(string alias, Type type)
     {
         var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "events", alias + ".json")).Trim();
@@ -65,7 +66,7 @@ public sealed class SubscriptionEventTests
             Assert.Contains(type.GetProperties(), p => p.Name == "RecordedAt");
         }
 
-        Assert.Equal(11, SubscriptionEventTypes.ByAlias.Count);
+        Assert.Equal(12, SubscriptionEventTypes.ByAlias.Count);
         Assert.All(SubscriptionEventTypes.ByAlias.Keys, a => Assert.Matches(@"^subscription\.[a-z_]+\.v1$", a));
     }
 

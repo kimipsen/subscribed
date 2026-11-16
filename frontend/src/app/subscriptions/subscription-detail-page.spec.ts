@@ -11,9 +11,9 @@ import { da } from '../i18n/catalog.da';
 import { SessionService, csrfInterceptor } from '../session';
 import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionsService } from './subscriptions.service';
-import { SubscriptionDetail } from './subscription.models';
+import { PaymentOptionList, SubscriptionDetail } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
-import { detailFixture } from './testing/fixtures';
+import { detailFixture, paymentOptionListFixture } from './testing/fixtures';
 import '../app.config';
 
 const plain = (value: string | null | undefined) => (value ?? '').replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -48,9 +48,10 @@ describe('SubscriptionDetailPage', () => {
     harness.detectChanges();
   }
 
-  async function open(detail: SubscriptionDetail = detailFixture()) {
+  async function open(detail: SubscriptionDetail = detailFixture(), options: PaymentOptionList = paymentOptionListFixture()) {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
+    http.expectOne('/api/payment-options').flush(options);
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement, detail };
@@ -147,7 +148,7 @@ describe('SubscriptionDetailPage', () => {
     expect(first.request.method).toBe('POST');
     expect(first.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     expect(first.request.headers.get('X-CSRF')).toBe('1');
-    expect(first.request.body).toEqual({ effectiveFrom: plusDays(detail.startDate, 5), amount: '69.50', cadenceUnit: 'month', cadenceCount: 1 });
+    expect(first.request.body).toEqual({ effectiveFrom: plusDays(detail.startDate, 5), amount: '69.50', cadenceUnit: 'month', cadenceCount: 1, paymentOptionId: null });
     const afterFirst = bump(detail);
     await respond(harness, first, afterFirst);
 
@@ -160,7 +161,7 @@ describe('SubscriptionDetailPage', () => {
     await entrySubmit(harness);
     const second = request(detail, '/prices');
     expect(second.request.headers.get('If-Match')).toBe(`"${afterFirst.version}"`);
-    expect(second.request.body).toEqual({ effectiveFrom: plusDays(detail.startDate, 6), amount: '999.00', cadenceUnit: 'year', cadenceCount: 1 });
+    expect(second.request.body).toEqual({ effectiveFrom: plusDays(detail.startDate, 6), amount: '999.00', cadenceUnit: 'year', cadenceCount: 1, paymentOptionId: null });
     second.flush(bump(afterFirst));
   });
 
@@ -189,7 +190,7 @@ describe('SubscriptionDetailPage', () => {
     const req = request(detail, `/prices/${initial.entryId}`);
     expect(req.request.method).toBe('PUT');
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
-    expect(req.request.body).toEqual({ effectiveFrom: detail.startDate, amount: '49.00', cadenceUnit: 'month', cadenceCount: 1 });
+    expect(req.request.body).toEqual({ effectiveFrom: detail.startDate, amount: '49.00', cadenceUnit: 'month', cadenceCount: 1, paymentOptionId: null });
     req.flush(bump(detail));
   });
 
@@ -201,7 +202,7 @@ describe('SubscriptionDetailPage', () => {
     type(root, 'entry-amount', '65.00');
     await entrySubmit(harness);
     const req = request(detail, `/prices/${entry.entryId}`);
-    expect(req.request.body).toEqual({ effectiveFrom: entry.effectiveFrom, amount: '65.00', cadenceUnit: 'month', cadenceCount: 1 });
+    expect(req.request.body).toEqual({ effectiveFrom: entry.effectiveFrom, amount: '65.00', cadenceUnit: 'month', cadenceCount: 1, paymentOptionId: null });
     req.flush(bump(detail));
   });
 
@@ -344,6 +345,183 @@ describe('SubscriptionDetailPage', () => {
     expect(el(root, '#end-date-error').textContent).toContain(en['detail.end.error']);
   });
 
+  // ---- payment options -------------------------------------------------------------------------------
+
+  const VISA = '0192f3c1a1b27c4e8d2e5f60718293b5';
+  const OLD = '0192f3c1a1b27c4e8d2e5f60718293c6';
+
+  /** The first entry uses the removed option, the current one uses Visa, and the rest have none. */
+  function withOptions(): SubscriptionDetail {
+    const detail = detailFixture();
+    detail.priceHistory[0].paymentOptionId = OLD;
+    const current = detail.priceHistory.find((e) => e.current)!;
+    current.paymentOptionId = VISA;
+    detail.currentPrice.paymentOptionId = VISA;
+    return detail;
+  }
+
+  const optionChoices = (root: HTMLElement) =>
+    Array.from(root.querySelectorAll<HTMLOptionElement>('#entry-paymentOption option')).map((o) => ({ value: o.value, text: plain(o.textContent), disabled: o.disabled }));
+
+  async function pickOption(harness: RouterTestingHarness, root: HTMLElement, value: string) {
+    const select = el<HTMLSelectElement>(root, '#entry-paymentOption');
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
+    await settle(harness);
+  }
+
+  it('shows a Payment option column: the name and label, "(removed)" for a removed option, and a dash for none', async () => {
+    const { root, detail } = await open(withOptions());
+    expect(Array.from(root.querySelectorAll('thead th')).map((th) => plain(th.textContent))).toEqual([
+      en['detail.col.period'], en['detail.col.price'], en['detail.col.perMonth'], en['detail.col.change'], en['detail.col.paymentOption'], en['detail.col.actions'],
+    ]);
+    const cells = rows(root).map((row) => plain(row.querySelectorAll('td')[3].textContent));
+    expect(cells[0]).toBe(`Old card ${en['detail.paymentOption.removed']}`);
+    const current = detail.priceHistory.findIndex((e) => e.current);
+    expect(cells[current]).toBe('Visa · Joint account');
+    expect(cells.filter((c) => c === '—')).toHaveLength(detail.priceHistory.length - 2);
+  });
+
+  it('resolves a history row by id, so a renamed option shows its new name in old rows', async () => {
+    const renamed = paymentOptionListFixture();
+    renamed.options[0] = { ...renamed.options[0], name: 'Visa Platinum', label: null };
+    const { root, detail } = await open(withOptions(), renamed);
+    const current = detail.priceHistory.findIndex((e) => e.current);
+    expect(plain(rows(root)[current].querySelectorAll('td')[3].textContent)).toBe('Visa Platinum');
+    expect(root.textContent).not.toContain('Joint account');
+  });
+
+  it('shows a dash for an option id it cannot resolve and still renders when the options fail to load', async () => {
+    const detail = withOptions();
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
+    http.expectOne('/api/payment-options').flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    await settle(harness);
+    const root = harness.routeNativeElement as HTMLElement;
+    expect(el(root, 'h1').textContent).toBe(detail.name);
+    expect(plain(rows(root)[0].querySelectorAll('td')[3].textContent)).toBe('—');
+  });
+
+  it('offers None and the non-removed options when adding a price, starting from the current price\'s option', async () => {
+    const { harness, root } = await open(withOptions());
+    el<HTMLButtonElement>(root, '#add-entry').click();
+    await settle(harness);
+    expect(optionChoices(root)).toEqual([
+      { value: '', text: en['paymentOptions.select.none'], disabled: false },
+      { value: VISA, text: 'Visa · Joint account', disabled: false },
+    ]);
+    expect(el<HTMLSelectElement>(root, '#entry-paymentOption').value).toBe(VISA);
+  });
+
+  it('sends the picked option when adding a price, and an explicit null for None', async () => {
+    const { harness, root, detail } = await open(withOptions());
+    el<HTMLButtonElement>(root, '#add-entry').click();
+    await settle(harness);
+    type(root, 'entry-effectiveFrom', plusDays(detail.startDate, 5));
+    type(root, 'entry-amount', '69.50');
+    await entrySubmit(harness);
+    const withVisa = request(detail, '/prices');
+    expect((withVisa.request.body as { paymentOptionId: string | null }).paymentOptionId).toBe(VISA);
+    const afterFirst = bump(detail);
+    await respond(harness, withVisa, afterFirst);
+
+    el<HTMLButtonElement>(root, '#add-entry').click();
+    await settle(harness);
+    type(root, 'entry-effectiveFrom', plusDays(detail.startDate, 6));
+    type(root, 'entry-amount', '70.00');
+    await pickOption(harness, root, '');
+    await entrySubmit(harness);
+    const none = request(detail, '/prices');
+    expect(Object.hasOwn(none.request.body as object, 'paymentOptionId')).toBe(true);
+    expect((none.request.body as { paymentOptionId: string | null }).paymentOptionId).toBeNull();
+    none.flush(bump(afterFirst));
+  });
+
+  it('a price-only correction keeps the entry\'s existing option: entryBody always sends the key', async () => {
+    const { harness, root, detail } = await open(withOptions());
+    const entry = detail.priceHistory.find((e) => e.current)!;
+    el<HTMLButtonElement>(root, `#correct-${entry.entryId}`).click();
+    await settle(harness);
+    expect(el<HTMLSelectElement>(root, '#entry-paymentOption').value).toBe(VISA);
+    type(root, 'entry-amount', '65.00');
+    await entrySubmit(harness);
+    const req = request(detail, `/prices/${entry.entryId}`);
+    expect(req.request.body).toEqual({ effectiveFrom: entry.effectiveFrom, amount: '65.00', cadenceUnit: 'month', cadenceCount: 1, paymentOptionId: VISA });
+    req.flush(bump(detail));
+  });
+
+  it('changes and clears the option of an entry when asked', async () => {
+    const { harness, root, detail } = await open(withOptions());
+    const entry = detail.priceHistory.find((e) => e.current)!;
+    el<HTMLButtonElement>(root, `#correct-${entry.entryId}`).click();
+    await settle(harness);
+    await pickOption(harness, root, '');
+    await entrySubmit(harness);
+    const req = request(detail, `/prices/${entry.entryId}`);
+    expect((req.request.body as { paymentOptionId: string | null }).paymentOptionId).toBeNull();
+    req.flush(bump(detail));
+  });
+
+  it('keeps a removed option as a disabled "(removed)" entry in the correct form, and saving does not clear it', async () => {
+    const { harness, root, detail } = await open(withOptions());
+    const entry = detail.priceHistory[0];
+    el<HTMLButtonElement>(root, `#correct-${entry.entryId}`).click();
+    await settle(harness);
+    expect(optionChoices(root)).toEqual([
+      { value: '', text: en['paymentOptions.select.none'], disabled: false },
+      { value: VISA, text: 'Visa · Joint account', disabled: false },
+      { value: OLD, text: `Old card (removed)`, disabled: true },
+    ]);
+    expect(el<HTMLSelectElement>(root, '#entry-paymentOption').value).toBe(OLD);
+    type(root, 'entry-amount', '49.00');
+    await entrySubmit(harness);
+    const req = request(detail, `/prices/${entry.entryId}`);
+    expect((req.request.body as { paymentOptionId: string | null }).paymentOptionId).toBe(OLD);
+    req.flush(bump(detail));
+
+    // Another entry does not offer the removed option at all.
+    const other = detail.priceHistory.find((e) => e.current)!;
+    el<HTMLButtonElement>(root, `#correct-${other.entryId}`).click();
+    await settle(harness);
+    expect(optionChoices(root).map((c) => c.value)).toEqual(['', VISA]);
+  });
+
+  it('maps a paymentOptionId error from the server to a localized message beside the select', async () => {
+    const { harness, root, detail } = await open(withOptions());
+    el<HTMLButtonElement>(root, '#add-entry').click();
+    await settle(harness);
+    type(root, 'entry-effectiveFrom', plusDays(detail.startDate, 5));
+    type(root, 'entry-amount', '69.50');
+    await entrySubmit(harness);
+    request(detail, '/prices').flush({ traceId: 't', errors: { paymentOptionId: ['English from the server'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(el(root, '#entry-paymentOptionId-error').textContent).toContain(en['subscriptions.error.paymentOptionId']);
+    expect(root.textContent).not.toContain('English from the server');
+    expect(el(root, '#entry-paymentOption').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('the details PUT carries no paymentOptionId: it neither sets nor clears an option (D9)', async () => {
+    const detail = { ...withOptions(), endDate: '2099-01-01', status: 'active' as const };
+    const { harness, root } = await open(detail);
+    buttonByText(root, en['detail.reinstate']).click();
+    await settle(harness);
+    const req = request(detail);
+    expect(Object.keys(req.request.body as object)).toEqual(['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId', 'unsubscribeUrl']);
+    req.flush(bump(detail, { endDate: null }));
+  });
+
+  it('renders the option column and the select in Danish with no English application copy', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const { harness, root, detail } = await open(withOptions());
+    el<HTMLButtonElement>(root, `#correct-${detail.priceHistory[0].entryId}`).click();
+    await settle(harness);
+    expect(root.textContent).toContain(da['detail.col.paymentOption']);
+    expect(root.textContent).toContain(da['detail.paymentOption.removed']);
+    expect(root.textContent).toContain(da['paymentOptions.select.label']);
+    expect(englishLeftovers(root)).toEqual([]);
+  });
+
   // ---- unsubscribe link ------------------------------------------------------------------------------
 
   const unsubscribeLink = (root: HTMLElement) => root.querySelector('a[target="_blank"]') as HTMLAnchorElement | null;
@@ -443,6 +621,7 @@ describe('SubscriptionDetailPage', () => {
   it('shows "not found" with a link home on a 404', async () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl(`/subscriptions/${'b'.repeat(32)}`, SubscriptionDetailPage);
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne(`/api/subscriptions/${'b'.repeat(32)}`).flush({ traceId: 't' }, { status: 404, statusText: 'Not Found' });
     await settle(harness);
     const root = harness.routeNativeElement as HTMLElement;

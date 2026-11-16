@@ -19,7 +19,8 @@
         "effectiveFrom": "2026-01-18",
         "amount": "79.00",
         "cadenceUnit": "month",
-        "cadenceCount": 1
+        "cadenceCount": 1,
+        "paymentOptionId": null
       },
       "normalizedMonthly": "79.00",
       "normalizedYearly": "948.00",
@@ -43,7 +44,8 @@
         "effectiveFrom": "2026-12-02",
         "amount": "60.00",
         "cadenceUnit": "month",
-        "cadenceCount": 1
+        "cadenceCount": 1,
+        "paymentOptionId": null
       },
       "normalizedMonthly": "60.00",
       "normalizedYearly": "720.00",
@@ -67,7 +69,8 @@
         "effectiveFrom": "2025-10-10",
         "amount": "149.00",
         "cadenceUnit": "month",
-        "cadenceCount": 1
+        "cadenceCount": 1,
+        "paymentOptionId": null
       },
       "normalizedMonthly": "149.00",
       "normalizedYearly": "1788.00",
@@ -91,7 +94,8 @@
         "effectiveFrom": "2026-01-18",
         "amount": "129.00",
         "cadenceUnit": "month",
-        "cadenceCount": 1
+        "cadenceCount": 1,
+        "paymentOptionId": null
       },
       "normalizedMonthly": "129.00",
       "normalizedYearly": "1548.00",
@@ -115,7 +119,8 @@
         "effectiveFrom": "2026-04-28",
         "amount": "11.99",
         "cadenceUnit": "month",
-        "cadenceCount": 1
+        "cadenceCount": 1,
+        "paymentOptionId": null
       },
       "normalizedMonthly": "11.99",
       "normalizedYearly": "143.88",

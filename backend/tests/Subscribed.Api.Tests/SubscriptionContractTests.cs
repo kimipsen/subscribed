@@ -19,7 +19,7 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
     /// <summary>Properties the DTOs declare nullable: a null on either side matches any kind there.</summary>
     private static readonly HashSet<string> Nullable = new(StringComparer.Ordinal)
     {
-        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange", "unsubscribeUrl", "effectiveUnsubscribeUrl",
+        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange", "paymentOptionId", "label", "unsubscribeUrl", "effectiveUnsubscribeUrl",
     };
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -92,7 +92,7 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
         }
     }
 
-    private static void Compare(string file, JsonElement actual)
+    internal static void Compare(string file, JsonElement actual)
     {
         var path = Path.Combine(GoldenDirectory(), file);
         if (Environment.GetEnvironmentVariable("UPDATE_GOLDEN") == "1")

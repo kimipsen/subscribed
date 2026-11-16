@@ -12,6 +12,7 @@ using Subscribed.Api.Configuration;
 using Subscribed.Api.Hosting;
 using Subscribed.Household;
 using Subscribed.Subscriptions;
+using Subscribed.Subscriptions.PaymentOptions;
 using Subscribed.Platform.DataProtection;
 using Subscribed.Platform.EventStore;
 using Subscribed.Platform.Identity;
@@ -28,7 +29,7 @@ public sealed class ConfigurationInvalidException(IReadOnlyList<string> keys)
 /// <summary>Composition root of the web host. Tests build the same host with TestServer.</summary>
 public static class SubscribedApp
 {
-    public static IReadOnlyList<IEventStoreModule> Modules { get; } = [new HouseholdModule(), new SubscriptionsModule()];
+    public static IReadOnlyList<IEventStoreModule> Modules { get; } = [new HouseholdModule(), new SubscriptionsModule(), new PaymentOptionsModule()];
 
     public static WebApplicationBuilder CreateBuilder(string[] args)
     {
@@ -85,6 +86,7 @@ public static class SubscribedApp
         services.AddSingleton<HouseholdService>();
         services.TryAddSingleton(sp => CatalogLoader.LoadEmbedded(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<SubscriptionService>();
+        services.AddSingleton<PaymentOptionService>();
         services.AddSingleton<MartenXmlRepository>();
         services.AddDataProtection().SetApplicationName("subscribed");
         services.AddOptions<KeyManagementOptions>()
@@ -163,6 +165,7 @@ public static class SubscribedApp
         app.MapBffEndpoints();
         app.MapHouseholdEndpoints();
         app.MapSubscriptionEndpoints();
+        app.MapPaymentOptionEndpoints();
         app.Map("/api/{**rest}", (HttpContext ctx) => Problem.Result(404, ProblemCodes.NotFound, "Not found."))
             .AllowAnonymous().WithMetadata(new ApiNotFoundMarker()).WithOrder(int.MaxValue);
         app.Map("/api", (HttpContext ctx) => Problem.Result(404, ProblemCodes.NotFound, "Not found."))

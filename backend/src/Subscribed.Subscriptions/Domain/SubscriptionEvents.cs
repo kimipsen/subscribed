@@ -47,6 +47,9 @@ public sealed record SubscriptionResumed(DateTimeOffset RecordedAt);
 /// <summary>Links the subscription to a catalog entry, or unlinks it when <paramref name="CatalogId"/> is null.</summary>
 public sealed record SubscriptionCatalogLinked(string? CatalogId, DateTimeOffset RecordedAt);
 
+/// <summary>Assigns a payment option to one price entry, or clears it when <paramref name="PaymentOptionId"/> is null.</summary>
+public sealed record SubscriptionPriceEntryPaymentChanged(string EntryId, string? PaymentOptionId, DateTimeOffset RecordedAt);
+
 public sealed class UnknownSubscriptionEventAliasException(string alias)
     : Exception($"Unknown subscription event alias '{alias}'. Stored events are never skipped.")
 {
@@ -67,6 +70,7 @@ public static class SubscriptionEventTypes
     public const string Paused = "subscription.paused.v1";
     public const string Resumed = "subscription.resumed.v1";
     public const string CatalogLinked = "subscription.catalog_linked.v1";
+    public const string PriceEntryPaymentChanged = "subscription.price_entry_payment_changed.v1";
 
     public static readonly IReadOnlyDictionary<string, Type> ByAlias = new Dictionary<string, Type>(StringComparer.Ordinal)
     {
@@ -81,6 +85,7 @@ public static class SubscriptionEventTypes
         [Paused] = typeof(SubscriptionPaused),
         [Resumed] = typeof(SubscriptionResumed),
         [CatalogLinked] = typeof(SubscriptionCatalogLinked),
+        [PriceEntryPaymentChanged] = typeof(SubscriptionPriceEntryPaymentChanged),
     };
 
     /// <summary>

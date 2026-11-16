@@ -44,6 +44,14 @@ describe('SubscriptionOverviewComponent', () => {
   const rowFor = (root: HTMLElement, name: string) =>
     Array.from(root.querySelectorAll('tbody tr')).find((row) => row.querySelector('th a')?.textContent?.trim() === name) as HTMLElement;
 
+  it('links to the payment options page whatever the state, in the active language', async () => {
+    const root = element(await render());
+    expect(root.querySelector('a[href="/payment-options"]')?.textContent?.trim()).toBe(en['paymentOptions.link']);
+    TestBed.inject(LanguageService).setLanguage('da');
+    TestBed.createComponent(SubscriptionOverviewComponent).detectChanges();
+    http.expectOne('/api/subscriptions').flush(overviewFixture());
+  });
+
   it('shows a loading status first', () => {
     const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
     fixture.detectChanges();

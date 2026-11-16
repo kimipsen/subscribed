@@ -167,6 +167,15 @@
               </div>
             }
           </fieldset>
+          <div class="field">
+            <label for="paymentOptionId">{{ 'paymentOptions.select.label' | t }}</label>
+            <select id="paymentOptionId" name="paymentOptionId" [(ngModel)]="paymentOptionId"
+              [attr.aria-invalid]="err('paymentOptionId') ? 'true' : null" [attr.aria-describedby]="describedBy('paymentOptionId')">
+              <option value="">{{ 'paymentOptions.select.none' | t }}</option>
+              @for (o of selectableOptions(); track o.id) { <option [value]="o.id">{{ optionText(o) }}</option> }
+            </select>
+            @if (err('paymentOptionId'); as e) { <p class="field-error" id="paymentOptionId-error">{{ e.key | t: e.params }}</p> }
+          </div>
         }
         <div class="actions">
           <button type="submit" [disabled]="saving()">

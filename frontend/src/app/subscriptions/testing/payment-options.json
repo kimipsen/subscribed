@@ -1,0 +1,18 @@
+{
+  "options": [
+    {
+      "id": "0192f3c1a1b27c4e8d2e5f60718293b5",
+      "version": 3,
+      "name": "Visa",
+      "label": "Joint account",
+      "removed": false
+    },
+    {
+      "id": "0192f3c1a1b27c4e8d2e5f60718293c6",
+      "version": 2,
+      "name": "Old card",
+      "label": null,
+      "removed": true
+    }
+  ]
+}

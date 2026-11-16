@@ -18,7 +18,8 @@
     "effectiveFrom": "2026-01-18",
     "amount": "79.00",
     "cadenceUnit": "month",
-    "cadenceCount": 1
+    "cadenceCount": 1,
+    "paymentOptionId": null
   },
   "normalizedMonthly": "79.00",
   "normalizedYearly": "948.00",
@@ -35,7 +36,8 @@
       "normalizedYearly": "708.00",
       "change": null,
       "current": false,
-      "upcoming": false
+      "upcoming": false,
+      "paymentOptionId": null
     },
     {
       "entryId": "01a1d9eef53f7e219cb7368e07c6e679",
@@ -52,7 +54,8 @@
         "percent": "16.9"
       },
       "current": false,
-      "upcoming": false
+      "upcoming": false,
+      "paymentOptionId": null
     },
     {
       "entryId": "01a1d9eef53f77e9bd9fb70505dc307a",
@@ -69,7 +72,8 @@
         "percent": "14.5"
       },
       "current": true,
-      "upcoming": false
+      "upcoming": false,
+      "paymentOptionId": null
     },
     {
       "entryId": "01a1d9eef53f7651ba51bb1d58f2fd5a",
@@ -86,7 +90,8 @@
         "percent": "12.7"
       },
       "current": false,
-      "upcoming": true
+      "upcoming": true,
+      "paymentOptionId": null
     }
   ],
   "unsubscribeUrl": "https://example.com/cancel",

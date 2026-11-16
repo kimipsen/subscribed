@@ -2,6 +2,7 @@ using Marten;
 using Subscribed.Household;
 using Subscribed.Platform.EventStore;
 using Subscribed.Subscriptions.Domain;
+using Subscribed.Subscriptions.PaymentOptions;
 
 namespace Subscribed.Subscriptions;
 
@@ -30,6 +31,9 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
         EventStoreErrors.GuardAsync(async () =>
         {
             RequireKnownCatalogId(command.CatalogId);
+
+            // A create has no stream yet, so there is no 404 or 412 ordering to protect and no "only when changed" rule (D13).
+            await RequireUsablePaymentOptionAsync(command.PaymentOptionId, ct).ConfigureAwait(false);
             var id = SubscriptionIds.New(time);
             var streamKey = SubscriptionIds.StreamKey(id);
             var events = SubscriptionDecisions.Add(command, HouseholdService.StreamId, SubscriptionIds.New(time), time.GetUtcNow());
@@ -55,10 +59,20 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
         }, context, ct);
 
     public Task<SubscriptionState> AddPriceEntryAsync(string id, long expectedVersion, PriceEntryChange command, WriteContext context, CancellationToken ct = default) =>
-        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.AddPriceEntry(history, command, SubscriptionIds.New(time), time.GetUtcNow()), context, ct);
+        WriteAsync(id, expectedVersion, async (history, token) =>
+        {
+            var events = SubscriptionDecisions.AddPriceEntry(history, command, SubscriptionIds.New(time), time.GetUtcNow());
+            await RequireAssignedOptionsUsableAsync(events, token).ConfigureAwait(false);
+            return events;
+        }, context, ct);
 
     public Task<SubscriptionState> CorrectPriceEntryAsync(string id, long expectedVersion, string entryId, PriceEntryChange command, WriteContext context, CancellationToken ct = default) =>
-        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.CorrectPriceEntry(history, entryId, command, time.GetUtcNow()), context, ct);
+        WriteAsync(id, expectedVersion, async (history, token) =>
+        {
+            var events = SubscriptionDecisions.CorrectPriceEntry(history, entryId, command, time.GetUtcNow());
+            await RequireAssignedOptionsUsableAsync(events, token).ConfigureAwait(false);
+            return events;
+        }, context, ct);
 
     public Task<SubscriptionState> RemovePriceEntryAsync(string id, long expectedVersion, string entryId, WriteContext context, CancellationToken ct = default) =>
         WriteAsync(id, expectedVersion, history => SubscriptionDecisions.RemovePriceEntry(history, entryId, time.GetUtcNow()), context, ct);
@@ -80,6 +94,18 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
     /// <c>SaveChanges</c>. A decision with no events skips the append and returns the loaded document (no new version).
     /// </summary>
     private Task<SubscriptionState> WriteAsync(string id, long expectedVersion, Func<IReadOnlyList<object>, IReadOnlyList<object>> decide, WriteContext context, CancellationToken ct) =>
+        WriteAsync(id, expectedVersion, (history, _) => Task.FromResult(decide(history)), context, ct);
+
+    /// <summary>
+    /// The same flow with an async decide step (D13), for a decision that needs another stream: a database load cannot run in the
+    /// sync decide without sync-over-async, and checking before this call would break the 404, 412, then 400 order.
+    /// </summary>
+    private Task<SubscriptionState> WriteAsync(
+        string id,
+        long expectedVersion,
+        Func<IReadOnlyList<object>, CancellationToken, Task<IReadOnlyList<object>>> decideAsync,
+        WriteContext context,
+        CancellationToken ct) =>
         EventStoreErrors.GuardAsync(async () =>
         {
             var streamKey = SubscriptionIds.StreamKey(id);
@@ -107,7 +133,7 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
                 throw new EventStoreException(new EventStoreFailure(EventStoreFailureKind.ConcurrencyConflict), new InvalidOperationException("Stale expected version."));
             }
 
-            var events = decide(history);
+            var events = await decideAsync(history, ct).ConfigureAwait(false);
             if (events.Count > 0)
             {
                 SetHeaders(session, context);
@@ -120,6 +146,38 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
             return await session.LoadAsync<SubscriptionState>(streamKey, ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("Subscription view missing after write.");
         });
+
+    /// <summary>
+    /// Checks every option the candidate events assign (D10): a changed or new assignment must name an existing, non-removed option
+    /// of the household. An unchanged reference never produces an event, so an entry that still points at a removed option stays
+    /// editable. A concurrent removal after this check is accepted (D15): the id still resolves, shown as removed.
+    /// </summary>
+    private async Task RequireAssignedOptionsUsableAsync(IReadOnlyList<object> events, CancellationToken ct)
+    {
+        foreach (var e in events.OfType<SubscriptionPriceEntryPaymentChanged>())
+        {
+            await RequireUsablePaymentOptionAsync(e.PaymentOptionId, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>A null id is "no option" and always allowed. Otherwise a missing, removed or other-household option is a 400 on <c>paymentOptionId</c> (D14).</summary>
+    private async Task RequireUsablePaymentOptionAsync(string? paymentOptionId, CancellationToken ct)
+    {
+        if (paymentOptionId is null)
+        {
+            return;
+        }
+
+        await using var session = store.QuerySession();
+        var option = await session.LoadAsync<PaymentOptionState>(PaymentOptionIds.StreamKey(paymentOptionId), ct).ConfigureAwait(false);
+        if (option is null || option.Removed || !string.Equals(option.HouseholdId, HouseholdService.StreamId, StringComparison.Ordinal))
+        {
+            throw new SubscriptionValidationException(new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                ["paymentOptionId"] = ["The payment option is not available."],
+            });
+        }
+    }
 
     private void RequireKnownCatalogId(string? catalogId)
     {

@@ -4,6 +4,7 @@ using Subscribed.Household.Domain;
 using Subscribed.Platform.Database;
 using Subscribed.Platform.EventStore;
 using Subscribed.Subscriptions;
+using Subscribed.Subscriptions.PaymentOptions;
 
 namespace Subscribed.Api.Admin;
 
@@ -116,6 +117,8 @@ public static class AdminCli
         await stdout.WriteLineAsync($"Rebuilt {count} household view document(s).");
         var subscriptions = await SubscriptionProjectionRebuilder.RebuildAsync(store);
         await stdout.WriteLineAsync($"Rebuilt {subscriptions} subscription view document(s).");
+        var paymentOptions = await PaymentOptionProjectionRebuilder.RebuildAsync(store);
+        await stdout.WriteLineAsync($"Rebuilt {paymentOptions} payment option view document(s).");
         return Ok;
     }
 
