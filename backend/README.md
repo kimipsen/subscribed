@@ -119,7 +119,22 @@ configuration, 2 usage/domain error, 3 conflict (e.g. already initialized), 4 da
 | `household init --name <n> --owner-subject <sub> --owner-label <l>` | app | creates the household and grants the first member |
 | `household grant --subject <sub> --label <l>` | app | grants membership (no self-registration exists anywhere) |
 | `household revoke --member-id <id>` | app | revokes; effective on the member's next request; the last member cannot be revoked |
+| `household relabel --member-id <id> --label <l>` | app | changes a member's display label; member id, subscriptions and history are unaffected; an unchanged label is a no-op (no event, version unchanged); unknown member ids and invalid labels exit 2 |
 | `household show` | app | lists members, ids and subjects |
+
+Household changes are stored as events in the `household-default` stream: `household.created.v1`,
+`household.renamed.v1`, `household.member_granted.v1`, `household.member_revoked.v1` and
+`household.member_label_changed.v1`. Members are relabelled over HTTP with
+`PUT /api/household/members/{memberId}/label` (body `{"displayLabel": "…"}`, `If-Match` required,
+the same authorization and concurrency rules as `PUT /api/household/name`; 404 `not-found` for an
+unknown member) or with `household relabel`.
+
+> **Rollout note: roll forward only.** Once the first `household.member_label_changed.v1` event is
+> stored, a binary without that alias cannot load the household: `RehydrateAsync` throws
+> `UnknownEventAliasException` (alias `household.member_label_changed.v1`) on every household load,
+> which also breaks authentication/membership checks, and clients see a generic 500 (the stream id is
+> not logged). Deploy the new version first and do not relabel anyone until the release is settled.
+> Rolling back the binary is not supported; recovery is redeploying the new version.
 
 The issuer stored with a member is `Oidc:Authority` without trailing slash; the subject is the
 `sub` a denied user sees on the access-denied page (`/bff/session` `not-member` state).
