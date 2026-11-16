@@ -6,6 +6,8 @@ import { Observable } from 'rxjs';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
+import { optionText } from './payment-option-text';
+import { PaymentOptionsService } from './payment-options.service';
 import { formatMoney, formatPercentChange, formatSignedMoney, parseAmountInput, toAmountInput, decimalSeparator } from './money';
 import { ServiceLogo } from './service-logo';
 import { SessionUnavailable } from './session-unavailable';
@@ -15,6 +17,7 @@ import {
   ApiProblem,
   CadenceUnit,
   HistoryEntry,
+  PaymentOption,
   PriceEntryBody,
   SubscriptionDetail,
   SubscriptionStatus,
@@ -37,6 +40,7 @@ const ENTRY_ERRORS: Readonly<Record<string, MessageKey>> = {
   amount: 'subscriptions.error.amount',
   cadenceUnit: 'subscriptions.error.cadenceUnit',
   cadenceCount: 'subscriptions.error.cadenceCount',
+  paymentOptionId: 'subscriptions.error.paymentOptionId',
 };
 
 const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
@@ -50,6 +54,7 @@ export class SubscriptionDetailPage {
   readonly i18n = inject(LanguageService);
   readonly session = inject(SessionService);
   private readonly service = inject(SubscriptionsService);
+  private readonly paymentOptionsService = inject(PaymentOptionsService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
@@ -65,6 +70,10 @@ export class SubscriptionDetailPage {
   readonly notice = signal<Message | null>(null);
   readonly traceId = signal<string | undefined>(undefined);
 
+  /** Every option of the household, removed ones included: a history row resolves its option by id, whatever its state. A failed load leaves it empty. */
+  readonly paymentOptions = signal<PaymentOption[]>([]);
+  readonly optionText = optionText;
+
   // Price-entry form.
   readonly entryForm = signal<EntryForm | null>(null);
   readonly entryErrors = signal<Readonly<Record<string, Message>>>({});
@@ -73,6 +82,8 @@ export class SubscriptionDetailPage {
   entryPreset: CadencePreset = 'month';
   entryCustomCount = '2';
   entryCustomUnit: CadenceUnit = 'month';
+  /** The option picked on the price-entry form: '' means none. */
+  entryOption = '';
   private entryAmountCanonical: string | null = null;
 
   // End-date form, and the two inline confirmations.
@@ -83,12 +94,23 @@ export class SubscriptionDetailPage {
   readonly confirmRemove = signal(false);
 
   private started = false;
+  private optionsLoaded = false;
 
   readonly separator = computed(() => decimalSeparator(this.i18n.dateLocale()));
   readonly amountExample = computed(() => toAmountInput(this.minorUnit() === 0 ? '129' : '129.00', this.i18n.dateLocale()));
   readonly initialCorrection = computed(() => {
     const form = this.entryForm();
     return form?.mode === 'correct' && form.entry.initial;
+  });
+
+  /**
+   * What the option select offers: the non-removed options, plus the entry's own option when it has since been removed, shown
+   * disabled as "(removed)". Saving keeps it, so correcting a price never silently clears the link.
+   */
+  readonly entryOptionChoices = computed(() => {
+    const form = this.entryForm();
+    const keep = form?.mode === 'correct' ? form.entry.paymentOptionId : null;
+    return this.paymentOptions().filter((o) => !o.removed || o.id === keep);
   });
 
   constructor() {
@@ -115,6 +137,7 @@ export class SubscriptionDetailPage {
     this.loadFailed.set(false);
     this.notFound.set(false);
     this.clearProblems();
+    if (!this.optionsLoaded) this.loadOptions();
     this.service.detail(this.id).subscribe({
       next: (detail) => {
         this.detail.set(detail);
@@ -127,6 +150,20 @@ export class SubscriptionDetailPage {
         else this.loadFailed.set(true);
         this.traceId.set((error.error as ApiProblem | null)?.traceId);
       },
+    });
+  }
+
+  /**
+   * Once per page, and again on a retry only if it failed. Options never block the page: a failed request means the history shows no
+   * option names and the select offers just "None".
+   */
+  private loadOptions(): void {
+    this.paymentOptionsService.list().subscribe({
+      next: (options) => {
+        this.paymentOptions.set(options);
+        this.optionsLoaded = true;
+      },
+      error: () => this.paymentOptions.set([]),
     });
   }
 
@@ -156,6 +193,15 @@ export class SubscriptionDetailPage {
     return new Intl.DateTimeFormat(this.i18n.dateLocale(), { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
   }
 
+  /** The option a price entry points at, removed or not; null for none, or when the list could not be loaded. */
+  optionOf(id: string | null): PaymentOption | null {
+    return id ? (this.paymentOptions().find((o) => o.id === id) ?? null) : null;
+  }
+
+  choiceText(option: PaymentOption): string {
+    return option.removed ? this.i18n.message({ key: 'paymentOptions.select.removed', params: { name: optionText(option) } }) : optionText(option);
+  }
+
   entryError(field: string): Message | null {
     return this.entryErrors()[field] ?? null;
   }
@@ -177,8 +223,12 @@ export class SubscriptionDetailPage {
       this.entryAmountText = '';
       this.entryAmountCanonical = null;
       this.entryPreset = 'month';
+      // A new price usually stays on the same option, so it starts from the current one unless that has been removed.
+      const current = this.optionOf(detail.currentPrice.paymentOptionId);
+      this.entryOption = current && !current.removed ? current.id : '';
     } else {
       const entry = form.entry;
+      this.entryOption = entry.paymentOptionId ?? '';
       this.entryDate = entry.effectiveFrom;
       this.entryAmountCanonical = entry.amount;
       this.entryAmountText = toAmountInput(entry.amount, this.i18n.dateLocale());
@@ -250,7 +300,7 @@ export class SubscriptionDetailPage {
     this.run(this.service.removePrice(detail.id, detail.version, entry.entryId), 'other', () => this.confirmEntry.set(null));
   }
 
-  /** The body comes from the page's own fields and the loaded entry, never from a form's value (a disabled date control is left out of it). */
+  /** The body comes from the page's own fields and the loaded entry, never from a form's value (a disabled date control is left out of it). The details PUT (see `details`) carries no option. */
   private entryBody(detail: SubscriptionDetail, form: EntryForm): PriceEntryBody {
     const initial = form.mode === 'correct' && form.entry.initial;
     const cadence = this.entryPreset === 'custom' ?
@@ -260,6 +310,8 @@ export class SubscriptionDetailPage {
       effectiveFrom: initial ? detail.startDate : this.entryDate,
       amount: this.entryAmountCanonical as string,
       ...cadence,
+      // Always sent: the price endpoints fully replace the option, so a price-only correction must carry the existing one.
+      paymentOptionId: this.entryOption || null,
     };
   }
 

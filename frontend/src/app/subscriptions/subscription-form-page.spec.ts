@@ -11,9 +11,9 @@ import { da } from '../i18n/catalog.da';
 import { SessionService, csrfInterceptor } from '../session';
 import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionFormPage } from './subscription-form-page';
-import { Catalog, CatalogPlan, CatalogService, SubscriptionDetail, SubscriptionOptions, SubscriptionOverview } from './subscription.models';
+import { Catalog, CatalogPlan, CatalogService, PaymentOptionList, SubscriptionDetail, SubscriptionOptions, SubscriptionOverview } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
-import { catalogFixture, detailFixture, optionsFixture, overviewFixture, overviewWith, validationProblemFixture } from './testing/fixtures';
+import { catalogFixture, detailFixture, optionsFixture, overviewFixture, overviewWith, paymentOptionListFixture, validationProblemFixture } from './testing/fixtures';
 import './../app.config';
 
 describe('SubscriptionFormPage', () => {
@@ -53,12 +53,20 @@ describe('SubscriptionFormPage', () => {
     else req.flush(catalog);
   }
 
-  async function openAdd(data: SubscriptionOptions = options(), overview: OverviewReply = overviewFixture(), catalog: Catalog | 'fail' = catalogFixture()) {
+  async function openAdd(
+    data: SubscriptionOptions = options(),
+    overview: OverviewReply = overviewFixture(),
+    catalog: Catalog | 'fail' = catalogFixture(),
+    paymentOptions: PaymentOptionList | 'fail' = paymentOptionListFixture(),
+  ) {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(data);
     flushOverview(overview);
     flushCatalog(catalog);
+    const paymentRequest = http.expectOne('/api/payment-options');
+    if (paymentOptions === 'fail') paymentRequest.flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+    else paymentRequest.flush(paymentOptions);
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement };
   }
@@ -105,6 +113,7 @@ describe('SubscriptionFormPage', () => {
   async function finishSave(harness: RouterTestingHarness, req: TestRequest, saved: SubscriptionDetail, status = 200) {
     req.flush(saved, status === 201 ? { status, statusText: 'Created' } : {});
     await settle(harness);
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne(`/api/subscriptions/${saved.id}`).flush(saved);
     await settle(harness);
   }
@@ -118,12 +127,82 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.headers.get('X-CSRF')).toBe('1');
     expect(req.request.body).toEqual({
       name: 'StreamCo', category: null, notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
-      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null,
+      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null, paymentOptionId: null,
     });
     const created = detailFixture();
     await finishSave(harness, req, created, 201);
     expect(TestBed.inject(Router).url).toBe(`/subscriptions/${created.id}`);
     expect(harness.routeDebugElement?.componentInstance).toBeInstanceOf(SubscriptionDetailPage);
+  });
+
+  // ---- payment options (add mode only) ---------------------------------------------------------------
+
+  const choices = (root: HTMLElement) =>
+    Array.from(root.querySelectorAll<HTMLOptionElement>('#paymentOptionId option')).map((o) => ({ value: o.value, text: (o.textContent ?? '').trim() }));
+
+  it('offers None and the non-removed options on the add form, and sends the picked one with the initial price', async () => {
+    const { harness, root } = await openAdd();
+    expect(choices(root)).toEqual([
+      { value: '', text: en['paymentOptions.select.none'] },
+      { value: '0192f3c1a1b27c4e8d2e5f60718293b5', text: 'Visa · Joint account' },
+    ]);
+    await fillValidAdd(root);
+    const select = input(root, 'paymentOptionId');
+    select.value = '0192f3c1a1b27c4e8d2e5f60718293b5';
+    select.dispatchEvent(new Event('change'));
+    await submit(harness);
+    const req = lastRequest('/api/subscriptions');
+    expect((req.request.body as { paymentOptionId: string | null }).paymentOptionId).toBe('0192f3c1a1b27c4e8d2e5f60718293b5');
+    await finishSave(harness, req, detailFixture(), 201);
+  });
+
+  it('sends an explicit null when no option is picked', async () => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    await submit(harness);
+    const req = lastRequest('/api/subscriptions');
+    expect(Object.hasOwn(req.request.body as object, 'paymentOptionId')).toBe(true);
+    expect((req.request.body as { paymentOptionId: string | null }).paymentOptionId).toBeNull();
+    await finishSave(harness, req, detailFixture(), 201);
+  });
+
+  it('still adds, with just None, when the options fail to load', async () => {
+    const { harness, root } = await openAdd(options(), overviewFixture(), catalogFixture(), 'fail');
+    expect(choices(root)).toEqual([{ value: '', text: en['paymentOptions.select.none'] }]);
+    await fillValidAdd(root);
+    await submit(harness);
+    await finishSave(harness, lastRequest('/api/subscriptions'), detailFixture(), 201);
+  });
+
+  it('has no payment option select in edit mode, requests no options, and the update body has no paymentOptionId', async () => {
+    const { harness, root, component } = await openEdit();
+    expect(root.querySelector('#paymentOptionId')).toBeNull();
+    expect(component.paymentOptions()).toEqual([]);
+    await submit(harness);
+    const req = lastRequest(`/api/subscriptions/${detailFixture().id}`);
+    expect(req.request.method).toBe('PUT');
+    expect(Object.keys(req.request.body as object)).toEqual(['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId']);
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('maps a paymentOptionId error from the server to a localized message beside the select', async () => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    await submit(harness);
+    lastRequest('/api/subscriptions').flush({ traceId: 't', errors: { paymentOptionId: ['English from the server'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(root.querySelector('#paymentOptionId-error')?.textContent).toContain(en['subscriptions.error.paymentOptionId']);
+    expect(root.textContent).not.toContain('English from the server');
+    expect(input(root, 'paymentOptionId').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('renders the select in Danish with no English application copy', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const { root } = await openAdd();
+    expect(root.querySelector('label[for="paymentOptionId"]')?.textContent).toContain(da['paymentOptions.select.label']);
+    expect(choices(root)[0].text).toBe(da['paymentOptions.select.none']);
+    expect(englishLeftovers(root)).toEqual([]);
   });
 
   it('sends the canonical amount, never the field text, when a Danish member types a decimal comma (D-7)', async () => {
@@ -420,6 +499,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     const req = http.expectOne('/api/subscriptions/catalog');
     if (catalog === 'fail') req.flush({}, { status: 500, statusText: 'Server Error' });
     else req.flush(catalog);
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     await settle(harness);
     return { harness, root: harness.routeNativeElement as HTMLElement };
   }
@@ -472,7 +552,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     const req = http.expectOne('/api/subscriptions');
     expect(req.request.body).toEqual({
       name: 'Our StreamCo', category: 'Streaming', notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
-      amount: '139.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: 'streamco',
+      amount: '139.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: 'streamco', paymentOptionId: null,
     });
     req.flush({}, { status: 400, statusText: 'Bad Request' });
     await settle(harness);

@@ -1,0 +1,24 @@
+{
+  "suggestions": [
+    {
+      "id": "paypal",
+      "name": "PayPal"
+    },
+    {
+      "id": "visa",
+      "name": "Visa"
+    },
+    {
+      "id": "mastercard",
+      "name": "Mastercard"
+    },
+    {
+      "id": "dankort",
+      "name": "Dankort"
+    },
+    {
+      "id": "mobilepay-vipps",
+      "name": "MobilePay / Vipps"
+    }
+  ]
+}

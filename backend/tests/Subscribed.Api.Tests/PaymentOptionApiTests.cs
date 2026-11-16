@@ -461,6 +461,23 @@ public sealed class PaymentOptionApiTests(PostgresFixture pg)
         Assert.True(Assert.Single((await ListAsync(host)).EnumerateArray()).GetProperty("removed").GetBoolean());
     }
 
+    // ---- contract --------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task The_option_list_and_suggestions_match_the_golden_files_the_frontend_specs_use()
+    {
+        await using var host = await MemberHostAsync();
+        var visa = await CreateOptionAsync(host, "Visa", "Joint account");
+        var old = await CreateOptionAsync(host, "Old card");
+        await RemoveOptionAsync(host, old);
+
+        using var list = await host.SendAsync(HttpMethod.Get, Options);
+        SubscriptionContractTests.Compare("payment-options.json", await ApiTestHost.JsonAsync(list));
+        using var suggestions = await host.SendAsync(HttpMethod.Get, Options + "/suggestions");
+        SubscriptionContractTests.Compare("payment-option-suggestions.json", await ApiTestHost.JsonAsync(suggestions));
+        Assert.NotEqual(IdOf(visa), IdOf(old));
+    }
+
     // ---- logging and observability (NFR-2) --------------------------------------------------------
 
     [Fact]

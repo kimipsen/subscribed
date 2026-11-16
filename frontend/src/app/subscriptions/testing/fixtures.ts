@@ -2,11 +2,16 @@ import catalogJson from './catalog.json';
 import detailJson from './detail.json';
 import optionsJson from './options.json';
 import overviewJson from './overview.json';
+import paymentOptionsJson from './payment-options.json';
+import suggestionsJson from './payment-option-suggestions.json';
 import validationProblemJson from './validation-problem.json';
 import {
   ApiProblem,
   Catalog,
   CurrencyTotal,
+  PaymentOption,
+  PaymentOptionList,
+  PaymentOptionSuggestionList,
   SubscriptionDetail,
   SubscriptionOptions,
   SubscriptionOverview,
@@ -22,7 +27,9 @@ const detailCheck: Wire<SubscriptionDetail> = detailJson;
 const catalogCheck: Wire<Catalog> = catalogJson;
 const optionsCheck: Wire<SubscriptionOptions> = optionsJson;
 const problemCheck: Wire<ApiProblem> = validationProblemJson;
-void [overviewCheck, detailCheck, catalogCheck, optionsCheck, problemCheck];
+const paymentOptionsCheck: Wire<PaymentOptionList> = paymentOptionsJson;
+const suggestionsCheck: Wire<PaymentOptionSuggestionList> = suggestionsJson;
+void [overviewCheck, detailCheck, catalogCheck, optionsCheck, problemCheck, paymentOptionsCheck, suggestionsCheck];
 
 const copy = <T>(value: unknown): T => structuredClone(value) as T;
 
@@ -30,6 +37,9 @@ export const overviewFixture = (): SubscriptionOverview => copy(overviewJson);
 export const detailFixture = (): SubscriptionDetail => copy(detailJson);
 export const catalogFixture = (): Catalog => copy(catalogJson);
 export const optionsFixture = (): SubscriptionOptions => copy(optionsJson);
+export const paymentOptionListFixture = (): PaymentOptionList => copy(paymentOptionsJson);
+export const paymentOptionsFixture = (): PaymentOption[] => paymentOptionListFixture().options;
+export const suggestionListFixture = (): PaymentOptionSuggestionList => copy(suggestionsJson);
 export const validationProblemFixture = (): ApiProblem => copy(validationProblemJson);
 
 /** Builds an overview from the golden one without mutating it: rows are derived from its first subscription, `patch` per row. */

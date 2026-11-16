@@ -9,6 +9,8 @@ export interface Price {
   amount: string;
   cadenceUnit: CadenceUnit;
   cadenceCount: number;
+  /** The payment option of this entry, or null. Resolve it by id against GET /api/payment-options. */
+  paymentOptionId: string | null;
 }
 
 export interface SubscriptionSummary {
@@ -64,6 +66,7 @@ export interface HistoryEntry {
   change: PriceChange | null;
   current: boolean;
   upcoming: boolean;
+  paymentOptionId: string | null;
 }
 
 export interface SubscriptionDetail {
@@ -110,6 +113,8 @@ export interface AddSubscriptionBody {
   cadenceCount: number;
   /** The picked catalog service, or an explicit null for a free-form add. */
   catalogId: string | null;
+  /** The payment option of the initial price, or an explicit null. */
+  paymentOptionId: string | null;
 }
 
 /** Body of PUT /api/subscriptions/{id}: always all seven keys, with explicit nulls (D-10). An omitted or null catalogId unlinks. */
@@ -123,12 +128,48 @@ export interface UpdateSubscriptionBody {
   catalogId: string | null;
 }
 
-/** Body of POST /prices and PUT /prices/{entryId}: always all four keys. */
+/**
+ * Body of POST /prices and PUT /prices/{entryId}: always all five keys. An omitted or null `paymentOptionId` clears the entry's option
+ * (full replace, like `catalogId`), so every price form sends the key.
+ */
 export interface PriceEntryBody {
   effectiveFrom: string;
   amount: string;
   cadenceUnit: CadenceUnit;
   cadenceCount: number;
+  paymentOptionId: string | null;
+}
+
+/** A household payment option. A removed one stays in the list so price entries that reference it keep resolving. */
+export interface PaymentOption {
+  id: string;
+  /** The stream version: the `If-Match` value for update and remove. */
+  version: number;
+  name: string;
+  label: string | null;
+  removed: boolean;
+}
+
+/** GET /api/payment-options. */
+export interface PaymentOptionList {
+  options: PaymentOption[];
+}
+
+/** A suggestion only prefills a name: no suggestion id is stored. */
+export interface PaymentOptionSuggestion {
+  id: string;
+  name: string;
+}
+
+/** GET /api/payment-options/suggestions. */
+export interface PaymentOptionSuggestionList {
+  suggestions: PaymentOptionSuggestion[];
+}
+
+/** Body of POST /api/payment-options and PUT /api/payment-options/{id}: both keys, with an explicit null label. */
+export interface PaymentOptionBody {
+  name: string;
+  label: string | null;
 }
 
 export interface CatalogUpcomingChange {

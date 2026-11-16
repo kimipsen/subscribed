@@ -7,6 +7,8 @@ import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
 import { buildCategories } from './categories';
+import { optionText } from './payment-option-text';
+import { PaymentOptionsService } from './payment-options.service';
 import { parseAmountInput, toAmountInput, decimalSeparator, formatMoney } from './money';
 import { ServiceLogo } from './service-logo';
 import { SessionUnavailable } from './session-unavailable';
@@ -17,6 +19,7 @@ import {
   Catalog,
   CatalogPlan,
   CatalogService,
+  PaymentOption,
   SubscriptionDetail,
   SubscriptionOptions,
   SubscriptionOverview,
@@ -37,6 +40,7 @@ const FIELD_MESSAGES: Readonly<Record<string, MessageKey>> = {
   cadenceUnit: 'subscriptions.error.cadenceUnit',
   cadenceCount: 'subscriptions.error.cadenceCount',
   catalogId: 'subscriptions.error.catalogId',
+  paymentOptionId: 'subscriptions.error.paymentOptionId',
 };
 
 const MAX_PICKER_RESULTS = 8;
@@ -80,6 +84,7 @@ export class SubscriptionFormPage {
   readonly i18n = inject(LanguageService);
   readonly session = inject(SessionService);
   private readonly service = inject(SubscriptionsService);
+  private readonly paymentOptionsService = inject(PaymentOptionsService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
@@ -95,6 +100,10 @@ export class SubscriptionFormPage {
   /** null until loaded, and after a failed load: the picker is then hidden and free-form entry is the only path (R3.2). */
   readonly catalog = signal<Catalog | null>(null);
   readonly catalogFailed = signal(false);
+  /** The household's payment options for the initial price (add mode only). A failed load leaves just "None". */
+  readonly paymentOptions = signal<PaymentOption[]>([]);
+  readonly selectableOptions = computed(() => this.paymentOptions().filter((o) => !o.removed));
+  readonly optionText = optionText;
   readonly search = signal('');
   readonly selectedService = signal<CatalogService | null>(null);
   readonly selectedPlan = signal<CatalogPlan | null>(null);
@@ -121,6 +130,8 @@ export class SubscriptionFormPage {
   customUnit: CadenceUnit = 'month';
   /** The linked catalog service: null for a free-form add; when editing, the stored link (kept unless removed). */
   catalogId: string | null = null;
+  /** The payment option of the initial price: '' means none. Add mode only: editing details never sends or clears an option. */
+  paymentOptionId = '';
 
   /** The canonical string behind `amountText` while it is valid; null when the member's text is not a valid amount. */
   private amountCanonical: string | null = null;
@@ -195,10 +206,13 @@ export class SubscriptionFormPage {
       detail: this.id ? this.service.detail(this.id) : of(null),
       // Suggestions are an enhancement, never a blocker: a failed overview just means no suggestions.
       overview: this.overview() ? of(this.overview()) : this.service.overview().pipe(catchError(() => of(null))),
+      // Only the add form has the picker, and it is never a blocker either.
+      paymentOptions: this.id ? of(null) : this.paymentOptionsService.list().pipe(catchError(() => of(null))),
     }).subscribe({
-      next: ({ options, catalog, detail, overview }) => {
+      next: ({ options, catalog, detail, overview, paymentOptions }) => {
         this.options.set(options);
         if (overview) this.overview.set(overview);
+        if (paymentOptions) this.paymentOptions.set(paymentOptions);
         this.catalog.set(catalog);
         this.catalogFailed.set(catalog === null);
         this.detail.set(detail);
@@ -446,6 +460,6 @@ export class SubscriptionFormPage {
 
   /** Add sends the canonical decimal string, never the field text (D-7). */
   private addBody(): AddSubscriptionBody {
-    return { ...this.details(), amount: this.amountCanonical as string, ...this.cadence() };
+    return { ...this.details(), amount: this.amountCanonical as string, ...this.cadence(), paymentOptionId: this.paymentOptionId || null };
   }
 }

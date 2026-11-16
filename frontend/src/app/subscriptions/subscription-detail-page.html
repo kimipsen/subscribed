@@ -73,6 +73,7 @@
                 <th scope="col">{{ 'detail.col.price' | t }}</th>
                 <th scope="col">{{ 'detail.col.perMonth' | t }}</th>
                 <th scope="col">{{ 'detail.col.change' | t }}</th>
+                <th scope="col">{{ 'detail.col.paymentOption' | t }}</th>
                 <th scope="col">{{ 'detail.col.actions' | t }}</th>
               </tr>
             </thead>
@@ -93,6 +94,13 @@
                       {{ signed(change.amount) }}@if (change.percent !== null) { ({{ percent(change.percent) }}) }
                     } @else {
                       <span class="muted">{{ 'detail.noPreviousPrice' | t }}</span>
+                    }
+                  </td>
+                  <td>
+                    @if (optionOf(row.paymentOptionId); as option) {
+                      {{ optionText(option) }}@if (option.removed) { <span class="muted"> {{ 'detail.paymentOption.removed' | t }}</span> }
+                    } @else {
+                      <span class="muted">—</span>
                     }
                   </td>
                   <td>
@@ -161,6 +169,15 @@
                 </div>
               }
             </fieldset>
+            <div class="field">
+              <label for="entry-paymentOption">{{ 'paymentOptions.select.label' | t }}</label>
+              <select id="entry-paymentOption" name="entryOption" [(ngModel)]="entryOption"
+                [attr.aria-invalid]="entryError('paymentOptionId') ? 'true' : null" [attr.aria-describedby]="describedBy('paymentOptionId')">
+                <option value="">{{ 'paymentOptions.select.none' | t }}</option>
+                @for (o of entryOptionChoices(); track o.id) { <option [value]="o.id" [disabled]="o.removed">{{ choiceText(o) }}</option> }
+              </select>
+              @if (entryError('paymentOptionId'); as e) { <p class="field-error" id="entry-paymentOptionId-error">{{ e.key | t: e.params }}</p> }
+            </div>
             <div class="actions">
               <button type="submit" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'detail.entry.save') | t }}</button>
               <button type="button" class="secondary" (click)="closeEntry()">{{ 'subscriptions.form.cancel' | t }}</button>
