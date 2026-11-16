@@ -188,6 +188,19 @@ public static class SubscriptionDecisions
         return [new SubscriptionRemoved(now.ToUniversalTime())];
     }
 
+    /// <summary>Allowed in any non-removed state. Pausing a paused subscription is rejected, not a no-op.</summary>
+    public static IReadOnlyList<object> Pause(IReadOnlyList<object> history, DateTimeOffset now)
+    {
+        var current = Load(history);
+        return current.Paused ? throw SubscriptionStateException.AlreadyPaused() : [new SubscriptionPaused(now.ToUniversalTime())];
+    }
+
+    public static IReadOnlyList<object> Resume(IReadOnlyList<object> history, DateTimeOffset now)
+    {
+        var current = Load(history);
+        return current.Paused ? [new SubscriptionResumed(now.ToUniversalTime())] : throw SubscriptionStateException.NotPaused();
+    }
+
     // ---- helpers -------------------------------------------------------------------------------------
 
     private static void CheckEntry(SubscriptionState state, PriceEntryChange command, PriceEntryState? correcting, FieldErrors errors)

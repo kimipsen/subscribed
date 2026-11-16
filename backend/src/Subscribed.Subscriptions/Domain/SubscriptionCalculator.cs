@@ -5,6 +5,7 @@ public enum SubscriptionStatus
     NotStarted,
     Active,
     Ended,
+    Paused,
 }
 
 public static class SubscriptionStatusExtensions
@@ -15,6 +16,7 @@ public static class SubscriptionStatusExtensions
         SubscriptionStatus.NotStarted => "not-started",
         SubscriptionStatus.Active => "active",
         SubscriptionStatus.Ended => "ended",
+        SubscriptionStatus.Paused => "paused",
         _ => throw new ArgumentOutOfRangeException(nameof(status)),
     };
 }
@@ -45,7 +47,10 @@ public static class SubscriptionCalculator
         return DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime);
     }
 
-    /// <summary>The end date is inclusive (BR-006).</summary>
+    /// <summary>
+    /// The end date is inclusive (BR-006). Dates are authoritative: <see cref="SubscriptionStatus.NotStarted"/> and
+    /// <see cref="SubscriptionStatus.Ended"/> win over a pause, which only shows when the subscription would otherwise be active.
+    /// </summary>
     public static SubscriptionStatus StatusOn(SubscriptionState state, DateOnly day)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -54,7 +59,12 @@ public static class SubscriptionCalculator
             return SubscriptionStatus.NotStarted;
         }
 
-        return state.EndDate is { } end && day > end ? SubscriptionStatus.Ended : SubscriptionStatus.Active;
+        if (state.EndDate is { } end && day > end)
+        {
+            return SubscriptionStatus.Ended;
+        }
+
+        return state.Paused ? SubscriptionStatus.Paused : SubscriptionStatus.Active;
     }
 
     /// <summary>The entry with the latest <c>effectiveFrom</c> on or before <paramref name="day"/>.</summary>
@@ -140,7 +150,7 @@ public static class SubscriptionCalculator
     }
 
     /// <summary>
-    /// Per currency, over non-removed subscriptions that are active today: the unrounded normalized monthly and yearly costs of
+    /// Per currency, over non-removed subscriptions that are active today (paused subscriptions are excluded): the unrounded normalized monthly and yearly costs of
     /// their current prices are summed and rounded once. Sorted by code. Currencies are never combined.
     /// </summary>
     public static IReadOnlyList<CurrencyTotal> Totals(IEnumerable<SubscriptionState> subscriptions, DateOnly today)

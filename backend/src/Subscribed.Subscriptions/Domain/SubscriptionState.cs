@@ -48,6 +48,11 @@ public sealed class SubscriptionState
 
     public DateTimeOffset? RemovedAt { get; set; }
 
+    /// <summary>Set by pause, cleared by resume. A flag, not a status: the Paused status is derived per request.</summary>
+    public bool Paused { get; set; }
+
+    public DateTimeOffset? PausedAt { get; set; }
+
     public long Version { get; set; }
 
     public static SubscriptionState Create(SubscriptionAdded e)
@@ -138,6 +143,20 @@ public sealed class SubscriptionState
         RemovedAt = e.RecordedAt;
     }
 
+    public void Apply(SubscriptionPaused e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        Paused = true;
+        PausedAt = e.RecordedAt;
+    }
+
+    public void Apply(SubscriptionResumed e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        Paused = false;
+        PausedAt = null;
+    }
+
     /// <summary>
     /// Rebuilds the state from a stream's events through <see cref="Create"/> and <c>Apply</c>, counting one version per event.
     /// Throws on an event for a subscription that does not exist and on a second <see cref="SubscriptionAdded"/>.
@@ -170,6 +189,8 @@ public sealed class SubscriptionState
                     case SubscriptionPriceEntryCorrected x: target.Apply(x); break;
                     case SubscriptionPriceEntryRemoved x: target.Apply(x); break;
                     case SubscriptionRemoved x: target.Apply(x); break;
+                    case SubscriptionPaused x: target.Apply(x); break;
+                    case SubscriptionResumed x: target.Apply(x); break;
                     default: throw new InvalidOperationException($"Unsupported subscription event {e.GetType().Name}.");
                 }
             }
