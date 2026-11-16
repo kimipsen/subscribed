@@ -13,7 +13,10 @@ public sealed record CatalogPlan(
     int CadenceCount,
     CatalogUpcomingChange? UpcomingChange);
 
-/// <summary>A known service. <see cref="Logo"/> is a relative path under <c>/logos/</c> or null (initial-letter fallback).</summary>
+/// <summary>
+/// A known service. <see cref="Logo"/> is a relative path under <c>/logos/</c> or null (initial-letter fallback).
+/// <see cref="UnsubscribeUrl"/> is an official https cancel or manage-subscription page, or null when none is confirmed.
+/// </summary>
 public sealed record CatalogService(
     string Id,
     string Name,
@@ -21,7 +24,8 @@ public sealed record CatalogService(
     string? Logo,
     DateOnly LastVerified,
     string SourceUrl,
-    IReadOnlyList<CatalogPlan> Plans);
+    IReadOnlyList<CatalogPlan> Plans,
+    string? UnsubscribeUrl = null);
 
 /// <summary>Thrown when the catalog data is invalid. The message names the service id and field.</summary>
 public sealed class CatalogValidationException(string message) : Exception(message);
