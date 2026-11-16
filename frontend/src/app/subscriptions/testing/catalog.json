@@ -30,7 +30,8 @@
           "cadenceCount": 1,
           "upcomingChange": null
         }
-      ]
+      ],
+      "unsubscribeUrl": "https://example.com/streamco/cancel"
     },
     {
       "id": "music-box",
@@ -49,7 +50,8 @@
           "cadenceCount": 1,
           "upcomingChange": null
         }
-      ]
+      ],
+      "unsubscribeUrl": null
     },
     {
       "id": "no-plans",
@@ -57,7 +59,8 @@
       "category": "Other",
       "logoUrl": null,
       "lastVerified": "2026-10-01",
-      "plans": []
+      "plans": [],
+      "unsubscribeUrl": null
     }
   ],
   "defaultCountry": "DK"

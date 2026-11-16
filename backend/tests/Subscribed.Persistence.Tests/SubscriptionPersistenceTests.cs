@@ -409,6 +409,76 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         Assert.Equal(1, rebuilt.Version);
     }
 
+    private const string UnsubscribeUrl = "https://example.com/cancel";
+
+    private static NewSubscription SubWithUrl(string? url) =>
+        SubscriptionDecisions.ParseAdd(new AddInput("StreamCo", null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, UnsubscribeUrl: url));
+
+    [Fact]
+    public async Task A_url_is_stored_in_the_event_and_the_snapshot_and_survives_a_projection_rebuild()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var added = await service.AddAsync(SubWithUrl(UnsubscribeUrl), Member, Ct);
+        var key = StreamKey(added);
+        Assert.Equal(UnsubscribeUrl, added.UnsubscribeUrl);
+        Assert.Equal(UnsubscribeUrl, await db.ScalarAsMigratorAsync<string>($"SELECT data->>'unsubscribeUrl' FROM subscribed.mt_events WHERE stream_id = '{key}' AND version = 1"));
+        Assert.Equal(UnsubscribeUrl, await db.ScalarAsMigratorAsync<string>($"SELECT data->>'unsubscribeUrl' FROM subscribed.mt_doc_subscription_view WHERE id = '{key}'"));
+
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
+        await using (var migrator = MigratorStore(db))
+        {
+            Assert.Equal(1, await SubscriptionProjectionRebuilder.RebuildAsync(migrator, Ct));
+        }
+
+        Assert.Equal(UnsubscribeUrl, (await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct))!.UnsubscribeUrl);
+    }
+
+    [Fact]
+    public async Task A_stored_event_without_the_key_rebuilds_with_a_null_url_through_the_marten_serializer()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var added = await service.AddAsync(SubWithUrl(UnsubscribeUrl), Member, Ct);
+        var key = StreamKey(added);
+
+        // Turn the stored event into what an older build wrote: no unsubscribeUrl key at all.
+        await db.ExecuteAsMigratorAsync($"UPDATE subscribed.mt_events SET data = data - 'unsubscribeUrl' WHERE stream_id = '{key}' AND version = 1");
+        Assert.False(await db.ScalarAsMigratorAsync<bool>($"SELECT data ? 'unsubscribeUrl' FROM subscribed.mt_events WHERE stream_id = '{key}' AND version = 1"));
+
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
+        await using (var migrator = MigratorStore(db))
+        {
+            Assert.Equal(1, await SubscriptionProjectionRebuilder.RebuildAsync(migrator, Ct));
+        }
+
+        var rebuilt = await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct);
+        Assert.Null(rebuilt!.UnsubscribeUrl);
+        Assert.Equal(1, rebuilt.Version);
+        Assert.Null(((SubscriptionAdded)(await HistoryAsync(store, SubscriptionIds.Bare(added.Id)))[0]).UnsubscribeUrl);
+    }
+
+    [Fact]
+    public async Task A_snapshot_written_before_the_url_existed_reads_null_and_accepts_a_url_through_the_inline_path()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var added = await service.AddAsync(SubWithUrl(null), Member, Ct);
+        var key = StreamKey(added);
+
+        await db.ExecuteAsMigratorAsync($"UPDATE subscribed.mt_doc_subscription_view SET data = data - 'unsubscribeUrl' WHERE id = '{key}'");
+        var old = await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct);
+        Assert.Null(old!.UnsubscribeUrl);
+
+        var update = SubscriptionDecisions.ParseUpdate(new UpdateInput(old.Name, old.Category, old.Notes, old.Currency, "2024-03-01", null, null, UnsubscribeUrl));
+        var saved = await service.UpdateAsync(SubscriptionIds.Bare(added.Id), old.Version, update, Member, Ct);
+        Assert.Equal(UnsubscribeUrl, saved.UnsubscribeUrl);
+        Assert.Equal(UnsubscribeUrl, await db.ScalarAsMigratorAsync<string>($"SELECT data->>'unsubscribeUrl' FROM subscribed.mt_doc_subscription_view WHERE id = '{key}'"));
+    }
+
     [Fact]
     public async Task A_snapshot_written_before_the_property_existed_accepts_a_catalog_link_through_the_inline_path()
     {
