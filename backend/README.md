@@ -142,8 +142,22 @@ Writes use the same order as the subscription writes: malformed id `404`, `If-Ma
 - **The link to a price entry** is a new event, `subscription.price_entry_payment_changed.v1`. No existing v1 event changed, so
   the existing golden fixtures are byte-identical and old streams replay unchanged. A price entry request carries an optional
   `paymentOptionId`: omitted or `null` means "no option" (full replace, like `catalogId`), and the bundled frontend always sends the key.
-  The details `PUT` carries no option and neither sets nor clears one. `Version` rises by one per event, so a `PUT` that changes both
-  price and option raises the stream version by 2: use the returned `ETag`.
+  The details `PUT` sets or clears the option only through its optional `paymentOption` object (next bullet); without it, it neither
+  sets nor clears one. `Version` rises by one per event, so a `PUT` that changes both price and option raises the stream version by 2:
+  use the returned `ETag`.
+- **Setting the option from the Edit form (issue #39).** `PUT /api/subscriptions/{id}` takes an optional
+  `paymentOption: { "id": "<option id>" | null }` next to the details. It is opt-in, unlike the full-replace fields: omitted or
+  `null` leaves every price entry alone, so a stale client that does not know the field cannot clear anyone's option. `{ "id": null }`
+  means None, and `{}` (an object without `id`) is `400` on `paymentOption`. A different option than the current entry's applies
+  **from today** (UTC, like every other flow): if the current entry started before today, a new entry starting today copies its amount
+  and cadence and takes the option; if it starts today (or the subscription has not started yet), that entry is updated in place.
+  Upcoming entries get the option as well. The same option as the current entry changes nothing and keeps the version. The change is
+  judged against the current entry only. Details and the option are one decision and one append, so either all of it is stored or none
+  of it. An ended subscription (end date before today) rejects a *different* option with `400` on `paymentOption`; with an unchanged
+  or omitted option, its details still save. Only an option the save assigns is checked (`400` on `paymentOptionId`), so sending a
+  removed current option unchanged is fine. No new event type, no projection change and no schema version change. One log line
+  `subscription.update paymentOptionChange=<none|set|cleared> priceEvents=<n>` (no ids) tells an Edit-driven change apart from Correct
+  and Add price.
 - **A new assignment** must name an existing, non-removed option of the household (`400` on `paymentOptionId`); an unchanged
   reference to a since-removed option stays allowed, so old entries remain editable. The check runs after the `404` and `412` checks.
   A concurrent removal between the check and the append is accepted: the id still resolves, shown as removed.
@@ -157,8 +171,9 @@ Writes use the same order as the subscription writes: malformed id `404`, `If-Ma
 - **Nothing is logged but reason codes.** The name and label are never logged. The signals are `payment_option.created` and
   `payment_option.removed` (with the opaque option id) and `payment_option.rejected` with one reason code:
   `card_number_like`, `invalid_length` or `control_characters`. Support can use the reason code to explain a rejected label.
-- **Frontend.** `/payment-options` manages the options, and the add form and the price-entry form of the detail page have an
-  option select. A client-side card-number check gives early feedback only: the server rule is the authority.
+- **Frontend.** `/payment-options` manages the options, and the add form, the edit form and the price-entry form of the detail page
+  have an option select. The edit form hides it for an ended subscription and when the options cannot be loaded, and sends
+  `paymentOption` only when the member changed it. A client-side card-number check gives early feedback only: the server rule is the authority.
 
 **Rollout order.** Schema version 3 adds `mt_doc_payment_option_view` and its grant, so:
 
@@ -177,6 +192,17 @@ binary. Changes made after the migration are lost on restore.
 
 **Existing data.** Existing streams and snapshot rows are valid as they are: a stored subscription snapshot without
 `paymentOptionId` on its entries loads as no option, and `admin projections rebuild` reproduces both view tables from the events.
+
+**Edit form rollout (issue #39).** No migration, no projection rebuild and no pipeline change: the SPA is copied into the API
+`wwwroot` by `deploy/Dockerfile` and `.github/workflows/release.yml` publishes one image, so a new SPA does not meet an old backend
+from the same image. Two accepted limitations:
+
+- **UTC "today".** The new entry starts on the UTC date, like every other flow, so for a user in Copenhagen a save shortly after
+  midnight local time (00:00 to 01:00 or 02:00) creates an entry dated the previous local day, and the "applies from today" hint
+  can be a day off.
+- **Mixed versions.** An old cached SPA against the new backend is safe because `paymentOption` is optional. A new SPA against an old
+  backend (a rolling restart window) silently drops the option, because unknown members are skipped
+  (`UnmappedMemberHandling.Skip`, `SubscriptionEndpoints.cs`). Reload open tabs after the deploy.
 
 **Brand rollout (issue #38).** The brand is an optional field on the existing payment option events, so there is no schema version
 change, no migration step beyond the one for payment options above and no projection rebuild: an option stored without a brand
