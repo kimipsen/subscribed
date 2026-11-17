@@ -78,7 +78,7 @@ public sealed class PaymentOptionApiTests(PostgresFixture pg)
 
     private static string? OptionOf(JsonElement row) => row.GetProperty("paymentOptionId").GetString();
 
-    private static async Task<string> StartForeignOptionAsync(ApiTestHost host)
+    internal static async Task<string> StartForeignOptionAsync(ApiTestHost host)
     {
         await using var store = SubscribedStore.Create(host.Db.AppConnectionString, PostgresFixture.Schema, StoreRole.App, PostgresFixture.Modules);
         var id = PaymentOptionIds.New(TimeProvider.System);

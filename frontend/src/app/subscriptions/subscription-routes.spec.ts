@@ -56,6 +56,7 @@ describe('Subscription routes', () => {
     http.expectOne('/api/subscriptions/options').flush(optionsFixture());
     http.expectOne('/api/subscriptions').flush(overviewFixture());
     http.expectOne('/api/subscriptions/catalog').flush(catalogFixture());
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     expect(component.editing).toBe(true);
     expect(component.id).toBe(detail.id);
