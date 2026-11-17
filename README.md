@@ -5,6 +5,9 @@ an optional category and notes, a currency, an amount and a billing cadence, wit
 (backdated, corrected and upcoming prices), per-currency monthly and yearly totals, and English and
 Danish screens. A subscription can be paused and resumed: a paused subscription stays in the
 overview but is left out of the monthly and yearly totals, and its price history is untouched.
+A subscription can also have a cancel-by deadline, and the household can subscribe a calendar app to a private
+iCal feed that reminds them 24 hours before and at the deadline (see
+[Calendar reminders](backend/README.md#calendar-reminders)).
 Underneath: Keycloak sign-in through a backend-for-frontend (HttpOnly cookie, no tokens in the
 browser), app-owned household membership, event-sourced `Household` and subscription streams on
 PostgreSQL (Marten), health/config validation, tests and a single-container Docker deployment.

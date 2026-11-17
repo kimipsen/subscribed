@@ -75,9 +75,9 @@ creates the table, records version 3 and re-applies `grants.sql`, and readiness 
 | Project | Contents |
 | --- | --- |
 | `src/Subscribed.Platform` | `SubscribedStore` (only Marten configuration), `EventStoreErrors.Map` (only library-aware error code), `Database/grants.sql` (embedded, single source), `SchemaMigrator` + `SchemaVersion`, `ReadinessProbe`, `MartenXmlRepository` (DP keys), RFC 9457 `Problem`, `MemberIdentity`, `SecurityLog` |
-| `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler |
-| `src/Subscribed.Subscriptions` | twelve `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints; `PaymentOptions/` holds the three `payment_option.*.v1` events, `PaymentOptionState`, `PaymentOptionDecisions`, `PaymentOptionService`, its rebuilder and the `/api/payment-options` endpoints |
-| `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli` |
+| `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler; the household time zone (`TimeZoneIds`, `ITimeZoneSource`) and the calendar feed secret (`CalendarFeedSecrets`) |
+| `src/Subscribed.Subscriptions` | twelve `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints; `PaymentOptions/` holds the three `payment_option.*.v1` events, `PaymentOptionState`, `PaymentOptionDecisions`, `PaymentOptionService`, its rebuilder and the `/api/payment-options` endpoints; `Calendar/` holds the iCal feed builder (`CalendarFeedBuilder`, `IcsWriter`, `VTimeZoneWriter`, `CalendarFeedText`), see "Calendar reminders" |
+| `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli`, and `Calendar/CalendarEndpoints` (the anonymous `/calendar/{secret}/subscribed.ics` feed) |
 | `tests/Subscribed.UnitTests` | invariants (AC7), golden event fixtures + unknown alias (AC6), validators, error map |
 | `tests/Subscribed.Persistence.Tests` | AC1–AC5, AC19, AC20 on PostgreSQL 18 as the least-privilege role |
 | `tests/Subscribed.Api.Tests` | HTTP tests on TestServer with the in-process stub IdP (AC8–AC15, AC12b, AC21), child-process startup tests (AC13), admin CLI |
@@ -113,6 +113,96 @@ subscription that is already paused answers `412`, not `409`.
   Deploy the backend before or together with the frontend: the new UI reads `version` from the overview rows, which an old backend does not send.
 - **Existing data.** Existing streams and snapshot rows are valid as they are: a stored snapshot without `paused` or `pausedAt`
   loads as not paused, and `admin projections rebuild` reproduces the flag from the events. No migration is needed.
+
+## Calendar reminders
+
+A subscription can carry a **cancel-by** deadline. The household can subscribe a calendar app to a private iCal feed that
+holds two reminders per deadline: one 24 hours before and one at the deadline. Nothing is sent by the server; the calendar app
+polls the feed.
+
+| Endpoint | Success | Notes |
+| --- | --- | --- |
+| `GET /api/household/time-zones` | `200` `{ "timeZones": [...] }` | the server's own zone list; the only source the selector uses |
+| `PUT /api/household/time-zone` | `200` household, new `ETag` | body `{ "timeZoneId" }`; needs `If-Match`; `400` on `timeZoneId` for an invalid id |
+| `POST /api/household/calendar-feed` | `200` `{ household, feedPath }`, `Cache-Control: no-store` | creates or **rotates** the link; `feedPath` is shown once and never again |
+| `DELETE /api/household/calendar-feed` | `200` household | revokes the link; a no-op when none is active |
+| `GET\|HEAD /calendar/{secret}/subscribed.ics` | `200` `text/calendar; charset=utf-8` | anonymous; every failure is the same `404` |
+
+The household writes use the same `If-Match`, `X-CSRF` and `Origin` rules as `PUT /api/household/name`. `GET /api/household`
+carries `timeZoneId` and `calendarFeed { enabled, rotatedAt }`, never the secret or its hash.
+
+- **Events.** Four new aliases, all new, so no existing v1 payload changed and no upcaster exists:
+  `household.time_zone_changed.v1`, `household.calendar_feed_rotated.v1`, `household.calendar_feed_revoked.v1` and
+  `subscription.cancel_by_changed.v1`. Each has a golden fixture under `tests/Subscribed.UnitTests/Fixtures/events`.
+- **The deadline on the wire.** `cancelBy` is a **local wall-clock string in the household time zone**, `yyyy-MM-ddTHH:mm`
+  (seconds are accepted; an offset or `Z` is rejected), which is what a `datetime-local` input produces. Responses carry
+  `cancelBy` (the local rendering) and `cancelByInstant` (UTC, ISO with `Z`). The server converts, so DST logic lives in one tested place.
+  The stored value is the UTC instant. `PUT` is a full replace: **an omitted or null `cancelBy` clears the deadline**, the same rule
+  as `unsubscribeUrl`. A stale cached SPA bundle that does not know the field therefore clears it on the next save: reload open tabs after the deploy.
+- **Rules.** The local date of `cancelBy` must not be before `startDate` (`400` on `cancelBy`). The check runs only when `cancelBy` or
+  `startDate` is part of the change, so a rename is never blocked by an older deadline, for example after a zone change. A save that
+  resubmits the unchanged local string emits no event, so it cannot move the deadline.
+- **Time zone semantics.** The household zone is an IANA id from the server list (`UTC` by default for existing households).
+  Windows ids, path-like input and unknown ids are rejected. **Changing the zone does not move stored instants**: the
+  deadline stays the same moment and its local wall time in the form changes with the zone. If the stored zone id cannot be
+  resolved on a server (a tzdata change, an image without tzdata) the subscription endpoints and the feed fall back to UTC and
+  log a warning with the household id only.
+- **DST behaviour.** A local time that does not exist (the spring-forward gap) is rejected with an error on `cancelBy`. A
+  local time that happens twice (the fall-back overlap) resolves to the **earlier** instant, the safe side for a deadline.
+  In the feed, times are written as `DTSTART;TZID=<zone>` with a generated `VTIMEZONE` that lists the actual offset transitions
+  (no `RRULE`). An event whose instant falls in an overlap is written in UTC instead, so it can never be read two ways. An event
+  more than ten years ahead is also written in UTC.
+- **Feed content.** An eligible subscription is not removed, has `cancelBy` at or after now, and is not ended on today's date in the
+  household zone. Paused subscriptions are included, since a paused subscription still bills until cancelled. Each yields two events
+  of 15 minutes: UID `<subscription-id>-cancel-24h@subscribed` and `<subscription-id>-cancel-at@subscribed`, `SEQUENCE` = the
+  subscription's stream version, so clients update instead of duplicating. No `VALARM`, no `RRULE`. Once `cancelBy` has passed,
+  both events disappear.
+- **Privacy: what the feed exposes.** Only the subscription **name** and the **dates**. The summary is `Cancel <name>` and
+  `Cancel <name> now` (or the Danish equivalents). No notes, prices, categories, links or members. Anyone who holds the link
+  can read those names and dates, so treat the URL like a password. The panel on the household page says the same.
+- **`lang` parameter.** `?lang=da` or `?lang=en` picks the summary language. Anything else (unknown, empty, repeated, longer than 8
+  characters) falls back to `en`. The frontend adds the active UI language when it builds the URL.
+- **Secret scheme.** The secret is 256 random bits, base64url (43 characters). The household event stream stores only
+  `SHA-256(secret)` as 64 lower-case hex characters, so nothing can be recovered from the database and no server key is involved:
+  Data Protection key loss or rotation cannot break or revive a URL. The raw secret exists only in the rotate response. A lost URL
+  means **rotate**; the old link stops working at once. Rotate and revoke are household events and each logs one Information
+  line with the household id only (no secret, no hash).
+- **Rotate and revoke.** Rotating is deliberately not idempotent: two clients rotating at once each ask, and only the later
+  write (`If-Match`) wins, the other gets `412`. Revoke, or rotate after a leak, is the response to a leaked link.
+- **One answer for every failure.** A wrong, revoked, rotated-out and malformed secret all give the same `404` problem body
+  (never the SPA index), with `Cache-Control: no-store`. A secret that is not exactly 43 base64url characters is answered before
+  any database read. Hash comparison is constant time. A database failure is a `503`, never "wrong secret". Responses also carry
+  `X-Robots-Tag: noindex` and `Content-Disposition: inline; filename="subscribed.ics"`.
+- **Never log the secret.** The application logs the route template `/calendar/{secret}/subscribed.ics`, not the path (tests
+  assert that no log line contains the secret). **The reverse proxy must not log the path of `/calendar/`** (or must
+  mask it): the URL is the credential, and a proxy access log would keep every secret in clear text. Use the same care for any
+  log shipper or CDN in front of the app.
+- **Readiness and tzdata.** Time zones need tzdata in the runtime image. The `mcr.microsoft.com/dotnet/aspnet` image has it. When the
+  server lists no zone other than `UTC`, the app logs a startup warning and `/health/ready` reports the process-wide check
+  `timeZones` as **`Degraded`** (top-level `status` `Degraded`, HTTP **200**, never `Unhealthy`), because UTC households still work. It
+  does not look at any household's zone.
+
+**Rollout.** No new table, no grant and **no schema version change**: `SchemaVersion.Current` and `grants.sql` are as they were,
+and `admin db migrate` is not required for this release.
+
+1. Take a database backup before deploying, as for the
+   [`household.member_label_changed.v1`](#admin-cli) rollout note above, which is the precedent.
+2. Deploy the new version to **every** instance before anyone uses the time zone, `cancelBy` or feed UI. An old instance that loads a
+   stream holding a new event fails with `UnknownEventAliasException` (stored events are never skipped).
+3. Reload open browser tabs (see the stale bundle note above).
+
+**Roll forward only after first use.** Once a `household.time_zone_changed.v1`, `household.calendar_feed_*` or
+`subscription.cancel_by_changed.v1` event exists, an older binary cannot read that stream. Rolling back means restoring the backup
+taken before the new version served traffic; changes made after it are lost.
+
+**Existing data.** Existing streams and snapshot rows are valid as they are: a household view without the new keys loads as UTC with
+the feed disabled, a subscription snapshot without `cancelBy` loads as no deadline, and `admin projections rebuild` reproduces the same
+state from the events.
+
+**Monitoring.** Watch the rate of `404` on the route template `/calendar/{secret}/subscribed.ics` (the request log carries the
+template and the status). A spike means probing, or a stale link in a calendar client. Rotate and revoke show up as the Information
+log lines above. No rate limiter is added: a well-formed but wrong secret costs one household view read.
+
 ## Payment options
 
 A household keeps its own payment options (a card, PayPal, MobilePay/Vipps, anything) and can record which one pays each
