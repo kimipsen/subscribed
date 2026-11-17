@@ -123,7 +123,11 @@ export interface AddSubscriptionBody {
   unsubscribeUrl: string | null;
 }
 
-/** Body of PUT /api/subscriptions/{id}: always all eight keys, with explicit nulls (D-10). An omitted or null catalogId unlinks, and an omitted or null unsubscribeUrl clears the link. */
+/**
+ * Body of PUT /api/subscriptions/{id}: always the eight detail keys, with explicit nulls (D-10). An omitted or null catalogId unlinks,
+ * and an omitted or null unsubscribeUrl clears the link. `paymentOption` is the exception and is opt-in: it is sent only when the
+ * member changed the option, `{ id: null }` meaning None. Omitted or null leaves the price entries alone.
+ */
 export interface UpdateSubscriptionBody {
   name: string;
   category: string | null;
@@ -133,6 +137,7 @@ export interface UpdateSubscriptionBody {
   endDate: string | null;
   catalogId: string | null;
   unsubscribeUrl: string | null;
+  paymentOption?: { id: string | null };
 }
 
 /**

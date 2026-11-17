@@ -1,4 +1,5 @@
 using Marten;
+using Microsoft.Extensions.Logging;
 using Subscribed.Household;
 using Subscribed.Platform.EventStore;
 using Subscribed.Subscriptions.Domain;
@@ -7,7 +8,7 @@ using Subscribed.Subscriptions.PaymentOptions;
 namespace Subscribed.Subscriptions;
 
 /// <summary>Subscription reads and writes. One Marten event stream per subscription (D-3).</summary>
-public sealed class SubscriptionService(IDocumentStore store, TimeProvider time, Catalog catalog)
+public sealed class SubscriptionService(IDocumentStore store, TimeProvider time, Catalog catalog, ILoggerFactory? loggers = null)
 {
     /// <summary>All non-removed subscriptions of the household, in no particular order.</summary>
     public Task<IReadOnlyList<SubscriptionState>> ListAsync(CancellationToken ct = default) =>
@@ -46,7 +47,7 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
         });
 
     public Task<SubscriptionState> UpdateAsync(string id, long expectedVersion, DetailsUpdate command, WriteContext context, CancellationToken ct = default) =>
-        WriteAsync(id, expectedVersion, history =>
+        WriteAsync(id, expectedVersion, async (history, token) =>
         {
             // Only a changed link is checked, so a subscription whose catalog entry was removed can still be edited. This runs inside
             // the decide step, after the 404 and 412 checks. The extra rehydration is accepted: do not fold it into WriteAsync.
@@ -55,7 +56,12 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
                 RequireKnownCatalogId(command.CatalogId);
             }
 
-            return SubscriptionDecisions.UpdateDetails(history, command, time.GetUtcNow());
+            // Details and the payment option change are one decision and one append (R7). Only the emitted payment events are
+            // checked for usability, so an unchanged removed option never blocks the save.
+            var events = SubscriptionDecisions.UpdateDetails(history, command, SubscriptionIds.New(time), time.GetUtcNow());
+            await RequireAssignedOptionsUsableAsync(events, token).ConfigureAwait(false);
+            LogPaymentChange(command, events);
+            return events;
         }, context, ct);
 
     public Task<SubscriptionState> AddPriceEntryAsync(string id, long expectedVersion, PriceEntryChange command, WriteContext context, CancellationToken ct = default) =>
@@ -188,6 +194,19 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
                 ["catalogId"] = ["The catalog id is not a known service."],
             });
         }
+    }
+
+    /// <summary>One content-free line per Edit save, so an Edit-driven change shows apart from Correct and Add price.</summary>
+    private void LogPaymentChange(DetailsUpdate command, IReadOnlyList<object> events)
+    {
+        if (loggers is null || command.PaymentOption is null)
+        {
+            return;
+        }
+
+        var priceEvents = events.Count(e => e is SubscriptionPriceEntryAdded or SubscriptionPriceEntryPaymentChanged);
+        var change = priceEvents == 0 ? "none" : command.PaymentOption.PaymentOptionId is null ? "cleared" : "set";
+        PaymentOptionLog.EditChange(loggers.CreateLogger(PaymentOptionLog.Category), change, priceEvents);
     }
 
     private static void SetHeaders(IDocumentSession session, WriteContext context)
