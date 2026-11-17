@@ -9,6 +9,7 @@ import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from '../i18n/i1
 import { en } from '../i18n/catalog.en';
 import { da } from '../i18n/catalog.da';
 import { SessionService, csrfInterceptor } from '../session';
+import { query, queryAll } from '../testing/query';
 import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionsService } from './subscriptions.service';
 import { PaymentOptionList, SubscriptionDetail } from './subscription.models';
@@ -58,10 +59,10 @@ describe('SubscriptionDetailPage', () => {
     return { harness, component, root: harness.routeNativeElement as HTMLElement, detail };
   }
 
-  const el = <T extends HTMLElement = HTMLElement>(root: HTMLElement, selector: string) => root.querySelector(selector) as T;
+  const el = <T extends HTMLElement = HTMLElement>(root: HTMLElement, selector: string) => query<T>(root, selector);
   const buttonByText = (root: HTMLElement, text: string) =>
     Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
-  const rows = (root: HTMLElement) => Array.from(root.querySelectorAll('tbody tr')) as HTMLElement[];
+  const rows = (root: HTMLElement) => queryAll(root, 'tbody tr');
 
   function type(root: HTMLElement, id: string, value: string, event = 'input') {
     const field = el<HTMLInputElement>(root, `#${id}`);
@@ -74,7 +75,7 @@ describe('SubscriptionDetailPage', () => {
     await settle(harness);
   }
 
-  const entrySubmit = (harness: RouterTestingHarness) => submitForm(harness, '.entry-form');
+  const entrySubmit = (harness: RouterTestingHarness) => submitForm(harness, '[data-entry-form]');
   const request = (detail: SubscriptionDetail, suffix = '') => http.expectOne(`/api/subscriptions/${detail.id}${suffix}`);
 
   async function respond(harness: RouterTestingHarness, req: TestRequest, body: SubscriptionDetail) {
@@ -89,19 +90,19 @@ describe('SubscriptionDetailPage', () => {
 
   it('shows the logo beside the heading and falls back to the letter when it is broken', async () => {
     const { harness, root, detail } = await open({ ...detailFixture(), catalogId: 'streamco', logoUrl: '/logos/streamco.svg' });
-    expect(root.querySelector('.title-row img')?.getAttribute('src')).toBe('/logos/streamco.svg');
-    expect(root.querySelector('.title-row img')?.getAttribute('alt')).toBe('');
+    expect(query(root, '[data-title-row] img').getAttribute('src')).toBe('/logos/streamco.svg');
+    expect(query(root, '[data-title-row] img').getAttribute('alt')).toBe('');
     expect(el(root, 'h1').textContent).toBe(detail.name);
-    root.querySelector('.title-row img')?.dispatchEvent(new Event('error'));
+    query(root, '[data-title-row] img').dispatchEvent(new Event('error'));
     await settle(harness);
-    expect(root.querySelector('.title-row img')).toBeNull();
-    expect(root.querySelector('.title-row span[aria-hidden="true"]')?.textContent?.trim()).toBe(Array.from(detail.name)[0].toUpperCase());
+    expect(root.querySelector('[data-title-row] img')).toBeNull();
+    expect(query(root, '[data-title-row] span[aria-hidden="true"]').textContent?.trim()).toBe(Array.from(detail.name)[0].toUpperCase());
   });
 
   it('shows the initial letter when the subscription has no logo', async () => {
     const { root, detail } = await open();
-    expect(root.querySelector('.title-row img')).toBeNull();
-    expect(root.querySelector('.title-row span[aria-hidden="true"]')?.textContent?.trim()).toBe(Array.from(detail.name)[0].toUpperCase());
+    expect(root.querySelector('[data-title-row] img')).toBeNull();
+    expect(query(root, '[data-title-row] span[aria-hidden="true"]').textContent?.trim()).toBe(Array.from(detail.name)[0].toUpperCase());
   });
 
   it('shows the history chronologically with changes and the Upcoming and Current badges', async () => {
@@ -315,7 +316,7 @@ describe('SubscriptionDetailPage', () => {
     await settle(harness);
     expect(document.activeElement?.id).toBe('end-date');
     type(root, 'end-date', plusDays(detail.startDate, 2000));
-    await submitForm(harness, 'form:not(.entry-form)');
+    await submitForm(harness, 'form:not([data-entry-form])');
     request(detail).flush({ traceId: 't', errors: { endDate: ['x'] } }, { status: 400, statusText: 'Bad Request' });
     await settle(harness);
     expect(el(root, '#end-date').getAttribute('aria-invalid')).toBe('true');
@@ -341,7 +342,7 @@ describe('SubscriptionDetailPage', () => {
     el<HTMLButtonElement>(root, '#end-open').click();
     await settle(harness);
     type(root, 'end-date', detail.startDate);
-    await submitForm(harness, 'form:not(.entry-form)');
+    await submitForm(harness, 'form:not([data-entry-form])');
     http.expectNone(`/api/subscriptions/${detail.id}`);
     expect(el(root, '#end-date-error').textContent).toContain(en['detail.end.error']);
   });
@@ -541,13 +542,16 @@ describe('SubscriptionDetailPage', () => {
     expect(root.textContent).toContain(da['detail.col.paymentOption']);
     expect(root.textContent).toContain(da['detail.paymentOption.removed']);
     expect(root.textContent).toContain(da['paymentOptions.select.label']);
+    expect(query(root, '#summary-heading').textContent?.trim()).toBe(da['detail.summaryHeading']);
+    expect(query(root, '#history-heading').textContent?.trim()).toBe(da['detail.historyHeading']);
+    expect(query(root, 'label[for=entry-amount]').textContent?.trim()).toBe(da['subscriptions.field.amount']);
     expect(englishLeftovers(root)).toEqual([]);
   });
 
   // ---- cancel by -------------------------------------------------------------------------------------
 
   const cancelByRow = (root: HTMLElement) =>
-    Array.from(root.querySelectorAll('dl.summary dt')).find((dt) => dt.textContent?.trim() === en['detail.cancelBy']) as HTMLElement | undefined;
+    Array.from(root.querySelectorAll('[data-summary] dt')).find((dt) => dt.textContent?.trim() === en['detail.cancelBy']) as HTMLElement | undefined;
 
   it('shows the deadline as household wall time with the zone, next to the unsubscribe link', async () => {
     const { root } = await open({ ...detailFixture(), cancelBy: '2026-12-01T09:30', cancelByInstant: '2026-12-01T08:30:00Z' });
@@ -559,7 +563,7 @@ describe('SubscriptionDetailPage', () => {
     expect(value).toMatch(/9:30/);
     // Not shifted into the browser's own zone: 08:30Z would read 8:30 in UTC.
     expect(value).not.toMatch(/8:30/);
-    const terms = Array.from(root.querySelectorAll('dl.summary dt')).map((dt) => dt.textContent?.trim());
+    const terms = Array.from(root.querySelectorAll('[data-summary] dt')).map((dt) => dt.textContent?.trim());
     expect(terms.indexOf(en['detail.cancelBy'])).toBe(terms.indexOf(en['detail.unsubscribe']) + 1);
   });
 
@@ -587,7 +591,7 @@ describe('SubscriptionDetailPage', () => {
     el<HTMLButtonElement>(root, '#end-open').click();
     await settle(harness);
     type(root, 'end-date', plusDays(detail.priceHistory[detail.priceHistory.length - 1].effectiveFrom, 10));
-    await submitForm(harness, 'form:not(.entry-form)');
+    await submitForm(harness, 'form:not([data-entry-form])');
     const req = request(detail);
     expect((req.request.body as { cancelBy: unknown }).cancelBy).toBe('2026-12-01T09:30');
     req.flush({}, { status: 400, statusText: 'Bad Request' });
@@ -611,13 +615,13 @@ describe('SubscriptionDetailPage', () => {
     expect(link?.getAttribute('href')).toBe(detail.effectiveUnsubscribeUrl);
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
     expect(link?.textContent?.trim()).toBe(en['detail.unsubscribeLink']);
-    expect(plain(root.querySelector('.summary')?.textContent)).toContain(en['detail.unsubscribe']);
+    expect(plain(query(root, '[data-summary]').textContent)).toContain(en['detail.unsubscribe']);
   });
 
   it('shows no link when no URL resolves', async () => {
     const { root } = await open({ ...detailFixture(), unsubscribeUrl: null, effectiveUnsubscribeUrl: null });
     expect(unsubscribeLink(root)).toBeNull();
-    expect(plain(root.querySelector('.summary')?.textContent)).not.toContain(en['detail.unsubscribe']);
+    expect(plain(query(root, '[data-summary]').textContent)).not.toContain(en['detail.unsubscribe']);
   });
 
   it('links the resolved catalog URL even when the member set none', async () => {
@@ -649,7 +653,7 @@ describe('SubscriptionDetailPage', () => {
     await settle(harness);
     const endDate = plusDays(detail.priceHistory[detail.priceHistory.length - 1].effectiveFrom, 10);
     type(root, 'end-date', endDate);
-    await submitForm(harness, 'form:not(.entry-form)');
+    await submitForm(harness, 'form:not([data-entry-form])');
     const req = request(detail);
     expect(req.request.method).toBe('PUT');
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
@@ -752,10 +756,10 @@ describe('SubscriptionDetailPage', () => {
     expect(req.request.body).toBeNull();
     await respond(harness, req, bump(detail, { status: 'paused', paused: true }));
 
-    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.paused']);
-    expect(el(root, '.summary .badge').classList.contains('status-paused')).toBe(true);
+    expect(el(root, '[data-summary] [data-status]').textContent?.trim()).toBe(en['subscriptions.status.paused']);
+    expect(el(root, '[data-summary] [data-status]').getAttribute('data-status')).toBe('paused');
     expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
-    expect(el(root, 'output.status').textContent).toContain(`${detail.name} is paused.`);
+    expect(el(root, '[data-action-notice] [role=status]').textContent).toContain(`${detail.name} is paused.`);
     expect(document.activeElement).toBe(toggle(root));
     http.expectNone(() => true);
   });
@@ -763,14 +767,14 @@ describe('SubscriptionDetailPage', () => {
   it('resumes a paused subscription with the new version and offers Pause again', async () => {
     const paused = { ...detailFixture(), status: 'paused' as const, paused: true };
     const { harness, root, detail } = await open(paused);
-    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.paused']);
+    expect(el(root, '[data-summary] [data-status]').textContent?.trim()).toBe(en['subscriptions.status.paused']);
     toggle(root)!.click();
     const req = pauseRequest(detail, 'resume');
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     await respond(harness, req, bump(detail, { status: 'active', paused: false }));
-    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.active']);
+    expect(el(root, '[data-summary] [data-status]').textContent?.trim()).toBe(en['subscriptions.status.active']);
     expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.pause']);
-    expect(el(root, 'output.status').textContent).toContain(`${detail.name} was resumed.`);
+    expect(el(root, '[data-action-notice] [role=status]').textContent).toContain(`${detail.name} was resumed.`);
   });
 
   for (const status of ['ended', 'not-started'] as const) {
@@ -782,7 +786,7 @@ describe('SubscriptionDetailPage', () => {
     it(`offers Resume for a ${status} subscription whose pause flag is set, so the flag cannot get stuck`, async () => {
       const { root } = await open({ ...detailFixture(), status, paused: true });
       expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
-      expect(el(root, '.summary .badge').textContent?.trim()).toBe(en[`subscriptions.status.${status}`]);
+      expect(el(root, '[data-summary] [data-status]').textContent?.trim()).toBe(en[`subscriptions.status.${status}`]);
     });
   }
 
@@ -803,8 +807,8 @@ describe('SubscriptionDetailPage', () => {
     toggle(root)!.click();
     pauseRequest(detail, 'pause').flush({ traceId: 't', currentVersion: detail.version + 1 }, { status: 412, statusText: 'Precondition Failed' });
     await settle(harness);
-    expect(el(root, '.notice[role=alert]').textContent).toContain(en['subscriptions.form.conflict']);
-    expect(root.querySelector('output.status')).toBeNull();
+    expect(el(root, '[role=alert]').textContent).toContain(en['subscriptions.form.conflict']);
+    expect(root.querySelector('[data-action-notice]')).toBeNull();
     buttonByText(root, en['subscriptions.form.reloadLatest']).click();
     request(detail).flush(bump(detail, { status: 'paused', paused: true }));
     await settle(harness);
@@ -818,11 +822,11 @@ describe('SubscriptionDetailPage', () => {
     pauseRequest(detail, 'pause').flush({ traceId: 'trace-409', currentVersion: detail.version + 1 }, { status: 409, statusText: 'Conflict' });
     request(detail).flush(bump(detail, { status: 'paused', paused: true }));
     await settle(harness);
-    expect(el(root, 'p.error[role=alert]').textContent).toContain(en['subscriptions.pauseInvalid']);
+    expect(el(root, '[data-action-problem] [role=alert]').textContent).toContain(en['subscriptions.pauseInvalid']);
     expect(root.textContent).toContain('trace-409');
-    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.paused']);
+    expect(el(root, '[data-summary] [data-status]').textContent?.trim()).toBe(en['subscriptions.status.paused']);
     expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
-    expect(el(root, 'p.error[role=alert]').textContent).not.toContain(en['subscriptions.form.saveFailed']);
+    expect(el(root, '[data-action-problem] [role=alert]').textContent).not.toContain(en['subscriptions.form.saveFailed']);
   });
 
   it('shows the generic failure with the trace id for any other error, never backend English', async () => {
@@ -830,11 +834,11 @@ describe('SubscriptionDetailPage', () => {
     toggle(root)!.click();
     pauseRequest(detail, 'pause').flush({ traceId: 'trace-500', title: 'Backend English' }, { status: 500, statusText: 'Server Error' });
     await settle(harness);
-    expect(el(root, 'p.error[role=alert]').textContent).toContain(en['subscriptions.form.saveFailed']);
+    expect(el(root, '[data-action-problem] [role=alert]').textContent).toContain(en['subscriptions.form.saveFailed']);
     expect(root.textContent).toContain('trace-500');
     expect(root.textContent).not.toContain('Backend English');
     expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.pause']);
-    expect(el(root, '.summary .badge').textContent?.trim()).toBe(en['subscriptions.status.active']);
+    expect(el(root, '[data-summary] [data-status]').textContent?.trim()).toBe(en['subscriptions.status.active']);
   });
 
   it('shows "not found" when the subscription was removed meanwhile (404)', async () => {
@@ -848,7 +852,7 @@ describe('SubscriptionDetailPage', () => {
   it('renders a paused subscription in Danish with no English application copy', async () => {
     TestBed.inject(LanguageService).setLanguage('da');
     const { root } = await open({ ...detailFixture(), status: 'paused', paused: true });
-    expect(el(root, '.summary .badge').textContent?.trim()).toBe(da['subscriptions.status.paused']);
+    expect(el(root, '[data-summary] [data-status]').textContent?.trim()).toBe(da['subscriptions.status.paused']);
     expect(toggle(root)?.textContent?.trim()).toBe(da['subscriptions.resume']);
     expect(englishLeftovers(root)).toEqual([]);
   });

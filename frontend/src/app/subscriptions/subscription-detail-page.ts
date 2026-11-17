@@ -27,6 +27,10 @@ import {
 import { SubscriptionsService } from './subscriptions.service';
 import { formatWallTime } from './time-zone';
 import { isHttpsUrl } from './unsubscribe-url';
+import { FormField } from '../ui/form-field';
+import { Notice } from '../ui/notice';
+import { Panel } from '../ui/panel';
+import { StatusBadge } from '../ui/status-badge';
 
 type EntryForm = { mode: 'add' } | { mode: 'correct'; entry: HistoryEntry };
 type Area = 'entry' | 'end' | 'other';
@@ -50,7 +54,7 @@ const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.i
 
 @Component({
   selector: 'app-subscription-detail-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo, FormField, Notice, Panel, StatusBadge],
   templateUrl: './subscription-detail-page.html',
 })
 export class SubscriptionDetailPage {
