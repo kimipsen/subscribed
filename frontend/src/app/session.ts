@@ -17,7 +17,7 @@ export type Session =
 export interface Problem {
   type?: string;
   traceId?: string;
-  errors?: { name?: string[]; displayLabel?: string[] };
+  errors?: { name?: string[]; displayLabel?: string[]; timeZoneId?: string[] };
   currentVersion?: number;
 }
 

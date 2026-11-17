@@ -211,7 +211,11 @@ describe('Theme selector', () => {
 
   it('applies a choice live without navigation, session reload, or losing input and focus', async () => {
     const fixture = await render(member, '/household');
-    http.expectOne('/api/household').flush({ id: 'household-default', name: 'Before', version: 1, members: [] });
+    http.expectOne('/api/household').flush({
+      id: 'household-default', name: 'Before', version: 1, timeZoneId: 'UTC',
+      calendarFeed: { enabled: false, rotatedAt: null }, members: [],
+    });
+    http.expectOne('/api/household/time-zones').flush({ timeZones: ['UTC'] });
     await fixture.whenStable();
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigateByUrl');
