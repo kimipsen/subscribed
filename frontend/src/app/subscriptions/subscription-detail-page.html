@@ -102,7 +102,7 @@
                   </td>
                   <td>
                     @if (optionOf(row.paymentOptionId); as option) {
-                      {{ optionText(option) }}@if (option.removed) { <span class="muted"> {{ 'detail.paymentOption.removed' | t }}</span> }
+                      <app-payment-option-logo [brand]="option.brand" [size]="20" /> {{ optionText(option) }}@if (option.removed) { <span class="muted"> {{ 'detail.paymentOption.removed' | t }}</span> }
                     } @else {
                       <span class="muted">—</span>
                     }

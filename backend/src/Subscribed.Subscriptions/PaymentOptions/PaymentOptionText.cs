@@ -14,6 +14,17 @@ public static class PaymentOptionText
     public const string ReasonCardNumberLike = "card_number_like";
     public const string ReasonInvalidLength = "invalid_length";
     public const string ReasonControlCharacters = "control_characters";
+    public const string ReasonUnknownBrand = "unknown_brand";
+
+    /// <summary>The fixed brand rejection message. It never contains the submitted value (NFR-2).</summary>
+    public const string BrandMessage = "The brand is not a known payment option brand.";
+
+    /// <summary>Null means no brand. Otherwise the value must match a known id exactly (ordinal, no trimming, no case folding).</summary>
+    public static bool TryValidateBrand(string? raw, out string reason)
+    {
+        reason = raw is null || PaymentOptionBrands.IsKnown(raw) ? "" : ReasonUnknownBrand;
+        return reason.Length == 0;
+    }
 
     /// <summary>
     /// Scans left to right with a running digit count. Any Unicode decimal digit (category Nd) counts; a letter resets the run;
@@ -100,6 +111,8 @@ public static class PaymentOptionText
     /// <summary>The fixed, input-free message for a rejection reason (NFR-2).</summary>
     public static string MessageFor(string field, string reason) => reason switch
     {
+        ReasonUnknownBrand => BrandMessage,
+        _ when field == "brand" => BrandMessage,
         ReasonCardNumberLike => $"The {field} must not look like a card number (no run of {CardNumberDigits} or more digits).",
         ReasonControlCharacters => $"The {field} must not contain control characters.",
         _ => field == "name"

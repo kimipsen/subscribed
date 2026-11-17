@@ -148,12 +148,17 @@ export interface PriceEntryBody {
 }
 
 /** A household payment option. A removed one stays in the list so price entries that reference it keep resolving. */
+/** The stable id of a known payment option brand. The backend validates the same five ids. */
+export type PaymentOptionBrand = 'paypal' | 'visa' | 'mastercard' | 'dankort' | 'mobilepay-vipps';
+
 export interface PaymentOption {
   id: string;
   /** The stream version: the `If-Match` value for update and remove. */
   version: number;
   name: string;
   label: string | null;
+  /** The linked brand, or null (shown with the generic card icon). A removed option keeps its brand. */
+  brand: PaymentOptionBrand | null;
   removed: boolean;
 }
 
@@ -162,7 +167,7 @@ export interface PaymentOptionList {
   options: PaymentOption[];
 }
 
-/** A suggestion only prefills a name: no suggestion id is stored. */
+/** A suggestion prefills the name and brand: its id is the brand id. */
 export interface PaymentOptionSuggestion {
   id: string;
   name: string;
@@ -173,10 +178,12 @@ export interface PaymentOptionSuggestionList {
   suggestions: PaymentOptionSuggestion[];
 }
 
-/** Body of POST /api/payment-options and PUT /api/payment-options/{id}: both keys, with an explicit null label. */
+/** Body of POST /api/payment-options and PUT /api/payment-options/{id}: all keys, with an explicit null label and brand. */
 export interface PaymentOptionBody {
   name: string;
   label: string | null;
+  /** The brand, or an explicit null for none (PUT is a full replace: an omitted brand clears it). */
+  brand: PaymentOptionBrand | null;
 }
 
 export interface CatalogUpcomingChange {

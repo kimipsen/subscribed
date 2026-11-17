@@ -35,6 +35,7 @@
           <ul class="option-list">
             @for (option of options(); track option.id) {
               <li>
+                <app-payment-option-logo [brand]="option.brand" />
                 <span class="option-text">{{ text(option) }}</span>
                 <button type="button" class="secondary" [id]="'edit-' + option.id" (click)="startEdit(option)">{{ 'paymentOptions.edit' | t }}</button>
                 <button type="button" class="secondary" [id]="'remove-' + option.id" (click)="askRemove(option)">{{ 'paymentOptions.remove' | t }}</button>
@@ -68,6 +69,15 @@
               <p class="muted" id="edit-label-hint">{{ 'paymentOptions.field.labelHint' | t }}</p>
               @if (editErr('label'); as e) { <p class="field-error" id="edit-label-error">{{ e.key | t: e.params }}</p> }
             </div>
+            <div class="field">
+              <label for="edit-brand">{{ 'paymentOptions.field.brand' | t }}</label>
+              <select id="edit-brand" name="editBrand" [(ngModel)]="editBrand"
+                [attr.aria-invalid]="editErr('brand') ? 'true' : null" [attr.aria-describedby]="editErr('brand') ? 'edit-brand-error' : null">
+                <option [ngValue]="null">{{ 'paymentOptions.brand.none' | t }}</option>
+                @for (b of brands; track b.id) { <option [ngValue]="b.id">{{ b.name }}</option> }
+              </select>
+              @if (editErr('brand'); as e) { <p class="field-error" id="edit-brand-error">{{ e.key | t: e.params }}</p> }
+            </div>
             <div class="actions">
               <button type="submit" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.save') | t }}</button>
               <button type="button" class="secondary" (click)="cancelEdit()">{{ 'subscriptions.form.cancel' | t }}</button>
@@ -83,7 +93,7 @@
             <legend class="muted">{{ 'paymentOptions.suggestions' | t }}</legend>
             <p class="actions">
               @for (suggestion of suggestions(); track suggestion.id) {
-                <button type="button" class="secondary suggestion" [id]="'suggest-' + suggestion.id" (click)="pick(suggestion)">{{ suggestion.name }}</button>
+                <button type="button" class="secondary suggestion" [id]="'suggest-' + suggestion.id" (click)="pick(suggestion)"><app-payment-option-logo [brand]="brandOf(suggestion.id)" [size]="20" /> {{ suggestion.name }}</button>
               }
             </p>
           </fieldset>
@@ -102,6 +112,15 @@
               [attr.aria-describedby]="err('label') ? 'option-label-error option-label-hint' : 'option-label-hint'" />
             <p class="muted" id="option-label-hint">{{ 'paymentOptions.field.labelHint' | t }}</p>
             @if (err('label'); as e) { <p class="field-error" id="option-label-error">{{ e.key | t: e.params }}</p> }
+          </div>
+          <div class="field">
+            <label for="option-brand">{{ 'paymentOptions.field.brand' | t }}</label>
+            <select id="option-brand" name="brand" [(ngModel)]="brand"
+              [attr.aria-invalid]="err('brand') ? 'true' : null" [attr.aria-describedby]="err('brand') ? 'option-brand-error' : null">
+              <option [ngValue]="null">{{ 'paymentOptions.brand.none' | t }}</option>
+              @for (b of brands; track b.id) { <option [ngValue]="b.id">{{ b.name }}</option> }
+            </select>
+            @if (err('brand'); as e) { <p class="field-error" id="option-brand-error">{{ e.key | t: e.params }}</p> }
           </div>
           <div class="actions">
             <button type="submit" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.add') | t }}</button>

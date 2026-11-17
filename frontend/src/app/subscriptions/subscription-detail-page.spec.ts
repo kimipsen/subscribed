@@ -382,6 +382,26 @@ describe('SubscriptionDetailPage', () => {
     expect(cells.filter((c) => c === '—')).toHaveLength(detail.priceHistory.length - 2);
   });
 
+  it('shows a decorative logo before the option text: the brand logo or the generic icon, also for a removed option', async () => {
+    const options = paymentOptionListFixture();
+    options.options.push({ id: '0192f3c1a1b27c4e8d2e5f60718293e8', version: 1, name: 'Cash', label: null, brand: null, removed: false });
+    const detail = withOptions();
+    const unlinked = detail.priceHistory.findIndex((e) => !e.current && e.paymentOptionId === null);
+    detail.priceHistory[unlinked].paymentOptionId = '0192f3c1a1b27c4e8d2e5f60718293e8';
+    const { root } = await open(detail, options);
+    const cell = (index: number) => rows(root)[index].querySelectorAll('td')[3];
+    const current = detail.priceHistory.findIndex((e) => e.current);
+    for (const index of [0, current, unlinked]) {
+      expect(cell(index).querySelectorAll('img[alt=""]')).toHaveLength(1);
+      expect(cell(index).querySelector('img')?.getAttribute('src')).toBe('/logos/generic-card.svg');
+    }
+    // The removed option keeps its logo and its removed marker.
+    expect(plain(cell(0).textContent)).toBe(`Old card ${en['detail.paymentOption.removed']}`);
+    // Rows without an option show a dash and no logo.
+    const none = detail.priceHistory.findIndex((e, i) => i !== 0 && i !== current && i !== unlinked);
+    expect(cell(none).querySelector('img')).toBeNull();
+  });
+
   it('resolves a history row by id, so a renamed option shows its new name in old rows', async () => {
     const renamed = paymentOptionListFixture();
     renamed.options[0] = { ...renamed.options[0], name: 'Visa Platinum', label: null };

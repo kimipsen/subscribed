@@ -15,6 +15,9 @@ public sealed class PaymentOptionState
 
     public string? Label { get; set; }
 
+    /// <summary>One of <see cref="PaymentOptionBrands.Ids"/> or null. Independent of <see cref="Name"/>; survives removal.</summary>
+    public string? Brand { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public bool Removed { get; set; }
@@ -31,6 +34,7 @@ public sealed class PaymentOptionState
             HouseholdId = e.HouseholdId,
             Name = e.Name,
             Label = e.Label,
+            Brand = e.Brand,
             CreatedAt = e.RecordedAt,
         };
     }
@@ -40,6 +44,7 @@ public sealed class PaymentOptionState
         ArgumentNullException.ThrowIfNull(e);
         Name = e.Name;
         Label = e.Label;
+        Brand = e.Brand;
     }
 
     /// <summary>Nothing is deleted: the flag hides the option from creation and pickers (D3).</summary>

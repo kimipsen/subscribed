@@ -39,4 +39,25 @@ public sealed class LogoLicenceTests
             Assert.True(File.Exists(Path.Combine(directory, Path.GetFileName(logo))), $"Catalog logo {logo} is missing from frontend/public/logos.");
         }
     }
+
+    [Fact]
+    public void Every_LICENSES_md_row_names_a_file_that_exists()
+    {
+        var directory = LogosDirectory();
+        var licences = File.ReadAllText(Path.Combine(directory, "LICENSES.md"));
+        var rows = licences.Split('\n')
+            .Select(static l => l.Trim())
+            .Where(static l => l.StartsWith('|') && !l.StartsWith("| File |", StringComparison.Ordinal) && !l.StartsWith("| ---", StringComparison.Ordinal));
+        foreach (var row in rows)
+        {
+            var file = row.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)[0];
+            Assert.True(File.Exists(Path.Combine(directory, file)), $"LICENSES.md has a row for {file}, which is missing from frontend/public/logos.");
+        }
+    }
+
+    [Fact]
+    public void The_generic_card_icon_exists()
+    {
+        Assert.True(File.Exists(Path.Combine(LogosDirectory(), "generic-card.svg")), "generic-card.svg is missing from frontend/public/logos.");
+    }
 }

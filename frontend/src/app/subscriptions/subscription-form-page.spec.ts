@@ -174,6 +174,13 @@ describe('SubscriptionFormPage', () => {
     await finishSave(harness, lastRequest('/api/subscriptions'), detailFixture(), 201);
   });
 
+  it('keeps the payment option select text only: no logo inside or beside it', async () => {
+    const { root } = await openAdd();
+    const field = root.querySelector('#paymentOptionId') as HTMLElement;
+    expect(field.querySelector('img')).toBeNull();
+    expect(field.closest('.field')?.querySelector('img, app-payment-option-logo')).toBeNull();
+  });
+
   it('has no payment option select in edit mode, requests no options, and the update body has no paymentOptionId', async () => {
     const { harness, root, component } = await openEdit();
     expect(root.querySelector('#paymentOptionId')).toBeNull();

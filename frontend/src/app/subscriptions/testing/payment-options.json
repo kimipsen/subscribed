@@ -5,6 +5,7 @@
       "version": 3,
       "name": "Visa",
       "label": "Joint account",
+      "brand": "visa",
       "removed": false
     },
     {
@@ -12,6 +13,7 @@
       "version": 2,
       "name": "Old card",
       "label": null,
+      "brand": "dankort",
       "removed": true
     }
   ]
