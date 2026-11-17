@@ -122,15 +122,20 @@ read model exposes `paymentOptionId` on `currentPrice` and on every `priceHistor
 | Endpoint | Success | Notes |
 | --- | --- | --- |
 | `GET /api/payment-options` | `200` `{ "options": [...] }` | every option, removed ones included (`removed: true`), by name |
-| `GET /api/payment-options/suggestions` | `200` `{ "suggestions": [...] }` | a static list: `paypal`, `visa`, `mastercard`, `dankort`, `mobilepay-vipps` (one MobilePay/Vipps entry) |
+| `GET /api/payment-options/suggestions` | `200` `{ "suggestions": [...] }` | a static list of the valid brand ids: `paypal`, `visa`, `mastercard`, `dankort`, `mobilepay-vipps` (one MobilePay/Vipps entry) |
 | `GET /api/payment-options/{id}` | `200` with an `ETag` | `404` for an unknown, malformed or other-household option |
-| `POST /api/payment-options` | `201`, `Location` and `ETag` | body `{ "name", "label" }` |
-| `PUT /api/payment-options/{id}` | `200` with a new `ETag` | needs `If-Match`; `404` on a removed option |
+| `POST /api/payment-options` | `201`, `Location` and `ETag` | body `{ "name", "label", "brand" }` |
+| `PUT /api/payment-options/{id}` | `200` with a new `ETag` | needs `If-Match`; `404` on a removed option; a full replace, so an omitted `brand` clears it |
 | `DELETE /api/payment-options/{id}` | `204` | needs `If-Match`; a soft remove |
 
 Writes use the same order as the subscription writes: malformed id `404`, `If-Match` missing `428` or malformed `400`, body
 `413`/`415`/`400`, field shape `400`, then unknown, removed or other-household option `404`, stale version `412`.
 
+- **Brand.** An option has an optional `brand`: the request body takes it and every response returns it, `null` when none is set.
+  It is one of the five ids above (`paypal`, `visa`, `mastercard`, `dankort`, `mobilepay-vipps`); an unknown value is `400` with
+  `errors.brand`. `PUT` is a full replace, so a body without `brand` clears it. A suggestion id is the brand id, so choosing a
+  suggestion stores that brand. A removed option keeps its brand. Brands without a licensed logo show the generic card icon; see
+  `frontend/public/logos/LICENSES.md`.
 - **Events.** `payment_option.created.v1`, `payment_option.changed.v1` and `payment_option.removed.v1`, one stream per option
   (`paymentoption-<id>`), with a self-aggregating inline snapshot `payment_option_view`. These aliases are registered only in
   `PaymentOptionEventTypes.ByAlias`, not in `SubscriptionEventTypes.ByAlias`.
@@ -172,6 +177,16 @@ binary. Changes made after the migration are lost on restore.
 
 **Existing data.** Existing streams and snapshot rows are valid as they are: a stored subscription snapshot without
 `paymentOptionId` on its entries loads as no option, and `admin projections rebuild` reproduces both view tables from the events.
+
+**Brand rollout (issue #38).** The brand is an optional field on the existing payment option events, so there is no schema version
+change, no migration step beyond the one for payment options above and no projection rebuild: an option stored without a brand
+loads as `null`. Two risks to know:
+
+- **Stale tab.** Reload open tabs after the deploy. `PUT` is a full replace, so a tab that still runs the old frontend sends no
+  `brand` when it renames an option and so clears the stored brand.
+- **Serializer tolerance is unverified.** Whether the Marten document serializer of an older binary tolerates the extra `brand`
+  member in stored payment option events and snapshots has not been verified; do not roll back to a binary older than this change
+  without testing it against a copy of the data.
 
 ## Subscription catalog
 
