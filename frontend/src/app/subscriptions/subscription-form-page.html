@@ -176,6 +176,19 @@
             </select>
             @if (err('paymentOptionId'); as e) { <p class="field-error" id="paymentOptionId-error">{{ e.key | t: e.params }}</p> }
           </div>
+        } @else if (showPaymentOption()) {
+          <div class="field">
+            <label for="paymentOptionId">{{ 'paymentOptions.select.label' | t }}</label>
+            <select id="paymentOptionId" name="paymentOptionId" [(ngModel)]="paymentOptionId"
+              [attr.aria-invalid]="err('paymentOption') || err('paymentOptionId') ? 'true' : null"
+              [attr.aria-describedby]="describedBy(err('paymentOption') ? 'paymentOption' : 'paymentOptionId', 'paymentOptionId-hint')">
+              <option value="">{{ 'paymentOptions.select.none' | t }}</option>
+              @for (o of paymentChoices(); track o.id) { <option [value]="o.id" [disabled]="o.removed">{{ choiceText(o) }}</option> }
+            </select>
+            <p class="muted" id="paymentOptionId-hint">{{ 'subscriptions.field.paymentOptionEditHint' | t }}</p>
+            @if (err('paymentOption'); as e) { <p class="field-error" id="paymentOption-error">{{ e.key | t: e.params }}</p> }
+            @if (err('paymentOptionId'); as e) { <p class="field-error" id="paymentOptionId-error">{{ e.key | t: e.params }}</p> }
+          </div>
         }
         <div class="actions">
           <button type="submit" [disabled]="saving()">
