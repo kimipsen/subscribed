@@ -1,0 +1,11 @@
+@import "tailwindcss" source(none);
+@source "./**/*.{html,ts}";
+@source not "./**/*.spec.ts";
+@source not "./**/testing/**";
+@source not "./app/i18n/**";
+@source not "../scripts/**";
+@source not "../README.md";
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+/* WP2 adds the minimal theme overrides and base rules here. */
