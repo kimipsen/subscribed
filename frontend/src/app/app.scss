@@ -7,12 +7,25 @@ header { height: 4rem; display: flex; align-items: center; gap: 1rem; padding: 0
 .pref-label { margin: 0; font-size: .85rem; }
 .layout.member { display: grid; grid-template-columns: 14rem 1fr; min-height: calc(100dvh - 4rem); }
 nav { background: var(--color-surface); padding: 1rem .75rem; border-right: 1px solid var(--color-border); }
-nav a { display: block; padding: .8rem 1rem; color: var(--color-text); text-decoration: none; border-radius: .4rem; }
+nav a, .nav-toggle { display: flex; align-items: center; gap: .75rem; position: relative; padding: .8rem 1rem; color: var(--color-text); text-decoration: none; border-radius: .4rem; }
+nav lucide-icon { flex: none; }
+.nav-toggle { display: none; width: 100%; background: none; border: 0; font: inherit; text-align: start; cursor: pointer; }
 nav a.active { background: var(--color-nav-active-bg); color: var(--color-nav-active-text); font-weight: 700; }
 main { padding: clamp(1rem, 4vw, 3rem); min-width: 0; }
 .menu { display: none; }
 .skip { position: absolute; top: .5rem; left: .5rem; transform: translateY(-200%); z-index: 20; background: var(--color-surface); color: var(--color-primary); padding: .75rem; }
 .skip:focus { transform: none; }
+@media (min-width: 900px) {
+  .nav-toggle { display: flex; }
+  .layout.member.collapsed { grid-template-columns: 4rem 1fr; }
+  .collapsed nav { padding-inline: .5rem; }
+  .collapsed nav a, .collapsed .nav-toggle { justify-content: center; padding-inline: 0; min-height: 2.75rem; }
+  .collapsed .nav-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .collapsed nav a:hover .nav-label, .collapsed nav a:focus-visible .nav-label, .collapsed .nav-toggle:hover .nav-label, .collapsed .nav-toggle:focus-visible .nav-label {
+    position: absolute; left: calc(100% + .5rem); width: auto; height: auto; overflow: visible; clip-path: none; z-index: 10; pointer-events: none;
+    padding: .4rem .6rem; border: 1px solid var(--color-border); border-radius: .4rem; background: var(--color-surface); color: var(--color-text);
+  }
+}
 @media (max-width: 899px) {
   header { padding: 0 1rem; }
   .layout.member { display: block; }

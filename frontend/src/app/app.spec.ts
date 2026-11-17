@@ -7,9 +7,19 @@ import { App } from './app';
 import { routes } from './app.routes';
 import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from './i18n/i18n';
 import { Session, SessionService, csrfInterceptor } from './session';
+import { SIDEBAR_STORAGE } from './sidebar/sidebar';
 import { COLOR_SCHEME_QUERY, THEME_STORAGE, ThemeService } from './theme/theme';
 import { APP_VERSION } from './version';
 import './app.config';
+
+function fakeSidebarStorage(initial?: string) {
+  const values = new Map<string, string>(initial === undefined ? [] : [['subscribed.sidebar', initial]]);
+  return {
+    values,
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+  };
+}
 
 describe('Language selector', () => {
   let http: HttpTestingController;
@@ -28,6 +38,7 @@ describe('Language selector', () => {
         { provide: LANGUAGE_STORAGE, useValue: { getItem, setItem } },
         { provide: THEME_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
         { provide: COLOR_SCHEME_QUERY, useValue: null },
+        { provide: SIDEBAR_STORAGE, useValue: fakeSidebarStorage() },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -151,6 +162,7 @@ describe('Theme selector', () => {
         { provide: LANGUAGE_STORAGE, useValue: storage },
         { provide: THEME_STORAGE, useValue: storage },
         { provide: COLOR_SCHEME_QUERY, useValue: null },
+        { provide: SIDEBAR_STORAGE, useValue: fakeSidebarStorage() },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -293,6 +305,7 @@ describe('Footer', () => {
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
         { provide: THEME_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
         { provide: COLOR_SCHEME_QUERY, useValue: null },
+        { provide: SIDEBAR_STORAGE, useValue: fakeSidebarStorage() },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -335,5 +348,202 @@ describe('Footer', () => {
     TestBed.inject(LanguageService).setLanguage('da');
     const fixture = await render();
     expect(fixture.nativeElement.querySelector('footer a').textContent).toBe('Kildekode på GitHub');
+  });
+});
+
+describe('Collapsible sidebar', () => {
+  let http: HttpTestingController;
+  let storage: ReturnType<typeof fakeSidebarStorage>;
+  const member: Session = { state: 'member', user: { displayName: 'Synthetic', memberId: '1' }, expiresAt: '' };
+
+  function configure(sidebarStorage: unknown) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(withInterceptors([csrfInterceptor])),
+        provideHttpClientTesting(),
+        { provide: BROWSER_LANGUAGES, useValue: ['en'] },
+        { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+        { provide: THEME_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+        { provide: COLOR_SCHEME_QUERY, useValue: null },
+        { provide: SIDEBAR_STORAGE, useValue: sidebarStorage },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+  }
+
+  beforeEach(() => {
+    storage = fakeSidebarStorage();
+    configure(storage);
+  });
+  afterEach(() => http.verify());
+
+  async function render(session: Session = member, url = '/') {
+    const fixture = TestBed.createComponent(App);
+    http.expectOne('/bff/session').flush(session);
+    await TestBed.inject(Router).navigateByUrl(url);
+    await fixture.whenStable();
+    if (session.state === 'member') {
+      if (url === '/payment-options') {
+        http.expectOne('/api/payment-options').flush({ options: [] });
+        http.match((request) => request.url.startsWith('/api/payment-options/')).forEach((r) => r.flush({ suggestions: [] }));
+      } else {
+        http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+      }
+      await fixture.whenStable();
+    }
+    return fixture;
+  }
+
+  const el = (fixture: ComponentFixture<App>) => fixture.nativeElement as HTMLElement;
+  const toggle = (fixture: ComponentFixture<App>) => el(fixture).querySelector('button.nav-toggle') as HTMLButtonElement;
+  const layout = (fixture: ComponentFixture<App>) => el(fixture).querySelector('.layout') as HTMLElement;
+  const links = (fixture: ComponentFixture<App>) => Array.from(el(fixture).querySelectorAll<HTMLAnchorElement>('nav a'));
+
+  async function click(fixture: ComponentFixture<App>) {
+    toggle(fixture).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('renders an expanded toggle with the expected attributes', async () => {
+    const fixture = await render();
+    const button = toggle(fixture);
+    expect(button.getAttribute('type')).toBe('button');
+    expect(button.getAttribute('aria-controls')).toBe('primary-nav');
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.getAttribute('aria-label')).toBe('Collapse sidebar');
+    expect(el(fixture).querySelector('nav')?.id).toBe('primary-nav');
+    expect(layout(fixture).classList.contains('collapsed')).toBe(false);
+  });
+
+  it('flips aria-expanded, the label and the icon on toggle', async () => {
+    const fixture = await render();
+    const iconBefore = toggle(fixture).querySelector('svg')?.outerHTML;
+    await click(fixture);
+    expect(toggle(fixture).getAttribute('aria-expanded')).toBe('false');
+    expect(toggle(fixture).getAttribute('aria-label')).toBe('Expand sidebar');
+    expect(toggle(fixture).querySelector('.nav-label')?.textContent).toBe('Expand sidebar');
+    const iconAfter = toggle(fixture).querySelector('svg')?.outerHTML;
+    expect(iconAfter).toBeTruthy();
+    expect(iconAfter).not.toBe(iconBefore);
+    await click(fixture);
+    expect(toggle(fixture).getAttribute('aria-expanded')).toBe('true');
+    expect(toggle(fixture).getAttribute('aria-label')).toBe('Collapse sidebar');
+    expect(toggle(fixture).querySelector('svg')?.outerHTML).toBe(iconBefore);
+  });
+
+  it('shows the collapse label inside the toggle', async () => {
+    const fixture = await render();
+    expect(toggle(fixture).querySelector('.nav-label')?.textContent).toBe('Collapse sidebar');
+  });
+
+  it('puts the collapsed class on .layout.member and never on the nav', async () => {
+    const fixture = await render();
+    await click(fixture);
+    expect(layout(fixture).classList.contains('member')).toBe(true);
+    expect(layout(fixture).classList.contains('collapsed')).toBe(true);
+    expect(el(fixture).querySelector('nav')?.classList.contains('collapsed')).toBe(false);
+    await click(fixture);
+    expect(layout(fixture).classList.contains('collapsed')).toBe(false);
+  });
+
+  it('renders an svg in the toggle and in each link, plus a .nav-label with no title attribute', async () => {
+    const fixture = await render();
+    expect(toggle(fixture).querySelector('svg')).toBeTruthy();
+    const all = links(fixture);
+    expect(all.map((a) => a.querySelector('.nav-label')?.textContent?.trim())).toEqual(['Home', 'Household', 'Payment options']);
+    for (const link of all) {
+      expect(link.querySelector('svg')).toBeTruthy();
+      expect(link.hasAttribute('title')).toBe(false);
+      expect(link.querySelector('.nav-label')?.hasAttribute('title')).toBe(false);
+    }
+    expect(toggle(fixture).hasAttribute('title')).toBe(false);
+  });
+
+  it('localizes the toggle and the Payment options link in Danish', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const fixture = await render();
+    expect(toggle(fixture).getAttribute('aria-label')).toBe('Skjul sidepanel');
+    expect(links(fixture).map((a) => a.querySelector('.nav-label')?.textContent?.trim())).toEqual(['Forside', 'Husstand', 'Betalingsmetoder']);
+    await click(fixture);
+    expect(toggle(fixture).getAttribute('aria-label')).toBe('Vis sidepanel');
+    expect(toggle(fixture).querySelector('.nav-label')?.textContent).toBe('Vis sidepanel');
+  });
+
+  it('links Payment options to /payment-options and marks it active with aria-current', async () => {
+    const fixture = await render(member, '/payment-options');
+    const [home, household, payment] = links(fixture);
+    expect(payment.getAttribute('href')).toBe('/payment-options');
+    expect(payment.classList.contains('active')).toBe(true);
+    expect(payment.getAttribute('aria-current')).toBe('page');
+    expect(home.classList.contains('active')).toBe(false);
+    expect(household.classList.contains('active')).toBe(false);
+    expect(home.hasAttribute('aria-current')).toBe(false);
+  });
+
+  it('persists the state across a new App fixture', async () => {
+    const first = await render();
+    await click(first);
+    expect(storage.values.get('subscribed.sidebar')).toBe('collapsed');
+    first.destroy();
+    TestBed.resetTestingModule();
+    configure(storage);
+    const second = await render();
+    expect(layout(second).classList.contains('collapsed')).toBe(true);
+    expect(toggle(second).getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('still toggles for the session when storage throws', async () => {
+    TestBed.resetTestingModule();
+    configure({
+      getItem: () => { throw new DOMException('Blocked', 'SecurityError'); },
+      setItem: () => { throw new DOMException('Full', 'QuotaExceededError'); },
+    });
+    const fixture = await render();
+    await click(fixture);
+    expect(layout(fixture).classList.contains('collapsed')).toBe(true);
+    expect(el(fixture).querySelector('output.notice')).toBeNull();
+    await click(fixture);
+    expect(layout(fixture).classList.contains('collapsed')).toBe(false);
+  });
+
+  it('keeps the Menu button working with a stored collapsed value', async () => {
+    TestBed.resetTestingModule();
+    configure(fakeSidebarStorage('collapsed'));
+    const fixture = await render();
+    const menu = el(fixture).querySelector('button.menu') as HTMLButtonElement;
+    const nav = el(fixture).querySelector('nav') as HTMLElement;
+    expect(menu.getAttribute('aria-expanded')).toBe('false');
+    expect(nav.classList.contains('open')).toBe(false);
+    menu.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(menu.getAttribute('aria-expanded')).toBe('true');
+    expect(nav.classList.contains('open')).toBe(true);
+    expect(layout(fixture).classList.contains('collapsed')).toBe(true);
+  });
+
+  it.each<Session>([
+    { state: 'anonymous' },
+    { state: 'unavailable', traceId: 'synthetic-ref' },
+    { state: 'not-member', user: { displayName: 'Synthetic', memberId: '2' }, expiresAt: '' },
+  ])('renders no nav or toggle for the $state state', async (session) => {
+    const fixture = await render(session);
+    expect(el(fixture).querySelector('nav')).toBeNull();
+    expect(el(fixture).querySelector('.nav-toggle')).toBeNull();
+    expect(layout(fixture).classList.contains('member')).toBe(false);
+  });
+
+  it('does not hide .nav-label by any rule outside the 900px query', async () => {
+    await render();
+    // Top-level style rules only: rules inside @media blocks are CSSMediaRule children, not visited here.
+    const topLevel = Array.from(document.styleSheets).flatMap((sheet) => Array.from(sheet.cssRules))
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule);
+    expect(topLevel.some((rule) => rule.selectorText.includes('.nav-toggle'))).toBe(true);
+    for (const rule of topLevel.filter((r) => r.selectorText.includes('.nav-label'))) {
+      expect(rule.style.display, rule.selectorText).not.toBe('none');
+      expect(rule.style.visibility, rule.selectorText).not.toBe('hidden');
+    }
   });
 });

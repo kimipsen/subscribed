@@ -6,7 +6,7 @@
     "start": "ng serve --proxy-config proxy.conf.json",
     "build": "node scripts/build.mjs && node --test scripts/theme-dist.test.mjs scripts/version-dist.test.mjs",
     "lint": "eslint src",
-    "test:ci": "ng test --watch=false && node --test scripts/theme.test.mjs scripts/build-args.test.mjs scripts/payment-option-logos.test.mjs scripts/panel-layout.test.mjs",
+    "test:ci": "ng test --watch=false && node --test scripts/theme.test.mjs scripts/build-args.test.mjs scripts/payment-option-logos.test.mjs scripts/panel-layout.test.mjs scripts/sidebar-layout.test.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
@@ -31,6 +31,7 @@
     "@angular/forms": "21.2.26",
     "@angular/platform-browser": "21.2.26",
     "@angular/router": "21.2.26",
+    "lucide-angular": "1.0.0",
     "rxjs": "7.8.2",
     "tslib": "2.8.1"
   },

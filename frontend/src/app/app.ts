@@ -3,7 +3,9 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet, NavigationEnd } fro
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter } from 'rxjs';
 import { FormsModule } from '@angular/forms';
+import { House, LucideAngularModule, PanelLeftClose, PanelLeftOpen, Users, Wallet } from 'lucide-angular';
 import { SessionService } from './session';
+import { SidebarService } from './sidebar/sidebar';
 import { LanguageService, MessageKey } from './i18n/i18n';
 import { SUPPORTED_LANGUAGES, isLanguage } from './i18n/languages';
 import { TranslatePipe } from './i18n/translate.pipe';
@@ -12,7 +14,7 @@ import { APP_VERSION } from './version';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, FormsModule, TranslatePipe],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, FormsModule, TranslatePipe, LucideAngularModule],
   templateUrl: './app.html',
   styleUrl: './app.scss',
   host: { '(keydown.escape)': 'menuOpen.set(false)' },
@@ -28,6 +30,8 @@ export class App {
     dark: 'theme.dark',
   };
   readonly session = inject(SessionService);
+  readonly sidebar = inject(SidebarService);
+  protected readonly icons = { House, Users, Wallet, PanelLeftClose, PanelLeftOpen };
   readonly router = inject(Router);
   readonly menuOpen = signal(false);
   protected readonly version = APP_VERSION;
