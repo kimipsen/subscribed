@@ -555,7 +555,9 @@ describe('Foundation UI', () => {
         page.zoneDraft = 'UTC';
         page.saveTimeZone();
         page.saveTimeZone();
-        http.expectOne('/api/household/time-zone').flush(household({ timeZoneId: 'UTC' }));
+        const requests = http.match('/api/household/time-zone');
+        expect(requests).toHaveLength(1);
+        requests[0].flush(household({ timeZoneId: 'UTC' }));
       });
 
       it('keeps the choice on 412 and offers the latest household', async () => {
@@ -670,6 +672,17 @@ describe('Foundation UI', () => {
         expect(root(harness).textContent).toContain(en['household.feedRotate']);
         // The URL is component state only: nothing is kept in the household or in storage.
         expect(JSON.stringify(page.household())).not.toContain('SECRET');
+      });
+
+      it('offers no webcal link when the feed path would move the link to another host', async () => {
+        const { harness } = await open();
+        click(harness, '#feed-create');
+        http.expectOne('/api/household/calendar-feed').flush({
+          household: household({ calendarFeed: FEED_ON }), feedPath: '@evil.example/subscribed.ics',
+        });
+        harness.detectChanges();
+        expect(q(harness, '#feed-url')).toBeTruthy();
+        expect(q(harness, '#feed-subscribe')).toBeNull();
       });
 
       it('follows the active language at the time of the rotate', async () => {
@@ -857,7 +870,7 @@ describe('Foundation UI', () => {
 
     it('keeps the en and da catalogs in step for every new household key', () => {
       const keys = Object.keys(en).filter((key) => /^household\.(timeZone|feed)/u.test(key));
-      expect(keys.length).toBe(28);
+      expect(keys).toHaveLength(28);
       for (const key of keys) {
         expect(Object.hasOwn(da, key), key).toBe(true);
         expect(da[key as keyof typeof da]).not.toBe('');

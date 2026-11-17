@@ -94,7 +94,7 @@
                 }
               </select>
               <p id="time-zone-hint" class="muted">{{ 'household.timeZoneHint' | t }}</p>
-              @if (timeZonesLoading()) { <p role="status">{{ 'household.timeZoneLoading' | t }}</p> }
+              @if (timeZonesLoading()) { <output class="status">{{ 'household.timeZoneLoading' | t }}</output> }
               @if (timeZonesFailed()) {
                 <div class="error" role="alert">
                   {{ 'household.timeZoneLoadFailed' | t }}
@@ -145,11 +145,13 @@
               <div id="feed-url-block">
                 <label for="feed-url">{{ 'household.feedUrlLabel' | t }}</label>
                 <input id="feed-url" #feedInput readonly [value]="url" aria-describedby="feed-url-once">
-                <p id="feed-url-once" class="notice" role="status">{{ 'household.feedUrlOnce' | t }}</p>
+                <output id="feed-url-once" class="notice status">{{ 'household.feedUrlOnce' | t }}</output>
                 <button type="button" (click)="copyFeedUrl(feedInput)">{{ 'household.feedCopy' | t }}</button>
-                <a class="button" id="feed-subscribe" [href]="webcalUrl()">{{ 'household.feedSubscribe' | t }}</a>
+                @if (webcalUrl(); as webcal) {
+                  <a class="button" id="feed-subscribe" [href]="webcal">{{ 'household.feedSubscribe' | t }}</a>
+                }
                 <button type="button" class="secondary" (click)="hideFeedUrl()">{{ 'household.feedHide' | t }}</button>
-                <p role="status">{{ i18n.message(feedCopyMessage()) }}</p>
+                <output class="status">{{ i18n.message(feedCopyMessage()) }}</output>
               </div>
             }
             @if (feedRevoked() && !household.calendarFeed.enabled) {

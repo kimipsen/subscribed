@@ -90,11 +90,22 @@ export class FoundationPage {
   readonly feedCopyMessage = signal<Message | null>(null);
   /**
    * The same link with the `webcal` scheme, which opens the calendar app's subscribe dialog. Angular's sanitizer
-   * rejects that scheme, so the value is marked as trusted: it is built here from our own origin and the server's path.
+   * rejects that scheme, so the value is marked as trusted. That is safe only because the URL is parsed first and must
+   * be an http(s) URL on this page's own origin: a server path such as `@evil.example/x` cannot move the host, and no
+   * other scheme can get through. Anything else gets no subscribe link.
    */
   readonly webcalUrl = computed(() => {
     const url = this.feedUrl();
-    return url === null ? null : this.sanitizer.bypassSecurityTrustUrl(url.replace(/^https?:/iu, 'webcal:'));
+    if (url === null) return null;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    const origin = this.document.defaultView?.location.origin;
+    if (!/^https?:$/u.test(parsed.protocol) || parsed.origin !== origin) return null;
+    return this.sanitizer.bypassSecurityTrustUrl(`webcal://${parsed.host}${parsed.pathname}${parsed.search}`);
   });
 
   constructor() {
