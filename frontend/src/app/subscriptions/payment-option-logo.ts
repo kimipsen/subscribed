@@ -8,18 +8,8 @@ import { PaymentOptionBrand } from './subscription.models';
  */
 @Component({
   selector: 'app-payment-option-logo',
-  template: `<img class="logo-image" [src]="src()" alt="" loading="lazy" [attr.width]="size()" [attr.height]="size()" (error)="failed.set(true)" />`,
-  styles: `
-    :host {
-      display: inline-flex;
-      flex: none;
-      vertical-align: middle;
-    }
-    .logo-image {
-      object-fit: contain;
-      border-radius: 4px;
-    }
-  `,
+  host: { class: 'inline-flex flex-none align-middle' },
+  template: `<img class="object-contain rounded-sm" [src]="src()" alt="" loading="lazy" [attr.width]="size()" [attr.height]="size()" (error)="failed.set(true)" />`,
 })
 export class PaymentOptionLogo {
   readonly brand = input<PaymentOptionBrand | null>(null);

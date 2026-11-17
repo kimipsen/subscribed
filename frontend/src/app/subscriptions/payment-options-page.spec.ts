@@ -9,6 +9,7 @@ import { da } from '../i18n/catalog.da';
 import { en } from '../i18n/catalog.en';
 import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from '../i18n/i18n';
 import { SessionService, csrfInterceptor } from '../session';
+import { query, queryAll } from '../testing/query';
 import { PaymentOptionsPage } from './payment-options-page';
 import { PaymentOption, PaymentOptionList } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
@@ -55,7 +56,7 @@ describe('PaymentOptionsPage', () => {
 
   const el = <T extends HTMLElement = HTMLElement>(root: HTMLElement, selector: string) => root.querySelector(selector) as T;
   const plain = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
-  const items = (root: HTMLElement) => Array.from(root.querySelectorAll('.option-list li'));
+  const items = (root: HTMLElement) => queryAll(root, '[data-option-list] li', { min: 0 });
   const buttonByText = (root: HTMLElement, text: string) =>
     Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
 
@@ -66,7 +67,7 @@ describe('PaymentOptionsPage', () => {
   }
 
   async function submitForm(harness: RouterTestingHarness, selector: string) {
-    (harness.routeNativeElement?.querySelector(selector) as HTMLFormElement).dispatchEvent(new Event('submit'));
+    query<HTMLFormElement>(harness.routeNativeElement as HTMLElement, selector).dispatchEvent(new Event('submit'));
     await settle(harness);
   }
 
@@ -95,9 +96,9 @@ describe('PaymentOptionsPage', () => {
   it('lists the options that are not removed, with their label, and the suggestions as chips', async () => {
     const { root } = await open();
     expect(el(root, 'h1').textContent).toBe(en['paymentOptions.heading']);
-    expect(items(root).map((li) => plain(li.querySelector('.option-text')?.textContent))).toEqual(['Visa · Joint account']);
+    expect(items(root).map((li) => plain(query(li, '[data-option-text]').textContent))).toEqual(['Visa · Joint account']);
     expect(root.textContent).not.toContain('Old card');
-    expect(Array.from(root.querySelectorAll('.suggestion')).map((b) => b.textContent?.trim())).toEqual(['PayPal', 'Visa', 'Mastercard', 'Dankort', 'MobilePay / Vipps']);
+    expect(queryAll(root, '[data-suggestion]').map((b) => b.textContent?.trim())).toEqual(['PayPal', 'Visa', 'Mastercard', 'Dankort', 'MobilePay / Vipps']);
   });
 
   it('says so when there are no options, and links back home', async () => {
@@ -112,14 +113,14 @@ describe('PaymentOptionsPage', () => {
     await settle(harness);
     expect(el<HTMLInputElement>(root, '#option-name').value).toBe('PayPal');
     expect(selected(root, 'option-brand')).toBe('PayPal');
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     const req = http.expectOne('/api/payment-options');
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ name: 'PayPal', label: null, brand: 'paypal' });
     req.flush(created('PayPal', null, 'paypal'), { status: 201, statusText: 'Created' });
     await settle(harness);
     await reload(harness, [...paymentOptionListFixture().options, created('PayPal', null, 'paypal')]);
-    expect(root.querySelector('output.status')?.textContent).toContain('PayPal was added.');
+    expect(query(root, '[data-action-notice] [role=status]').textContent).toContain('PayPal was added.');
     expect(items(root)).toHaveLength(2);
     expect(el<HTMLInputElement>(root, '#option-name').value).toBe('');
     expect(selected(root, 'option-brand')).toBe(en['paymentOptions.brand.none']);
@@ -129,7 +130,7 @@ describe('PaymentOptionsPage', () => {
     const { harness, root } = await open();
     type(root, 'option-name', '  Company card ');
     type(root, 'option-label', ' Finance ');
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     const req = http.expectOne('/api/payment-options');
     expect(req.request.body).toEqual({ name: 'Company card', label: 'Finance', brand: null });
     req.flush(created('Company card', 'Finance'), { status: 201, statusText: 'Created' });
@@ -142,7 +143,7 @@ describe('PaymentOptionsPage', () => {
     const { harness, root } = await open();
     type(root, 'option-name', 'Company card');
     await choose(harness, 'option-brand', 'Mastercard');
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     const req = http.expectOne('/api/payment-options');
     expect(req.request.body).toEqual({ name: 'Company card', label: null, brand: 'mastercard' });
     req.flush(created('Company card', null, 'mastercard'), { status: 201, statusText: 'Created' });
@@ -162,7 +163,7 @@ describe('PaymentOptionsPage', () => {
     el<HTMLButtonElement>(root, '#suggest-visa').click();
     await settle(harness);
     await choose(harness, 'option-brand', en['paymentOptions.brand.none']);
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     const req = http.expectOne('/api/payment-options');
     expect(req.request.body).toEqual({ name: 'Visa', label: null, brand: null });
     req.flush(created('Visa'), { status: 201, statusText: 'Created' });
@@ -173,7 +174,7 @@ describe('PaymentOptionsPage', () => {
   it('shows a localized message for a server brand error and focuses the brand select', async () => {
     const { harness, root } = await open();
     type(root, 'option-name', 'Visa');
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     http.expectOne('/api/payment-options').flush({ traceId: 't', errors: { brand: ['English from the server'] } }, { status: 400, statusText: 'Bad Request' });
     await settle(harness);
     expect(el(root, '#option-brand-error').textContent).toContain(en['paymentOptions.error.brand']);
@@ -185,7 +186,7 @@ describe('PaymentOptionsPage', () => {
   it('shows chips and saved rows with a decorative image: the brand logo or the generic card icon', async () => {
     const options = [...paymentOptionListFixture().options, created('Cash')];
     const { root } = await open({ options });
-    const chips = Array.from(root.querySelectorAll('.suggestion'));
+    const chips = queryAll(root, '[data-suggestion]');
     expect(chips).toHaveLength(5);
     for (const chip of chips) expect(chip.querySelectorAll('img[alt=""]')).toHaveLength(1);
     const rows = items(root);
@@ -205,7 +206,7 @@ describe('PaymentOptionsPage', () => {
     const { harness, root } = await open();
     type(root, 'option-name', 'Visa');
     type(root, 'option-label', '4111 1111 1111 1111');
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     http.expectNone('/api/payment-options');
     expect(el(root, '#option-label-error').textContent).toContain(en['paymentOptions.error.cardNumber']);
     expect(el(root, '#option-label').getAttribute('aria-invalid')).toBe('true');
@@ -214,14 +215,14 @@ describe('PaymentOptionsPage', () => {
 
     type(root, 'option-name', '4111111111111111');
     type(root, 'option-label', '');
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     http.expectNone('/api/payment-options');
     expect(el(root, '#option-name-error').textContent).toContain(en['paymentOptions.error.cardNumber']);
   });
 
   it('rejects an empty name before any request', async () => {
     const { harness, root } = await open();
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     http.expectNone('/api/payment-options');
     expect(el(root, '#option-name-error').textContent).toContain(en['paymentOptions.error.name']);
   });
@@ -229,7 +230,7 @@ describe('PaymentOptionsPage', () => {
   it('shows a localized message for a server 400, never its English text', async () => {
     const { harness, root } = await open();
     type(root, 'option-name', 'Visa');
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     http.expectOne('/api/payment-options').flush({ traceId: 't', errors: { name: ['English from the server'] } }, { status: 400, statusText: 'Bad Request' });
     await settle(harness);
     expect(el(root, '#option-name-error').textContent).toContain(en['paymentOptions.error.name']);
@@ -245,7 +246,7 @@ describe('PaymentOptionsPage', () => {
     expect(selected(root, 'edit-brand')).toBe('Visa');
     type(root, 'edit-name', 'Visa Gold');
     type(root, 'edit-label', '');
-    await submitForm(harness, '.edit-form');
+    await submitForm(harness, '[data-edit-form]');
     const req = http.expectOne(`/api/payment-options/${VISA}`);
     expect(req.request.method).toBe('PUT');
     expect(req.request.headers.get('If-Match')).toBe('"3"');
@@ -255,9 +256,9 @@ describe('PaymentOptionsPage', () => {
     req.flush({ id: VISA, version: 4, name: 'Visa Gold', label: null, brand: 'visa', removed: false });
     await settle(harness);
     await reload(harness, [{ id: VISA, version: 4, name: 'Visa Gold', label: null, brand: 'visa', removed: false }]);
-    expect(root.querySelector('.edit-form')).toBeNull();
-    expect(plain(items(root)[0].querySelector('.option-text')?.textContent)).toBe('Visa Gold');
-    expect(root.querySelector('output.status')?.textContent).toContain('Visa Gold was saved.');
+    expect(root.querySelector('[data-edit-form]')).toBeNull();
+    expect(plain(query(items(root)[0], '[data-option-text]').textContent)).toBe('Visa Gold');
+    expect(query(root, '[data-action-notice] [role=status]').textContent).toContain('Visa Gold was saved.');
   });
 
   it('changes the brand to None in the edit form and sends null', async () => {
@@ -265,7 +266,7 @@ describe('PaymentOptionsPage', () => {
     el<HTMLButtonElement>(root, `#edit-${VISA}`).click();
     await settle(harness);
     await choose(harness, 'edit-brand', en['paymentOptions.brand.none']);
-    await submitForm(harness, '.edit-form');
+    await submitForm(harness, '[data-edit-form]');
     const req = http.expectOne(`/api/payment-options/${VISA}`);
     expect(req.request.body).toEqual({ name: 'Visa', label: 'Joint account', brand: null });
     req.flush({ id: VISA, version: 4, name: 'Visa', label: 'Joint account', brand: null, removed: false });
@@ -279,7 +280,7 @@ describe('PaymentOptionsPage', () => {
     await settle(harness);
     expect(selected(root, 'edit-brand')).toBe(en['paymentOptions.brand.none']);
     await choose(harness, 'edit-brand', 'Dankort');
-    await submitForm(harness, '.edit-form');
+    await submitForm(harness, '[data-edit-form]');
     const req = http.expectOne(`/api/payment-options/${VISA}`);
     expect(req.request.body).toEqual({ name: 'Cash', label: null, brand: 'dankort' });
     req.flush({ id: VISA, version: 4, name: 'Cash', label: null, brand: 'dankort', removed: false });
@@ -293,7 +294,7 @@ describe('PaymentOptionsPage', () => {
     await settle(harness);
     buttonByText(root, en['subscriptions.form.cancel']).click();
     await settle(harness);
-    expect(root.querySelector('.edit-form')).toBeNull();
+    expect(root.querySelector('[data-edit-form]')).toBeNull();
     expect(document.activeElement?.id).toBe(`edit-${VISA}`);
   });
 
@@ -313,7 +314,7 @@ describe('PaymentOptionsPage', () => {
     await reload(harness, [{ ...paymentOptionListFixture().options[0], removed: true }]);
     expect(items(root)).toHaveLength(0);
     expect(root.textContent).toContain(en['paymentOptions.empty']);
-    expect(root.querySelector('output.status')?.textContent).toContain('Visa was removed.');
+    expect(query(root, '[data-action-notice] [role=status]').textContent).toContain('Visa was removed.');
   });
 
   it('keeps the option when the removal is declined', async () => {
@@ -331,17 +332,17 @@ describe('PaymentOptionsPage', () => {
     el<HTMLButtonElement>(root, `#edit-${VISA}`).click();
     await settle(harness);
     type(root, 'edit-name', 'Visa Gold');
-    await submitForm(harness, '.edit-form');
+    await submitForm(harness, '[data-edit-form]');
     http.expectOne(`/api/payment-options/${VISA}`).flush({ traceId: 'trace-412', currentVersion: 9 }, { status: 412, statusText: 'Precondition Failed' });
     await settle(harness);
-    expect(el(root, '.notice[role=alert]').textContent).toContain(en['paymentOptions.conflict']);
+    expect(query(root, 'app-notice [role=alert]').textContent).toContain(en['paymentOptions.conflict']);
     expect(root.textContent).toContain('trace-412');
     buttonByText(root, en['subscriptions.form.reloadLatest']).click();
     await settle(harness);
     http.expectOne('/api/payment-options').flush({ options: [{ id: VISA, version: 9, name: 'Visa X', label: null, brand: null, removed: false }] });
     await settle(harness);
     expect(root.textContent).not.toContain(en['paymentOptions.conflict']);
-    expect(plain(items(root)[0].querySelector('.option-text')?.textContent)).toBe('Visa X');
+    expect(plain(query(items(root)[0], '[data-option-text]').textContent)).toBe('Visa X');
   });
 
   it('tells the member when the option is gone (404) and refreshes the list', async () => {
@@ -352,17 +353,17 @@ describe('PaymentOptionsPage', () => {
     http.expectOne(`/api/payment-options/${VISA}`).flush({ traceId: 't' }, { status: 404, statusText: 'Not Found' });
     await settle(harness);
     await reload(harness, []);
-    expect(el(root, 'p.error[role=alert]').textContent).toContain(en['paymentOptions.gone']);
+    expect(query(root, '[data-action-problem] [role=alert]').textContent).toContain(en['paymentOptions.gone']);
     expect(items(root)).toHaveLength(0);
   });
 
   it('shows the generic failure with the trace id for any other error, never backend English', async () => {
     const { harness, root } = await open();
     type(root, 'option-name', 'Visa');
-    await submitForm(harness, '.add-form');
+    await submitForm(harness, '[data-add-form]');
     http.expectOne('/api/payment-options').flush({ traceId: 'trace-500', title: 'English' }, { status: 500, statusText: 'Server Error' });
     await settle(harness);
-    expect(el(root, 'p.error[role=alert]').textContent).toContain(en['paymentOptions.saveFailed']);
+    expect(query(root, '[data-action-problem] [role=alert]').textContent).toContain(en['paymentOptions.saveFailed']);
     expect(root.textContent).toContain('trace-500');
     expect(root.textContent).not.toContain('English from');
   });
@@ -375,7 +376,7 @@ describe('PaymentOptionsPage', () => {
     expect(http.expectOne('/api/payment-options/suggestions').cancelled).toBe(true);
     await settle(harness);
     const root = harness.routeNativeElement as HTMLElement;
-    expect(el(root, '.notice[role=alert]').textContent).toContain(en['paymentOptions.loadFailed']);
+    expect(query(root, 'app-notice [role=alert]').textContent).toContain(en['paymentOptions.loadFailed']);
     expect(root.textContent).toContain('trace-load');
     buttonByText(root, en['common.retry']).click();
     await settle(harness);
@@ -387,7 +388,7 @@ describe('PaymentOptionsPage', () => {
 
   it('still works without suggestions when that request fails', async () => {
     const { root } = await open(paymentOptionListFixture(), 'fail');
-    expect(root.querySelector('.suggestion')).toBeNull();
+    expect(root.querySelector('[data-suggestion]')).toBeNull();
     expect(root.querySelector('#option-name')).toBeTruthy();
   });
 
@@ -395,6 +396,8 @@ describe('PaymentOptionsPage', () => {
     TestBed.inject(LanguageService).setLanguage('da');
     const { harness, root } = await open();
     expect(el(root, 'h1').textContent).toBe(da['paymentOptions.heading']);
+    expect(query(root, 'label[for="option-name"]').textContent).toContain(da['paymentOptions.field.name']);
+    expect(query(root, '#option-label-hint').textContent).toContain(da['paymentOptions.field.labelHint']);
     el<HTMLButtonElement>(root, `#edit-${VISA}`).click();
     await settle(harness);
     expect(englishLeftovers(root)).toEqual([]);

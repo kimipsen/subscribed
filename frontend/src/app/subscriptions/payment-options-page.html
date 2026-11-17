@@ -1,132 +1,138 @@
 @switch (session.current().state) {
   @case ('unavailable') { <app-session-unavailable /> }
   @case ('member') {
-    <h1 tabindex="-1">{{ 'paymentOptions.heading' | t }}</h1>
-    <p class="actions"><a routerLink="/">{{ 'subscriptions.backHome' | t }}</a></p>
-    <p class="muted">{{ 'paymentOptions.intro' | t }}</p>
+    <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'paymentOptions.heading' | t }}</h1>
+    <p class="my-2"><a class="text-primary underline" routerLink="/">{{ 'subscriptions.backHome' | t }}</a></p>
+    <p class="my-2 text-base-content/70">{{ 'paymentOptions.intro' | t }}</p>
 
     @if (loading()) {
-      <p><output>{{ 'paymentOptions.loading' | t }}</output></p>
-      <div class="skeleton" aria-hidden="true"></div>
+      <p class="my-2"><output>{{ 'paymentOptions.loading' | t }}</output></p>
+      <div class="skeleton h-24 w-full" aria-hidden="true"></div>
     } @else if (loadFailed()) {
-      <div class="notice" role="alert">
-        <p>{{ 'paymentOptions.loadFailed' | t }}</p>
-        @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
-        <button type="button" (click)="load()">{{ 'common.retry' | t }}</button>
-      </div>
+      <app-notice>
+        <p class="m-0">{{ 'paymentOptions.loadFailed' | t }}</p>
+        @if (traceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+        <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'common.retry' | t }}</button>
+      </app-notice>
     } @else {
       @if (conflict()) {
-        <div class="notice" role="alert">
-          <p>{{ 'paymentOptions.conflict' | t }}</p>
-          <button type="button" class="secondary" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
-        </div>
+        <app-notice>
+          <p class="m-0">{{ 'paymentOptions.conflict' | t }}</p>
+          <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
+        </app-notice>
       }
-      @if (notice(); as message) { <output class="status">{{ message.key | t: message.params }}</output> }
-      @if (problem(); as message) { <p class="error" role="alert">{{ message.key | t: message.params }}</p> }
+      @if (notice(); as message) {
+        <app-notice [role]="'status'" data-action-notice>{{ message.key | t: message.params }}</app-notice>
+      }
+      @if (problem(); as message) {
+        <app-notice data-action-problem><p class="m-0">{{ message.key | t: message.params }}</p></app-notice>
+      }
       @if (traceId() && (conflict() || problem())) {
-        <p class="muted">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p>
+        <p class="my-2 text-base-content/70">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p>
       }
 
-      <section class="panel" aria-labelledby="options-heading">
-        <h2 id="options-heading">{{ 'paymentOptions.listHeading' | t }}</h2>
+      <app-panel labelledBy="options-heading">
+        <h2 id="options-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'paymentOptions.listHeading' | t }}</h2>
         @if (options().length === 0) {
-          <p class="muted">{{ 'paymentOptions.empty' | t }}</p>
+          <p class="my-2 text-base-content/70">{{ 'paymentOptions.empty' | t }}</p>
         } @else {
-          <ul class="option-list">
+          <ul class="m-0 flex list-none flex-col gap-2 p-0" data-option-list>
             @for (option of options(); track option.id) {
-              <li>
+              <li class="flex flex-wrap items-center gap-2 border-b border-base-300 py-2">
                 <app-payment-option-logo [brand]="option.brand" />
-                <span class="option-text">{{ text(option) }}</span>
-                <button type="button" class="secondary" [id]="'edit-' + option.id" (click)="startEdit(option)">{{ 'paymentOptions.edit' | t }}</button>
-                <button type="button" class="secondary" [id]="'remove-' + option.id" (click)="askRemove(option)">{{ 'paymentOptions.remove' | t }}</button>
+                <span class="min-w-0 flex-1 wrap-anywhere" data-option-text>{{ text(option) }}</span>
+                <button type="button" class="btn btn-sm btn-outline" [id]="'edit-' + option.id" (click)="startEdit(option)">{{ 'paymentOptions.edit' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline" [id]="'remove-' + option.id" (click)="askRemove(option)">{{ 'paymentOptions.remove' | t }}</button>
               </li>
             }
           </ul>
         }
 
         @if (confirming(); as option) {
-          <div class="notice" role="alertdialog" aria-labelledby="confirm-option">
-            <p id="confirm-option" tabindex="-1">{{ 'paymentOptions.removeConfirm' | t: { name: option.name } }}</p>
-            <button type="button" [disabled]="saving()" (click)="remove()">{{ 'paymentOptions.removeYes' | t }}</button>
-            <button type="button" class="secondary" (click)="cancelRemove()">{{ 'detail.keep' | t }}</button>
+          <div class="alert alert-warning my-4" role="alertdialog" aria-labelledby="confirm-option" data-confirm-option>
+            <div class="min-w-0 wrap-anywhere">
+              <p id="confirm-option" class="m-0" tabindex="-1">{{ 'paymentOptions.removeConfirm' | t: { name: option.name } }}</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-neutral" [disabled]="saving()" (click)="remove()">{{ 'paymentOptions.removeYes' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline" (click)="cancelRemove()">{{ 'detail.keep' | t }}</button>
+              </div>
+            </div>
           </div>
         }
 
         @if (editing(); as option) {
-          <form class="edit-form form" (ngSubmit)="saveEdit()" novalidate>
-            <h3 tabindex="-1">{{ 'paymentOptions.editHeading' | t: { name: option.name } }}</h3>
-            <div class="field">
-              <label for="edit-name">{{ 'paymentOptions.field.name' | t }}</label>
-              <input id="edit-name" name="editName" type="text" autocomplete="off" [(ngModel)]="editName"
-                [attr.aria-invalid]="editErr('name') ? 'true' : null" [attr.aria-describedby]="editErr('name') ? 'edit-name-error' : null" />
-              @if (editErr('name'); as e) { <p class="field-error" id="edit-name-error">{{ e.key | t: e.params }}</p> }
-            </div>
-            <div class="field">
-              <label for="edit-label">{{ 'paymentOptions.field.label' | t }}</label>
-              <input id="edit-label" name="editLabel" type="text" autocomplete="off" [(ngModel)]="editLabel"
-                [attr.aria-invalid]="editErr('label') ? 'true' : null"
-                [attr.aria-describedby]="editErr('label') ? 'edit-label-error edit-label-hint' : 'edit-label-hint'" />
-              <p class="muted" id="edit-label-hint">{{ 'paymentOptions.field.labelHint' | t }}</p>
-              @if (editErr('label'); as e) { <p class="field-error" id="edit-label-error">{{ e.key | t: e.params }}</p> }
-            </div>
-            <div class="field">
-              <label for="edit-brand">{{ 'paymentOptions.field.brand' | t }}</label>
-              <select id="edit-brand" name="editBrand" [(ngModel)]="editBrand"
-                [attr.aria-invalid]="editErr('brand') ? 'true' : null" [attr.aria-describedby]="editErr('brand') ? 'edit-brand-error' : null">
+          <form class="mt-4 flex max-w-xl flex-col" (ngSubmit)="saveEdit()" novalidate data-edit-form>
+            <h3 class="mt-0 mb-2 text-base font-semibold wrap-anywhere" tabindex="-1">{{ 'paymentOptions.editHeading' | t: { name: option.name } }}</h3>
+            @let editErrName = editErr('name');
+            <app-form-field [label]="'paymentOptions.field.name' | t" controlId="edit-name"
+              [error]="editErrName ? (editErrName.key | t: editErrName.params) : null">
+              <input id="edit-name" class="input border-base-content/55 w-full aria-invalid:border-2" name="editName" type="text" autocomplete="off" [(ngModel)]="editName"
+                [attr.aria-invalid]="editErrName ? 'true' : null" [attr.aria-describedby]="editErrName ? 'edit-name-error' : null" />
+            </app-form-field>
+            @let editErrLabel = editErr('label');
+            <app-form-field [label]="'paymentOptions.field.label' | t" controlId="edit-label" [hint]="'paymentOptions.field.labelHint' | t"
+              [error]="editErrLabel ? (editErrLabel.key | t: editErrLabel.params) : null">
+              <input id="edit-label" class="input border-base-content/55 w-full aria-invalid:border-2" name="editLabel" type="text" autocomplete="off" [(ngModel)]="editLabel"
+                [attr.aria-invalid]="editErrLabel ? 'true' : null"
+                [attr.aria-describedby]="editErrLabel ? 'edit-label-error edit-label-hint' : 'edit-label-hint'" />
+            </app-form-field>
+            @let editErrBrand = editErr('brand');
+            <app-form-field [label]="'paymentOptions.field.brand' | t" controlId="edit-brand"
+              [error]="editErrBrand ? (editErrBrand.key | t: editErrBrand.params) : null">
+              <select id="edit-brand" class="select border-base-content/55 w-full aria-invalid:border-2" name="editBrand" [(ngModel)]="editBrand"
+                [attr.aria-invalid]="editErrBrand ? 'true' : null" [attr.aria-describedby]="editErrBrand ? 'edit-brand-error' : null">
                 <option [ngValue]="null">{{ 'paymentOptions.brand.none' | t }}</option>
                 @for (b of brands; track b.id) { <option [ngValue]="b.id">{{ b.name }}</option> }
               </select>
-              @if (editErr('brand'); as e) { <p class="field-error" id="edit-brand-error">{{ e.key | t: e.params }}</p> }
-            </div>
-            <div class="actions">
-              <button type="submit" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.save') | t }}</button>
-              <button type="button" class="secondary" (click)="cancelEdit()">{{ 'subscriptions.form.cancel' | t }}</button>
+            </app-form-field>
+            <div class="flex flex-wrap gap-2">
+              <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.save') | t }}</button>
+              <button type="button" class="btn btn-outline" (click)="cancelEdit()">{{ 'subscriptions.form.cancel' | t }}</button>
             </div>
           </form>
         }
-      </section>
+      </app-panel>
 
-      <section class="panel" aria-labelledby="add-option-heading">
-        <h2 id="add-option-heading">{{ 'paymentOptions.addHeading' | t }}</h2>
+      <app-panel labelledBy="add-option-heading">
+        <h2 id="add-option-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'paymentOptions.addHeading' | t }}</h2>
         @if (suggestions().length > 0) {
-          <fieldset class="suggestions">
-            <legend class="muted">{{ 'paymentOptions.suggestions' | t }}</legend>
-            <p class="actions">
+          <fieldset class="mb-4 min-w-0 rounded-box border border-base-300 px-4 pt-2 pb-4" data-suggestions>
+            <legend class="px-1 text-base-content/70">{{ 'paymentOptions.suggestions' | t }}</legend>
+            <div class="flex flex-wrap gap-2">
               @for (suggestion of suggestions(); track suggestion.id) {
-                <button type="button" class="secondary suggestion" [id]="'suggest-' + suggestion.id" (click)="pick(suggestion)"><app-payment-option-logo [brand]="brandOf(suggestion.id)" [size]="20" /> {{ suggestion.name }}</button>
+                <button type="button" class="btn btn-sm btn-outline h-auto min-h-8 gap-2 py-1 whitespace-normal" [id]="'suggest-' + suggestion.id" data-suggestion (click)="pick(suggestion)"><app-payment-option-logo [brand]="brandOf(suggestion.id)" [size]="20" /> {{ suggestion.name }}</button>
               }
-            </p>
+            </div>
           </fieldset>
         }
-        <form class="add-form form" (ngSubmit)="add()" novalidate>
-          <div class="field">
-            <label for="option-name">{{ 'paymentOptions.field.name' | t }}</label>
-            <input id="option-name" name="name" type="text" autocomplete="off" [(ngModel)]="name"
-              [attr.aria-invalid]="err('name') ? 'true' : null" [attr.aria-describedby]="err('name') ? 'option-name-error' : null" />
-            @if (err('name'); as e) { <p class="field-error" id="option-name-error">{{ e.key | t: e.params }}</p> }
-          </div>
-          <div class="field">
-            <label for="option-label">{{ 'paymentOptions.field.label' | t }}</label>
-            <input id="option-label" name="label" type="text" autocomplete="off" [(ngModel)]="label"
-              [attr.aria-invalid]="err('label') ? 'true' : null"
-              [attr.aria-describedby]="err('label') ? 'option-label-error option-label-hint' : 'option-label-hint'" />
-            <p class="muted" id="option-label-hint">{{ 'paymentOptions.field.labelHint' | t }}</p>
-            @if (err('label'); as e) { <p class="field-error" id="option-label-error">{{ e.key | t: e.params }}</p> }
-          </div>
-          <div class="field">
-            <label for="option-brand">{{ 'paymentOptions.field.brand' | t }}</label>
-            <select id="option-brand" name="brand" [(ngModel)]="brand"
-              [attr.aria-invalid]="err('brand') ? 'true' : null" [attr.aria-describedby]="err('brand') ? 'option-brand-error' : null">
+        <form class="flex max-w-xl flex-col" (ngSubmit)="add()" novalidate data-add-form>
+          @let errName = err('name');
+          <app-form-field [label]="'paymentOptions.field.name' | t" controlId="option-name"
+            [error]="errName ? (errName.key | t: errName.params) : null">
+            <input id="option-name" class="input border-base-content/55 w-full aria-invalid:border-2" name="name" type="text" autocomplete="off" [(ngModel)]="name"
+              [attr.aria-invalid]="errName ? 'true' : null" [attr.aria-describedby]="errName ? 'option-name-error' : null" />
+          </app-form-field>
+          @let errLabel = err('label');
+          <app-form-field [label]="'paymentOptions.field.label' | t" controlId="option-label" [hint]="'paymentOptions.field.labelHint' | t"
+            [error]="errLabel ? (errLabel.key | t: errLabel.params) : null">
+            <input id="option-label" class="input border-base-content/55 w-full aria-invalid:border-2" name="label" type="text" autocomplete="off" [(ngModel)]="label"
+              [attr.aria-invalid]="errLabel ? 'true' : null"
+              [attr.aria-describedby]="errLabel ? 'option-label-error option-label-hint' : 'option-label-hint'" />
+          </app-form-field>
+          @let errBrand = err('brand');
+          <app-form-field [label]="'paymentOptions.field.brand' | t" controlId="option-brand"
+            [error]="errBrand ? (errBrand.key | t: errBrand.params) : null">
+            <select id="option-brand" class="select border-base-content/55 w-full aria-invalid:border-2" name="brand" [(ngModel)]="brand"
+              [attr.aria-invalid]="errBrand ? 'true' : null" [attr.aria-describedby]="errBrand ? 'option-brand-error' : null">
               <option [ngValue]="null">{{ 'paymentOptions.brand.none' | t }}</option>
               @for (b of brands; track b.id) { <option [ngValue]="b.id">{{ b.name }}</option> }
             </select>
-            @if (err('brand'); as e) { <p class="field-error" id="option-brand-error">{{ e.key | t: e.params }}</p> }
-          </div>
-          <div class="actions">
-            <button type="submit" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.add') | t }}</button>
+          </app-form-field>
+          <div class="flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.add') | t }}</button>
           </div>
         </form>
-      </section>
+      </app-panel>
     }
   }
 }

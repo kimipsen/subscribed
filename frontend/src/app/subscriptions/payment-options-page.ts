@@ -6,6 +6,9 @@ import { catchError, forkJoin, of } from 'rxjs';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
+import { FormField } from '../ui/form-field';
+import { Notice } from '../ui/notice';
+import { Panel } from '../ui/panel';
 import { PAYMENT_OPTION_BRANDS, brandOf } from './payment-option-brands';
 import { PaymentOptionLogo } from './payment-option-logo';
 import { OptionField, OptionProblem, checkOptionFields, optionText } from './payment-option-text';
@@ -30,7 +33,7 @@ const SERVER_KEYS: Readonly<Record<OptionField, MessageKey>> = {
 
 @Component({
   selector: 'app-payment-options-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, PaymentOptionLogo],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, PaymentOptionLogo, FormField, Notice, Panel],
   templateUrl: './payment-options-page.html',
 })
 export class PaymentOptionsPage {
@@ -124,7 +127,7 @@ export class PaymentOptionsPage {
     const errors = this.check(this.name, this.label);
     if (errors) {
       this.errors.set(errors);
-      this.focusLater('.add-form [aria-invalid="true"]');
+      this.focusLater('[data-add-form] [aria-invalid="true"]');
       return;
     }
     const name = this.name.trim();
@@ -141,7 +144,7 @@ export class PaymentOptionsPage {
       },
       error: (error: HttpErrorResponse) => {
         this.saving.set(false);
-        this.fail(error, (errs) => this.errors.set(errs), '.add-form [aria-invalid="true"]');
+        this.fail(error, (errs) => this.errors.set(errs), '[data-add-form] [aria-invalid="true"]');
       },
     });
   }
@@ -170,7 +173,7 @@ export class PaymentOptionsPage {
     const errors = this.check(this.editName, this.editLabel);
     if (errors) {
       this.editErrors.set(errors);
-      this.focusLater('.edit-form [aria-invalid="true"]');
+      this.focusLater('[data-edit-form] [aria-invalid="true"]');
       return;
     }
     const name = this.editName.trim();
@@ -185,7 +188,7 @@ export class PaymentOptionsPage {
       },
       error: (error: HttpErrorResponse) => {
         this.saving.set(false);
-        this.fail(error, (errs) => this.editErrors.set(errs), '.edit-form [aria-invalid="true"]');
+        this.fail(error, (errs) => this.editErrors.set(errs), '[data-edit-form] [aria-invalid="true"]');
       },
     });
   }

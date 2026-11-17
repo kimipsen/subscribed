@@ -6,32 +6,12 @@ import { Component, computed, input, linkedSignal } from '@angular/core';
  */
 @Component({
   selector: 'app-service-logo',
+  host: { class: 'inline-flex flex-none align-middle' },
   template: `
     @if (logoUrl() && !failed()) {
-      <img class="logo-image" [src]="logoUrl()" alt="" loading="lazy" [attr.width]="size()" [attr.height]="size()" (error)="failed.set(true)" />
+      <img class="object-contain rounded-sm" [src]="logoUrl()" alt="" loading="lazy" [attr.width]="size()" [attr.height]="size()" (error)="failed.set(true)" />
     } @else {
-      <span class="logo-fallback" aria-hidden="true" [style.width.px]="size()" [style.height.px]="size()" [style.font-size.px]="size() * 0.55">{{ initial() }}</span>
-    }
-  `,
-  styles: `
-    :host {
-      display: inline-flex;
-      flex: none;
-      vertical-align: middle;
-    }
-    .logo-image {
-      object-fit: contain;
-      border-radius: 4px;
-    }
-    .logo-fallback {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
-      background: var(--color-nav-active-bg);
-      color: var(--color-nav-active-text);
-      font-weight: 600;
-      line-height: 1;
+      <span class="inline-flex items-center justify-center rounded-sm bg-base-200 text-primary font-semibold leading-none" aria-hidden="true" [style.width.px]="size()" [style.height.px]="size()" [style.font-size.px]="size() * 0.55">{{ initial() }}</span>
     }
   `,
 })
