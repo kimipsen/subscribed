@@ -244,6 +244,48 @@ public sealed class PaymentOptionPersistenceTests(PostgresFixture pg)
     }
 
     [Fact]
+    public async Task An_edit_with_details_and_a_changed_option_is_one_append_and_the_view_shows_the_new_current_entry()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var options = new PaymentOptionService(store, TimeProvider.System);
+        var subs = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var a = PaymentOptionIds.Bare((await options.CreateAsync(Fields("Visa"), Member, Ct)).Id);
+        var added = await subs.AddAsync(Sub(), Member, Ct);
+        var update = new DetailsUpdate("Renamed", null, null, "DKK", new DateOnly(2024, 3, 1), null, PaymentOption: new PaymentOptionChange(a));
+
+        var changed = await subs.UpdateAsync(SubscriptionIds.Bare(added.Id), added.Version, update, Member, Ct);
+
+        Assert.Equal(added.Version + 3, changed.Version);
+        Assert.Equal("Renamed", changed.Name);
+        Assert.Equal(2, changed.Entries.Count);
+        var today = SubscriptionCalculator.Today(TimeProvider.System);
+        Assert.Equal(a, SubscriptionCalculator.CurrentPrice(changed, today).PaymentOptionId);
+        Assert.Equal(
+            "subscription.added.v1,subscription.details_changed.v1,subscription.price_entry_added.v1,subscription.price_entry_payment_changed.v1",
+            await db.ScalarAsMigratorAsync<string>($"SELECT string_agg(type, ',' ORDER BY version) FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}'"));
+    }
+
+    [Fact]
+    public async Task An_edit_with_a_stale_expected_version_is_a_concurrency_conflict_and_writes_nothing()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var options = new PaymentOptionService(store, TimeProvider.System);
+        var subs = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var a = PaymentOptionIds.Bare((await options.CreateAsync(Fields("Visa"), Member, Ct)).Id);
+        var added = await subs.AddAsync(Sub(), Member, Ct);
+        var update = new DetailsUpdate("Renamed", null, null, "DKK", new DateOnly(2024, 3, 1), null, PaymentOption: new PaymentOptionChange(a));
+
+        var stale = await Assert.ThrowsAsync<EventStoreException>(() => subs.UpdateAsync(SubscriptionIds.Bare(added.Id), added.Version + 1, update, Member, Ct));
+
+        Assert.Equal(EventStoreFailureKind.ConcurrencyConflict, stale.Failure.Kind);
+        var after = await subs.GetAsync(SubscriptionIds.Bare(added.Id), Ct);
+        Assert.Equal(added.Version, after!.Version);
+        Assert.Single(after.Entries);
+    }
+
+    [Fact]
     public async Task Rebuilders_reproduce_both_inline_snapshots_and_leave_a_stream_without_payment_events_unchanged()
     {
         await using var db = await pg.CreateDatabaseAsync();

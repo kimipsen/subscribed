@@ -43,6 +43,7 @@ const FIELD_MESSAGES: Readonly<Record<string, MessageKey>> = {
   cadenceCount: 'subscriptions.error.cadenceCount',
   catalogId: 'subscriptions.error.catalogId',
   paymentOptionId: 'subscriptions.error.paymentOptionId',
+  paymentOption: 'subscriptions.error.paymentOptionEnded',
   unsubscribeUrl: 'subscriptions.error.unsubscribeUrl',
   cancelBy: 'subscriptions.error.cancelBy',
 };
@@ -104,11 +105,28 @@ export class SubscriptionFormPage {
   /** null until loaded, and after a failed load: the picker is then hidden and free-form entry is the only path (R3.2). */
   readonly catalog = signal<Catalog | null>(null);
   readonly catalogFailed = signal(false);
-  /** The household's payment options for the initial price (add mode only). A failed load leaves just "None". */
+  /** The household's payment options: for the initial price when adding, for the current price when editing. A failed load leaves just "None". */
   readonly paymentOptions = signal<PaymentOption[]>([]);
   /** The household's IANA zone, named in the cancel-by hint. null until loaded and after a failed load (the hint then names no zone). */
   readonly householdZone = signal<string | null>(null);
+  /** True after a failed options load. The edit form then hides the select and never sends `paymentOption`, so a current option is never cleared by accident. */
+  readonly paymentOptionsFailed = signal(false);
+  /** The option the loaded subscription's current price had when the form was filled; the baseline the edit form diffs against. */
+  readonly initialPaymentOptionId = signal('');
   readonly selectableOptions = computed(() => this.paymentOptions().filter((o) => !o.removed));
+  /** Edit mode: whether the select is offered. Never for an ended subscription, nor when the options could not be loaded. */
+  readonly showPaymentOption = computed(() => {
+    const detail = this.detail();
+    return this.editing && detail !== null && detail.status !== 'ended' && !this.paymentOptionsFailed();
+  });
+  /**
+   * What the edit select offers: the non-removed options, plus the current price's own option when it has since been removed, shown
+   * disabled as "(removed)". Saving keeps it unless another is picked.
+   */
+  readonly paymentChoices = computed(() => {
+    const keep = this.initialPaymentOptionId();
+    return this.paymentOptions().filter((o) => !o.removed || o.id === keep);
+  });
   readonly optionText = optionText;
   readonly search = signal('');
   readonly selectedService = signal<CatalogService | null>(null);
@@ -139,12 +157,16 @@ export class SubscriptionFormPage {
   customUnit: CadenceUnit = 'month';
   /** The linked catalog service: null for a free-form add; when editing, the stored link (kept unless removed). */
   catalogId: string | null = null;
-  /** The payment option of the initial price: '' means none. Add mode only: editing details never sends or clears an option. */
+  /**
+   * The payment option select: '' means none. Adding sends it with the initial price. Editing sends it only when it differs from
+   * `initialPaymentOptionId`, so an untouched form never changes a price entry.
+   */
   paymentOptionId = '';
 
   /** The canonical string behind `amountText` while it is valid; null when the member's text is not a valid amount. */
   private amountCanonical: string | null = null;
   private started = false;
+  private paymentOptionsLoaded = false;
 
   readonly minorUnit = computed(() => this.options()?.currencies.find((c) => c.code === this.currency)?.minorUnit ?? 2);
   readonly separator = computed(() => decimalSeparator(this.i18n.dateLocale()));
@@ -215,8 +237,8 @@ export class SubscriptionFormPage {
       detail: this.id ? this.service.detail(this.id) : of(null),
       // Suggestions are an enhancement, never a blocker: a failed overview just means no suggestions.
       overview: this.overview() ? of(this.overview()) : this.service.overview().pipe(catchError(() => of(null))),
-      // Only the add form has the picker, and it is never a blocker either.
-      paymentOptions: this.id ? of(null) : this.paymentOptionsService.list().pipe(catchError(() => of(null))),
+      // Never a blocker: a failed load leaves the add form with just "None" and hides the edit form's select. Reused after a success.
+      paymentOptions: this.paymentOptionsLoaded ? of(null) : this.paymentOptionsService.list().pipe(catchError(() => of(null))),
       // The zone only labels the cancel-by field: the server does the conversion, so a failed load is not a blocker.
       zone: this.householdZone() ? of(this.householdZone()) : this.service.householdZone().pipe(catchError(() => of(null))),
     }).subscribe({
@@ -224,7 +246,12 @@ export class SubscriptionFormPage {
         if (zone) this.householdZone.set(zone);
         this.options.set(options);
         if (overview) this.overview.set(overview);
-        if (paymentOptions) this.paymentOptions.set(paymentOptions);
+        if (paymentOptions) {
+          this.paymentOptions.set(paymentOptions);
+          this.paymentOptionsLoaded = true;
+        }
+
+        this.paymentOptionsFailed.set(!this.paymentOptionsLoaded);
         this.catalog.set(catalog);
         this.catalogFailed.set(catalog === null);
         this.detail.set(detail);
@@ -412,6 +439,8 @@ export class SubscriptionFormPage {
     this.endDate = detail.endDate ?? '';
     this.cancelBy = detail.cancelBy ?? '';
     this.catalogId = detail.catalogId;
+    this.paymentOptionId = detail.currentPrice.paymentOptionId ?? '';
+    this.initialPaymentOptionId.set(this.paymentOptionId);
   }
 
   /** The client-side rules mirror the server's field rules and, when editing, the invariants the page can see. */
@@ -475,9 +504,15 @@ export class SubscriptionFormPage {
     };
   }
 
-  /** Edit sends all nine keys, with explicit nulls (D-10). */
+  /** Edit sends all nine keys, with explicit nulls (D-10), plus `paymentOption` only when the member changed it. */
   private updateBody(): UpdateSubscriptionBody {
-    return this.details();
+    const changed = this.showPaymentOption() && this.paymentOptionId !== this.initialPaymentOptionId();
+    return changed ? { ...this.details(), paymentOption: { id: this.paymentOptionId || null } } : this.details();
+  }
+
+  /** The text of an edit-select choice: a removed option is shown disabled as "(removed)". */
+  choiceText(option: PaymentOption): string {
+    return option.removed ? this.i18n.message({ key: 'paymentOptions.select.removed', params: { name: optionText(option) } }) : optionText(option);
   }
 
   /** Add sends the canonical decimal string, never the field text (D-7). */

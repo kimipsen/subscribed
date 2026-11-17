@@ -57,6 +57,7 @@ describe('Subscription routes', () => {
     http.expectOne('/api/subscriptions/options').flush(optionsFixture());
     http.expectOne('/api/subscriptions').flush(overviewFixture());
     http.expectOne('/api/subscriptions/catalog').flush(catalogFixture());
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     expect(component.editing).toBe(true);

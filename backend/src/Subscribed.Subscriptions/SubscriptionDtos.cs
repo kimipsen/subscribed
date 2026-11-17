@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Subscribed.Subscriptions.Domain;
 
 namespace Subscribed.Subscriptions;
@@ -30,10 +31,35 @@ public sealed record AddSubscriptionRequest(
 /// cached SPA bundle that does not send the key will clear it on save.
 /// The same rule applies to <c>cancelBy</c> (a local wall time in the household zone, <c>yyyy-MM-ddTHH:mm</c>): a null or omitted value
 /// clears the deadline, and a stale cached SPA bundle that does not send the key will clear it on save, exactly like <c>unsubscribeUrl</c>.
+/// <c>paymentOption</c> is the exception and is opt-in: omitted or null leaves the price entries alone, so a stale client cannot clear
+/// every payment option by not knowing the field. See <see cref="PaymentOptionRequest"/>.
 /// </summary>
-public sealed record UpdateSubscriptionRequest(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId, string? UnsubscribeUrl = null, string? CancelBy = null)
+public sealed record UpdateSubscriptionRequest(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId, string? UnsubscribeUrl = null, PaymentOptionRequest? PaymentOption = null, string? CancelBy = null)
 {
-    public UpdateInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, CatalogId, UnsubscribeUrl, CancelBy);
+    public UpdateInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, CatalogId, UnsubscribeUrl,
+        PaymentOption is not null, PaymentOption?.IdSpecified ?? false, PaymentOption?.Id, CancelBy);
+}
+
+/// <summary>
+/// <c>{ "id": string | null }</c>. A non-positional type on purpose: System.Text.Json calls the <c>Id</c> setter only when the property
+/// is present in the JSON, so <see cref="IdSpecified"/> tells <c>{}</c> (rejected) from <c>{ "id": null }</c> (None).
+/// </summary>
+public sealed class PaymentOptionRequest
+{
+    private string? _id;
+
+    public string? Id
+    {
+        get => _id;
+        init
+        {
+            _id = value;
+            IdSpecified = true;
+        }
+    }
+
+    [JsonIgnore]
+    public bool IdSpecified { get; private set; }
 }
 
 /// <summary>The one resolution rule for the unsubscribe link: the user's URL, else the linked catalog service's, else none. No status gating.</summary>

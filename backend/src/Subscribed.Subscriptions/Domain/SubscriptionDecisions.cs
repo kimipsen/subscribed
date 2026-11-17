@@ -6,7 +6,11 @@ namespace Subscribed.Subscriptions.Domain;
 /// <summary>Raw request fields, exactly as the client sent them. Omitted means null (D-10).</summary>
 public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount, string? CatalogId = null, string? UnsubscribeUrl = null, string? PaymentOptionId = null, string? CancelBy = null);
 
-public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null, string? CancelBy = null);
+/// <summary>
+/// <c>PaymentOptionSet</c> is true when the request carried a <c>paymentOption</c> object; <c>PaymentOptionIdSpecified</c> is true when
+/// that object had an <c>id</c> property (null included). An omitted object leaves the price entries alone.
+/// </summary>
+public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null, bool PaymentOptionSet = false, bool PaymentOptionIdSpecified = false, string? PaymentOptionId = null, string? CancelBy = null);
 
 public sealed record PriceInput(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount, string? PaymentOptionId = null);
 
@@ -21,7 +25,10 @@ public sealed record NewSubscription(string Name, string? Category, string? Note
 /// <c>:ss</c> only when the seconds are not zero), or null. The update decision compares it with the current local rendering
 /// of the stored instant, never instant with instant. A null zone means UTC.
 /// </summary>
-public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null, DateTimeOffset? CancelBy = null, string? CancelByLocal = null, TimeZoneInfo? Zone = null);
+/// <summary>The option the Edit form asks for from today on. A null id means None.</summary>
+public sealed record PaymentOptionChange(string? PaymentOptionId);
+
+public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null, PaymentOptionChange? PaymentOption = null, DateTimeOffset? CancelBy = null, string? CancelByLocal = null, TimeZoneInfo? Zone = null);
 
 public sealed record PriceEntryChange(DateOnly EffectiveFrom, decimal Amount, Cadence Cadence, string? PaymentOptionId = null);
 
@@ -70,8 +77,22 @@ public static class SubscriptionDecisions
         var catalogId = CatalogId(input.CatalogId, errors);
         var unsubscribeUrl = UnsubscribeUrl(input.UnsubscribeUrl, errors);
         var (cancelBy, cancelByLocal) = CancelBy(input.CancelBy, zone, errors);
+        PaymentOptionChange? paymentOption = null;
+        if (input.PaymentOptionSet)
+        {
+            // An object without an id would bind like { "id": null } and silently clear the option, so it is rejected instead.
+            if (!input.PaymentOptionIdSpecified)
+            {
+                errors.Add("paymentOption", "The payment option must have an id, or null for none.");
+            }
+            else
+            {
+                paymentOption = new PaymentOptionChange(PaymentOptionId(input.PaymentOptionId, errors));
+            }
+        }
+
         errors.ThrowIfAny();
-        return new DetailsUpdate(name!, category, notes, currency!, start!.Value, end, catalogId, unsubscribeUrl, cancelBy, cancelByLocal, zone);
+        return new DetailsUpdate(name!, category, notes, currency!, start!.Value, end, catalogId, unsubscribeUrl, paymentOption, cancelBy, cancelByLocal, zone);
     }
 
     /// <summary>Shape only. The minor-unit rule needs the subscription's currency and runs with the invariants.</summary>
@@ -125,9 +146,18 @@ public static class SubscriptionDecisions
         return events;
     }
 
-    public static IReadOnlyList<object> UpdateDetails(IReadOnlyList<object> history, DetailsUpdate command, DateTimeOffset now)
+    /// <summary>For callers with no payment option change. A throwaway entry id is never used then.</summary>
+    public static IReadOnlyList<object> UpdateDetails(IReadOnlyList<object> history, DetailsUpdate command, DateTimeOffset now) =>
+        UpdateDetails(history, command, Guid.CreateVersion7(now).ToString("N"), now);
+
+    /// <summary>
+    /// Details and the optional payment option change in one decision, so one append: a partial change cannot happen. The payment
+    /// events are derived from the candidate that already contains the detail events, because the same save can move the period.
+    /// </summary>
+    public static IReadOnlyList<object> UpdateDetails(IReadOnlyList<object> history, DetailsUpdate command, string newEntryId, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(newEntryId);
         var current = Load(history);
         var at = now.ToUniversalTime();
         var events = new List<object>();
@@ -162,13 +192,19 @@ public static class SubscriptionDecisions
             events.Add(new SubscriptionCancelByChanged(command.CancelBy?.ToUniversalTime(), at));
         }
 
+        var errors = new FieldErrors();
+        if (command.PaymentOption is { } change)
+        {
+            events.AddRange(PaymentEvents(Candidate(history, events), change, newEntryId, at, errors));
+        }
+
         if (events.Count == 0)
         {
+            errors.ThrowIfAny();
             return [];
         }
 
         var candidate = Candidate(history, events);
-        var errors = new FieldErrors();
         if (candidate.EndDate is { } end && end < candidate.StartDate)
         {
             errors.Add("endDate", "The end date cannot be before the start date.");
@@ -199,6 +235,54 @@ public static class SubscriptionDecisions
         }
 
         errors.ThrowIfAny();
+        return events;
+    }
+
+    /// <summary>
+    /// The price entry events for "this option from today". Judged against the current entry only (upcoming entries are not
+    /// compared). The current entry is updated in place when it starts today or later, otherwise a new entry starting today copies
+    /// its amount and cadence. Upcoming entries other than the one handled as current get the option too. An ended subscription is
+    /// rejected, but only when the option really differs, so an unchanged option never blocks the details save.
+    /// </summary>
+    private static List<object> PaymentEvents(SubscriptionState candidate, PaymentOptionChange change, string newEntryId, DateTimeOffset at, FieldErrors errors)
+    {
+        var today = DateOnly.FromDateTime(at.UtcDateTime);
+        var current = SubscriptionCalculator.CurrentPrice(candidate, today);
+        var events = new List<object>();
+        if (string.Equals(current.PaymentOptionId, change.PaymentOptionId, StringComparison.Ordinal))
+        {
+            return events;
+        }
+
+        if (SubscriptionCalculator.StatusOn(candidate, today) == SubscriptionStatus.Ended)
+        {
+            errors.Add("paymentOption", "The payment option cannot be changed on an ended subscription.");
+            return events;
+        }
+
+        if (current.EffectiveFrom >= today)
+        {
+            events.Add(new SubscriptionPriceEntryPaymentChanged(current.EntryId, change.PaymentOptionId, at));
+        }
+        else
+        {
+            events.Add(new SubscriptionPriceEntryAdded(newEntryId, today, current.Amount, current.CadenceUnit, current.CadenceCount, at));
+            if (change.PaymentOptionId is not null)
+            {
+                events.Add(new SubscriptionPriceEntryPaymentChanged(newEntryId, change.PaymentOptionId, at));
+            }
+        }
+
+        foreach (var upcoming in candidate.Entries
+                     .Where(e => e.EffectiveFrom > today && !string.Equals(e.EntryId, current.EntryId, StringComparison.Ordinal))
+                     .OrderBy(e => e.EffectiveFrom))
+        {
+            if (!string.Equals(upcoming.PaymentOptionId, change.PaymentOptionId, StringComparison.Ordinal))
+            {
+                events.Add(new SubscriptionPriceEntryPaymentChanged(upcoming.EntryId, change.PaymentOptionId, at));
+            }
+        }
+
         return events;
     }
 

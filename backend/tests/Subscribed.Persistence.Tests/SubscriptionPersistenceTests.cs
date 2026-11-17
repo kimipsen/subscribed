@@ -613,7 +613,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         SubscriptionDecisions.ParseAdd(new AddInput("StreamCo", null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, CancelBy: cancelBy), TimeZoneInfo.Utc);
 
     private static DetailsUpdate UpdateWithCancelBy(SubscriptionState s, string? cancelBy) =>
-        SubscriptionDecisions.ParseUpdate(new UpdateInput(s.Name, s.Category, s.Notes, s.Currency, "2024-03-01", null, null, null, cancelBy), TimeZoneInfo.Utc);
+        SubscriptionDecisions.ParseUpdate(new UpdateInput(s.Name, s.Category, s.Notes, s.Currency, "2024-03-01", null, null, null, CancelBy: cancelBy), TimeZoneInfo.Utc);
 
     [Fact]
     public async Task A_snapshot_written_before_cancel_by_existed_reads_null_and_accepts_a_deadline_through_the_inline_path()

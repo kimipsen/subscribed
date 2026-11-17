@@ -134,3 +134,25 @@ The footer shows a link to the GitHub repository and the application version. Th
 at build time by `scripts/build.mjs` through `ng build --define` from the `APP_VERSION` environment
 variable. The release workflow sets it through the Docker build-arg `APP_VERSION` (the release tag with
 the leading `v` removed). When `APP_VERSION` is unset, the footer shows the `package.json` version.
+
+## Sidebar
+
+At 900px and wider, a member's navigation has a toggle that collapses the sidebar to an icons-only rail
+(4rem wide). The main content widens to use the space. In the rail, each link and the toggle show their
+label as a tooltip on hover and keyboard focus; the label stays in the DOM, so the accessible names do not
+change. The tooltip is CSS-only and cannot be dismissed with Escape.
+
+The choice is stored in `localStorage` under `subscribed.sidebar` as `collapsed` or `expanded`. Any other
+value is ignored and the sidebar starts expanded. It is browser-local and independent of the account. If
+storage is unavailable, the toggle still works until reload and shows no notice (unlike the theme and
+language choices). Below 900px there is no toggle and no rail: the labels stay visible and the Menu button
+works as before.
+
+## Third-party licences
+
+| Package | Licence | Copyright | Source | Version | Date added |
+| --- | --- | --- | --- | --- | --- |
+| lucide-angular | ISC | Lucide Contributors; portions from Cole Bemis / Feather, MIT | https://github.com/lucide-icons/lucide | 1.0.0 | 2026-11-17 |
+
+The production build writes the full licence texts to `dist/subscribed/3rdpartylicenses.txt`. Logo files
+are tracked separately in `public/logos/LICENSES.md`.

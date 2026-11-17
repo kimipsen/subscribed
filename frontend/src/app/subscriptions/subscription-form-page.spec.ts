@@ -53,6 +53,12 @@ describe('SubscriptionFormPage', () => {
     else req.flush(catalog);
   }
 
+  function flushPaymentOptions(reply: PaymentOptionList | 'fail') {
+    const req = http.expectOne('/api/payment-options');
+    if (reply === 'fail') req.flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+    else req.flush(reply);
+  }
+
   async function openAdd(
     data: SubscriptionOptions = options(),
     overview: OverviewReply = overviewFixture(),
@@ -72,12 +78,18 @@ describe('SubscriptionFormPage', () => {
     return { harness, component, root: harness.routeNativeElement as HTMLElement };
   }
 
-  async function openEdit(detail: SubscriptionDetail = detailFixture(), overview: OverviewReply = overviewFixture(), catalog: Catalog | 'fail' = catalogFixture()) {
+  async function openEdit(
+    detail: SubscriptionDetail = detailFixture(),
+    overview: OverviewReply = overviewFixture(),
+    catalog: Catalog | 'fail' = catalogFixture(),
+    paymentOptions: PaymentOptionList | 'fail' = paymentOptionListFixture(),
+  ) {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}/edit`, SubscriptionFormPage);
     http.expectOne('/api/subscriptions/options').flush(options());
     flushOverview(overview);
     flushCatalog(catalog);
+    flushPaymentOptions(paymentOptions);
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     await settle(harness);
@@ -184,16 +196,183 @@ describe('SubscriptionFormPage', () => {
     expect(field.closest('.field')?.querySelector('img, app-payment-option-logo')).toBeNull();
   });
 
-  it('has no payment option select in edit mode, requests no options, and the update body has no paymentOptionId', async () => {
-    const { harness, root, component } = await openEdit();
-    expect(root.querySelector('#paymentOptionId')).toBeNull();
-    expect(component.paymentOptions()).toEqual([]);
+  // ---- payment option (edit mode, #39) ----------------------------------------------------------------
+
+  const VISA = '0192f3c1a1b27c4e8d2e5f60718293b5';
+  const REMOVED = '0192f3c1a1b27c4e8d2e5f60718293c6';
+  const EDIT_KEYS = ['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId', 'unsubscribeUrl', 'cancelBy'];
+
+  function detailWith(optionId: string | null, over: Partial<SubscriptionDetail> = {}): SubscriptionDetail {
+    const detail = detailFixture();
+    detail.currentPrice.paymentOptionId = optionId;
+    return { ...detail, ...over };
+  }
+
+  function pick(root: HTMLElement, value: string) {
+    const select = input(root, 'paymentOptionId');
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
+  }
+
+  it('requests the payment options in edit mode and shows the select prefilled with None', async () => {
+    const detail = detailWith(null);
+    const { root, component } = await openEdit(detail);
+    expect(component.paymentOptions()).toHaveLength(2);
+    expect(input(root, 'paymentOptionId').value).toBe('');
+    expect(choices(root)).toEqual([
+      { value: '', text: en['paymentOptions.select.none'] },
+      { value: VISA, text: 'Visa · Joint account' },
+    ]);
+    expect(root.querySelector('#paymentOptionId-hint')?.textContent).toContain(en['subscriptions.field.paymentOptionEditHint']);
+  });
+
+  it('prefills the select with the current price option', async () => {
+    const { root } = await openEdit(detailWith(VISA));
+    expect(input(root, 'paymentOptionId').value).toBe(VISA);
+  });
+
+  it('sends no paymentOption when the select was not touched', async () => {
+    const detail = detailWith(VISA);
+    const { harness } = await openEdit(detail);
     await submit(harness);
-    const req = lastRequest(`/api/subscriptions/${detailFixture().id}`);
-    expect(req.request.method).toBe('PUT');
-    expect(Object.keys(req.request.body as object)).toEqual(['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId', 'unsubscribeUrl', 'cancelBy']);
+    const req = lastRequest(`/api/subscriptions/${detail.id}`);
+    expect(Object.keys(req.request.body as object)).toEqual(EDIT_KEYS);
     req.flush({}, { status: 400, statusText: 'Bad Request' });
     await settle(harness);
+  });
+
+  it('sends paymentOption { id } when another option is picked, and { id: null } for None', async () => {
+    const detail = detailWith(null);
+    const first = await openEdit(detail);
+    pick(first.root, VISA);
+    await submit(first.harness);
+    const req = lastRequest(`/api/subscriptions/${detail.id}`);
+    expect((req.request.body as { paymentOption: unknown }).paymentOption).toEqual({ id: VISA });
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(first.harness);
+  });
+
+  it('sends { id: null } when None is picked over an existing option', async () => {
+    const detail = detailWith(VISA);
+    const { harness, root } = await openEdit(detail);
+    pick(root, '');
+    await submit(harness);
+    const req = lastRequest(`/api/subscriptions/${detail.id}`);
+    expect((req.request.body as { paymentOption: unknown }).paymentOption).toEqual({ id: null });
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('shows a removed current option as a disabled "(removed)" choice and does not send it unless another is picked', async () => {
+    const detail = detailWith(REMOVED);
+    const { harness, root } = await openEdit(detail);
+    expect(choices(root).map((c) => c.value)).toEqual(['', VISA, REMOVED]);
+    const removed = root.querySelector<HTMLOptionElement>(`#paymentOptionId option[value="${REMOVED}"]`)!;
+    expect(removed.disabled).toBe(true);
+    expect(removed.textContent?.trim()).toBe(en['paymentOptions.select.removed'].replace('{name}', 'Old card'));
+    expect(input(root, 'paymentOptionId').value).toBe(REMOVED);
+    await submit(harness);
+    const req = lastRequest(`/api/subscriptions/${detail.id}`);
+    expect(Object.hasOwn(req.request.body as object, 'paymentOption')).toBe(false);
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('does not offer a removed option that is not the current one', async () => {
+    const { root } = await openEdit(detailWith(VISA));
+    expect(choices(root).map((c) => c.value)).toEqual(['', VISA]);
+  });
+
+  it('hides the select for an ended subscription and sends no paymentOption', async () => {
+    const detail = detailWith(VISA, { status: 'ended' });
+    const { harness, root } = await openEdit(detail);
+    expect(root.querySelector('#paymentOptionId')).toBeNull();
+    await submit(harness);
+    const req = lastRequest(`/api/subscriptions/${detail.id}`);
+    expect(Object.hasOwn(req.request.body as object, 'paymentOption')).toBe(false);
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('hides the select when the options fail to load, and a save never clears the current option', async () => {
+    const detail = detailWith(VISA);
+    const { harness, root, component } = await openEdit(detail, overviewFixture(), catalogFixture(), 'fail');
+    expect(component.loadFailed()).toBe(false);
+    expect(root.querySelector('#paymentOptionId')).toBeNull();
+    type(root, 'name', 'Renamed');
+    await submit(harness);
+    const req = lastRequest(`/api/subscriptions/${detail.id}`);
+    expect(Object.keys(req.request.body as object)).toEqual(EDIT_KEYS);
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('sends nothing when an option is changed and then changed back', async () => {
+    const detail = detailWith(null);
+    const { harness, root } = await openEdit(detail);
+    pick(root, VISA);
+    pick(root, '');
+    await submit(harness);
+    const req = lastRequest(`/api/subscriptions/${detail.id}`);
+    expect(Object.hasOwn(req.request.body as object, 'paymentOption')).toBe(false);
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  async function conflictAfterPickingVisa(detail: SubscriptionDetail) {
+    const opened = await openEdit(detail);
+    pick(opened.root, VISA);
+    await submit(opened.harness);
+    lastRequest(`/api/subscriptions/${detail.id}`).flush({ traceId: 't', currentVersion: detail.version + 1 }, { status: 412, statusText: 'Precondition Failed' });
+    await settle(opened.harness);
+    expect(opened.root.textContent).toContain(en['subscriptions.form.conflict']);
+    return opened;
+  }
+
+  it('refreshes the baseline after a 412 reload, so a second save sends no stale paymentOption', async () => {
+    const detail = detailWith(null);
+    const { harness, root } = await conflictAfterPickingVisa(detail);
+    (Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === en['subscriptions.form.reloadLatest']) as HTMLButtonElement).click();
+    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detailWith(VISA, { version: detail.version + 1 }));
+    http.expectNone('/api/payment-options');
+    await settle(harness);
+    expect(input(root, 'paymentOptionId').value).toBe(VISA);
+    await submit(harness);
+    const req = lastRequest(`/api/subscriptions/${detail.id}`);
+    expect(Object.hasOwn(req.request.body as object, 'paymentOption')).toBe(false);
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('keeps the form filled and shows the conflict banner on a 412 with a changed option', async () => {
+    const { root } = await conflictAfterPickingVisa(detailWith(null));
+    expect(input(root, 'paymentOptionId').value).toBe(VISA);
+  });
+
+  it('maps a paymentOption error (ended subscription) to a localized message beside the select', async () => {
+    const detail = detailWith(null);
+    const { harness, root } = await openEdit(detail);
+    pick(root, VISA);
+    await submit(harness);
+    lastRequest(`/api/subscriptions/${detail.id}`).flush({ traceId: 't', errors: { paymentOption: ['English from the server'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(root.querySelector('#paymentOption-error')?.textContent).toContain(en['subscriptions.error.paymentOptionEnded']);
+    expect(root.textContent).not.toContain('English from the server');
+    expect(input(root, 'paymentOptionId').getAttribute('aria-invalid')).toBe('true');
+    expect(input(root, 'paymentOptionId').value).toBe(VISA);
+    expect(document.activeElement).toBe(input(root, 'paymentOptionId'));
+  });
+
+  it('maps a paymentOptionId error (unusable option) beside the select in edit mode', async () => {
+    const detail = detailWith(null);
+    const { harness, root } = await openEdit(detail);
+    pick(root, VISA);
+    await submit(harness);
+    lastRequest(`/api/subscriptions/${detail.id}`).flush({ traceId: 't', errors: { paymentOptionId: ['English from the server'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(root.querySelector('#paymentOptionId-error')?.textContent).toContain(en['subscriptions.error.paymentOptionId']);
+    expect(input(root, 'paymentOptionId').getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(input(root, 'paymentOptionId'));
   });
 
   it('maps a paymentOptionId error from the server to a localized message beside the select', async () => {
@@ -446,6 +625,7 @@ describe('SubscriptionFormPage', () => {
       http.expectOne('/api/subscriptions/options').flush(options());
       flushOverview('fail');
       flushCatalog(catalogFixture());
+      flushPaymentOptions(paymentOptionListFixture());
       http.expectOne(`/api/subscriptions/${detail.id}`).flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
       await settle(harness);
       expect(component.loadFailed()).toBe(true);
@@ -456,6 +636,7 @@ describe('SubscriptionFormPage', () => {
       http.expectOne('/api/subscriptions/options').flush(options());
       flushOverview(overviewFixture());
       flushCatalog(catalogFixture());
+      flushPaymentOptions(paymentOptionListFixture());
       http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
       // The failed first load left its (cancelled) zone request behind: only the retry's request can be answered.
       http.match('/api/household').filter((r) => !r.cancelled).forEach((r) => r.flush({ timeZoneId: 'Europe/Copenhagen' }));
@@ -706,6 +887,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     http.expectOne('/api/subscriptions/options').flush(optionsFixture());
     http.expectOne('/api/subscriptions').flush(overviewFixture());
     http.expectOne('/api/subscriptions/catalog').flush(catalog);
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     await settle(harness);

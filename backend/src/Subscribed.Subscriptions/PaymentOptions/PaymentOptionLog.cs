@@ -19,6 +19,9 @@ public static partial class PaymentOptionLog
     [LoggerMessage(EventId = 3002, Level = LogLevel.Information, Message = "payment_option.rejected {Reason}")]
     private static partial void RejectedCore(ILogger logger, string reason);
 
+    [LoggerMessage(EventId = 3003, Level = LogLevel.Information, Message = "subscription.update paymentOptionChange={PaymentOptionChange} priceEvents={PriceEvents}")]
+    private static partial void EditChangeCore(ILogger logger, string paymentOptionChange, int priceEvents);
+
     public static void Created(ILogger logger, string optionId)
     {
         ArgumentNullException.ThrowIfNull(logger);
@@ -40,5 +43,12 @@ public static partial class PaymentOptionLog
         {
             RejectedCore(logger, reason);
         }
+    }
+
+    /// <summary><paramref name="change"/> is <c>none</c>, <c>set</c> or <c>cleared</c>; the count is the price entry events of one Edit save. No ids.</summary>
+    public static void EditChange(ILogger logger, string change, int priceEvents)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        EditChangeCore(logger, change, priceEvents);
     }
 }

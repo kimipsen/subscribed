@@ -43,7 +43,7 @@ public sealed class CancelByDecisionTests
         var s = SubscriptionState.Rehydrate(history);
         return SubscriptionDecisions.ParseUpdate(new UpdateInput(name ?? s.Name, s.Category, s.Notes, s.Currency,
             start ?? s.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            s.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), s.CatalogId, s.UnsubscribeUrl, cancelBy), zone);
+            s.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), s.CatalogId, s.UnsubscribeUrl, CancelBy: cancelBy), zone);
     }
 
     private static IReadOnlyList<object> Update(List<object> history, TimeZoneInfo zone, string? cancelBy, string? name = null, string? start = null) =>
