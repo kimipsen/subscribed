@@ -34,6 +34,16 @@ public sealed class HouseholdView
 
     public List<HouseholdViewMember> Members { get; set; } = [];
 
+    /// <summary>IANA zone id. Rows written before the time zone existed have no key and load as UTC (plan D14).</summary>
+    public string TimeZoneId { get; set; } = TimeZoneIds.Utc;
+
+    /// <summary>Lower-case hex SHA-256 of the active calendar feed secret. Never returned by any endpoint.</summary>
+    public string? CalendarFeedSecretHash { get; set; }
+
+    public DateTimeOffset? CalendarFeedRotatedAt { get; set; }
+
+    public bool CalendarFeedEnabled => CalendarFeedSecretHash is not null;
+
     public HouseholdViewMember? FindMember(string issuer, string subject) =>
         Members.FirstOrDefault(m => string.Equals(m.Issuer, issuer, StringComparison.Ordinal) && string.Equals(m.Subject, subject, StringComparison.Ordinal));
 }
@@ -55,6 +65,20 @@ public sealed class HouseholdViewProjection : SingleStreamProjection<HouseholdVi
             DisplayLabel = e.DisplayLabel,
             GrantedAt = e.GrantedAt,
         });
+    }
+
+    public static void Apply(HouseholdTimeZoneChanged e, HouseholdView view) => view.TimeZoneId = e.TimeZoneId;
+
+    public static void Apply(HouseholdCalendarFeedRotated e, HouseholdView view)
+    {
+        view.CalendarFeedSecretHash = e.SecretHash;
+        view.CalendarFeedRotatedAt = e.RotatedAt;
+    }
+
+    public static void Apply(HouseholdCalendarFeedRevoked e, HouseholdView view)
+    {
+        view.CalendarFeedSecretHash = null;
+        view.CalendarFeedRotatedAt = null;
     }
 
     public static void Apply(HouseholdMemberRevoked e, HouseholdView view) => view.Members.RemoveAll(m => m.MemberId == e.MemberId);
