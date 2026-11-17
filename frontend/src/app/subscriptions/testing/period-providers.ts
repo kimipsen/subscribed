@@ -1,6 +1,6 @@
 import { Provider } from '@angular/core';
 import { HttpTestingController } from '@angular/common/http/testing';
-import { PERIOD_STORAGE, PERIOD_STORAGE_KEY, PERIOD_TODAY } from '../period';
+import { PERIOD_STORAGE, PERIOD_TODAY } from '../period';
 import { PeriodOptions, Wire } from '../subscription.models';
 import periodsJson from './periods.json';
 
@@ -19,7 +19,9 @@ export function memoryStorage(initial: Record<string, string> = {}): FakeStorage
   return {
     values,
     getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => void values.set(key, value),
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
   };
 }
 
@@ -33,7 +35,7 @@ export const throwingStorage = {
   },
 };
 
-export { PERIOD_STORAGE_KEY };
+export { PERIOD_STORAGE_KEY } from '../period';
 
 /** Providers that pin today and fake the period storage (a fresh in-memory one unless given). */
 export function periodTestProviders(storage: Pick<Storage, 'getItem' | 'setItem'> | null = memoryStorage()): Provider[] {

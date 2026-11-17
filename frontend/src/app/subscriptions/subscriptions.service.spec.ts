@@ -62,9 +62,13 @@ describe('SubscriptionsService period requests', () => {
   it('sends no period when the caller shows no period figures (the form)', () => {
     const { http, service } = setup();
     service.overview().subscribe();
-    http.expectOne((r) => r.url === '/api/subscriptions' && r.params.keys().length === 0).flush(overviewFixture());
+    const overview = http.expectOne('/api/subscriptions');
+    expect(overview.request.params.keys()).toEqual([]);
+    overview.flush(overviewFixture());
     service.detail('abc').subscribe();
-    http.expectOne((r) => r.url === '/api/subscriptions/abc' && r.params.keys().length === 0).flush(detailFixture());
+    const detail = http.expectOne('/api/subscriptions/abc');
+    expect(detail.request.params.keys()).toEqual([]);
+    detail.flush(detailFixture());
     http.verify();
   });
 

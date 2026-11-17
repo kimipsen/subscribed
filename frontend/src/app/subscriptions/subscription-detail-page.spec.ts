@@ -918,7 +918,7 @@ describe('SubscriptionDetailPage', () => {
     const headings = Array.from(root.querySelectorAll('section h2')).map((h) => h.id);
     expect(headings.indexOf('pauses-heading')).toBe(headings.indexOf('history-heading') + 1);
     const cells = pauseRows(root).map((row) => plain(row.textContent));
-    expect(cells.length).toBe(2);
+    expect(cells).toHaveLength(2);
     expect(cells[0]).toContain('1 Mar 2026');
     expect(cells[0]).toContain('10 Mar 2026');
     expect(cells[1]).toContain('1 Nov 2026');
@@ -929,7 +929,7 @@ describe('SubscriptionDetailPage', () => {
 
   it('shows a message instead of an empty table when there is no pause', async () => {
     const { root } = await open(withPauses([]));
-    expect(pauseRows(root).length).toBe(0);
+    expect(pauseRows(root)).toHaveLength(0);
     expect(pausesSection(root).textContent).toContain(en['pauses.empty']);
   });
 
@@ -953,7 +953,7 @@ describe('SubscriptionDetailPage', () => {
     expect(req.request.body).toEqual({ pauseDate: '2026-11-10', resumeDate: null });
     await respond(harness, req, bump(detail, { paused: true, pauseHistory: [{ id: 'n1', pauseDate: '2026-11-10', resumeDate: null }] }));
     expect(root.querySelector('.pause-form')).toBeNull();
-    expect(pauseRows(root).length).toBe(1);
+    expect(pauseRows(root)).toHaveLength(1);
     expect(plain(pauseRows(root)[0].textContent)).toContain(en['pauses.ongoing']);
     expect(el(root, 'output.status').textContent).toContain(en['pauses.added']);
     expect(document.activeElement).toBe(el(root, '#add-pause'));
@@ -1015,7 +1015,7 @@ describe('SubscriptionDetailPage', () => {
     const req = pauseRequest2(detail, 'DELETE', '/p1');
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     await respond(harness, req, bump(detail, { pauseHistory: [] }));
-    expect(pauseRows(root).length).toBe(0);
+    expect(pauseRows(root)).toHaveLength(0);
     expect(el(root, 'output.status').textContent).toContain(en['pauses.deleted']);
     expect(document.activeElement).toBe(el(root, '#add-pause'));
   });
@@ -1027,7 +1027,7 @@ describe('SubscriptionDetailPage', () => {
     buttonByText(root, en['detail.keep']).click();
     await settle(harness);
     expect(root.querySelector('#confirm-pause')).toBeNull();
-    expect(pauseRows(root).length).toBe(1);
+    expect(pauseRows(root)).toHaveLength(1);
     expect(document.activeElement).toBe(el(root, '#delete-pause-p1'));
   });
 
@@ -1108,7 +1108,7 @@ describe('SubscriptionDetailPage', () => {
     request(detail).flush(bump(detail, { pauseHistory: [{ id: 'z', pauseDate: '2026-05-05', resumeDate: '2026-05-06' }] }));
     await settle(harness);
     expect(root.textContent).not.toContain(en['subscriptions.form.conflict']);
-    expect(pauseRows(root).length).toBe(1);
+    expect(pauseRows(root)).toHaveLength(1);
   });
 
   for (const [name, act] of [
@@ -1155,7 +1155,7 @@ describe('SubscriptionDetailPage', () => {
     const req = pauseRequest(detail, 'pause');
     expect(req.request.body).toBeNull();
     await respond(harness, req, bump(detail, { status: 'paused', paused: true, pauseHistory: [{ id: 'n', pauseDate: '2026-11-17', resumeDate: null }] }));
-    expect(pauseRows(root).length).toBe(1);
+    expect(pauseRows(root)).toHaveLength(1);
     expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
   });
 

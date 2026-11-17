@@ -692,7 +692,7 @@ describe('SubscriptionOverviewComponent period', () => {
     await choose(fixture, root, 'next-12-months');
     http.expectOne(url('next-12-months')).flush(periodData('next-12-months', ''));
     await settle(fixture);
-    http.expectNone('/api/subscriptions/periods');
+    expect(http.match('/api/subscriptions/periods')).toHaveLength(0);
   });
 
   it('names the period in the column header, for each kind', async () => {
