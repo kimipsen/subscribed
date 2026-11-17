@@ -1,5 +1,5 @@
 @if (page() === 'signed-out') {
-  <section class="panel">
+  <section class="panel panel-narrow">
     <h1 tabindex="-1">{{ 'signedOut.heading' | t }}</h1>
     @if (route.snapshot.queryParamMap.get('idp') === '0') {
       <p>{{ 'signedOut.idpActive' | t }}</p>
@@ -19,7 +19,7 @@
       <app-session-unavailable />
     }
     @case ('anonymous') {
-      <section class="panel">
+      <section class="panel panel-narrow">
         <p class="eyebrow">{{ 'anonymous.eyebrow' | t }}</p>
         <h1 tabindex="-1">{{ 'anonymous.heading' | t }}</h1>
         <p>{{ 'anonymous.intro' | t }}</p>
@@ -31,7 +31,7 @@
       </section>
     }
     @case ('not-member') {
-      <section class="panel">
+      <section class="panel panel-narrow">
         <h1 tabindex="-1">{{ 'access.heading' | t }}</h1>
         <p>{{ 'access.notGranted' | t }}</p>
         <p>{{ 'access.askAdmin' | t }}</p>
