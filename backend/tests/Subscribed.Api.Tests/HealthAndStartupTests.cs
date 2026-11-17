@@ -26,6 +26,39 @@ public sealed class HealthAndStartupTests(PostgresFixture pg)
         Assert.Equal(HttpStatusCode.OK, live.StatusCode);
     }
 
+    private sealed class EmptyTimeZoneSource : Subscribed.Household.ITimeZoneSource
+    {
+        public IReadOnlyList<string> Ids => [];
+    }
+
+    [Fact]
+    public async Task Ready_is_healthy_with_a_tz_database_and_lists_the_time_zones_check()
+    {
+        await using var host = await ApiTestHost.StartAsync(pg);
+        using var ready = await host.Client.GetAsync(new Uri("/health/ready", UriKind.Relative), Ct);
+        Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+        var body = await ApiTestHost.JsonAsync(ready);
+        Assert.Equal("Healthy", body.GetProperty("status").GetString());
+        Assert.Equal("Healthy", body.GetProperty("checks").GetProperty("timeZones").GetString());
+        Assert.DoesNotContain(host.Logs.Entries, e => e.Contains("time_zone_data_missing", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Ready_is_degraded_not_unhealthy_without_tz_data_and_a_startup_warning_is_logged()
+    {
+        await using var host = await ApiTestHost.StartAsync(pg, services: s => Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<Subscribed.Household.ITimeZoneSource>(s, new EmptyTimeZoneSource()));
+        using var ready = await host.Client.GetAsync(new Uri("/health/ready", UriKind.Relative), Ct);
+        Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+        var body = await ApiTestHost.JsonAsync(ready);
+        Assert.Equal("Degraded", body.GetProperty("status").GetString());
+        var checks = body.GetProperty("checks");
+        Assert.Equal("Degraded", checks.GetProperty("timeZones").GetString());
+        Assert.Equal("Healthy", checks.GetProperty("database").GetString());
+        Assert.Equal("Healthy", checks.GetProperty("schema").GetString());
+        Assert.Equal("Healthy", checks.GetProperty("privileges").GetString());
+        Assert.Contains(host.Logs.Entries, e => e.StartsWith("Warning Subscribed.Household", StringComparison.Ordinal) && e.Contains("time_zone_data_missing", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task AC14_ready_is_503_for_unreachable_database()
     {

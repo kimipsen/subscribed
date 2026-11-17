@@ -169,10 +169,10 @@ public static class HouseholdEndpoints
         }
     }
 
-    private static IResult TimeZonesAsync(HttpContext context)
+    private static IResult TimeZonesAsync(HttpContext context, ITimeZoneSource zones)
     {
         context.Response.Headers.CacheControl = "no-store";
-        return Results.Json(new TimeZonesDto(TimeZoneIds.All));
+        return Results.Json(new TimeZonesDto(zones.Ids));
     }
 
     private static async Task<IResult> ChangeTimeZoneAsync(HttpContext context, HouseholdService service, ILoggerFactory loggers)

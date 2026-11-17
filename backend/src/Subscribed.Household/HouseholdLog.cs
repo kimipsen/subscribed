@@ -19,6 +19,16 @@ public static partial class HouseholdLog
     [LoggerMessage(EventId = 3102, Level = LogLevel.Warning, Message = "household.time_zone_unresolvable {HouseholdId}; answering in UTC")]
     private static partial void TimeZoneUnresolvableCore(ILogger logger, string householdId);
 
+    [LoggerMessage(EventId = 3103, Level = LogLevel.Warning, Message = "household.time_zone_data_missing: the server lists no time zone but UTC; only UTC households work")]
+    private static partial void TimeZoneDataMissingCore(ILogger logger);
+
+    /// <summary>Startup signal: no tz database in this runtime image. Carries no data at all.</summary>
+    public static void TimeZoneDataMissing(ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        TimeZoneDataMissingCore(logger);
+    }
+
     /// <summary>The stored zone id cannot be resolved on this server, so the request answers in UTC. Carries the household id only.</summary>
     public static void TimeZoneUnresolvable(ILogger logger, string householdId)
     {
