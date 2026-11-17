@@ -101,6 +101,46 @@
         { "country": "DK", "name": "Unlimited", "currency": "DKK", "amount": "159.00", "cadenceUnit": "month", "cadenceCount": 1 },
         { "country": "DK", "name": "Family (dig + 1 familiemedlem)", "currency": "DKK", "amount": "179.00", "cadenceUnit": "month", "cadenceCount": 1 }
       ]
+    },
+    {
+      "id": "disney-plus",
+      "name": "Disney+",
+      "category": "Streaming",
+      "logo": null,
+      "lastVerified": "2026-11-17",
+      "sourceUrl": "https://www.disneyplus.com/da-dk",
+      "plans": [
+        { "country": "DK", "name": "Standard", "currency": "DKK", "amount": "119.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Premium", "currency": "DKK", "amount": "169.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Standard med reklamer", "currency": "DKK", "amount": "79.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Standard (årlig)", "currency": "DKK", "amount": "1190.00", "cadenceUnit": "year", "cadenceCount": 1 },
+        { "country": "DK", "name": "Premium (årlig)", "currency": "DKK", "amount": "1690.00", "cadenceUnit": "year", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "hbo-max",
+      "name": "HBO Max",
+      "category": "Streaming",
+      "logo": null,
+      "lastVerified": "2026-11-17",
+      "sourceUrl": "https://www.hbomax.com/dk/da",
+      "plans": [
+        { "country": "DK", "name": "Standard", "currency": "DKK", "amount": "129.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Basis med reklamer", "currency": "DKK", "amount": "79.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Premium", "currency": "DKK", "amount": "169.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
+    },
+    {
+      "id": "skyshowtime",
+      "name": "SkyShowtime",
+      "category": "Streaming",
+      "logo": null,
+      "lastVerified": "2026-11-17",
+      "sourceUrl": "https://www.skyshowtime.com/dk",
+      "plans": [
+        { "country": "DK", "name": "Standard", "currency": "DKK", "amount": "109.00", "cadenceUnit": "month", "cadenceCount": 1 },
+        { "country": "DK", "name": "Premium", "currency": "DKK", "amount": "149.00", "cadenceUnit": "month", "cadenceCount": 1 }
+      ]
     }
   ]
 }
