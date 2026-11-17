@@ -9,6 +9,7 @@ import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from '../i18n/i1
 import { en } from '../i18n/catalog.en';
 import { da } from '../i18n/catalog.da';
 import { SessionService, csrfInterceptor } from '../session';
+import { query, queryAll } from '../testing/query';
 import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionFormPage } from './subscription-form-page';
 import { Catalog, CatalogPlan, CatalogService, PaymentOptionList, SubscriptionDetail, SubscriptionOptions, SubscriptionOverview } from './subscription.models';
@@ -193,7 +194,7 @@ describe('SubscriptionFormPage', () => {
     const { root } = await openAdd();
     const field = root.querySelector('#paymentOptionId') as HTMLElement;
     expect(field.querySelector('img')).toBeNull();
-    expect(field.closest('.field')?.querySelector('img, app-payment-option-logo')).toBeNull();
+    expect(field.closest('[data-field]')?.querySelector('img, app-payment-option-logo')).toBeNull();
   });
 
   // ---- payment option (edit mode, #39) ----------------------------------------------------------------
@@ -568,6 +569,8 @@ describe('SubscriptionFormPage', () => {
     TestBed.inject(LanguageService).setLanguage('da');
     const { root } = await openAdd();
     expect(root.querySelector('h1')?.textContent).toContain(da['subscriptions.form.addHeading']);
+    expect(query(root, 'label[for="name"]').textContent).toContain(da['subscriptions.field.name']);
+    expect(query(root, '#notes-hint').textContent).toContain(da['subscriptions.field.notesHint']);
     expect(englishLeftovers(root)).toEqual([]);
   });
 
@@ -895,7 +898,7 @@ describe('SubscriptionFormPage catalog picker', () => {
   }
 
   const field = (root: HTMLElement, id: string) => root.querySelector(`#${id}`) as HTMLInputElement & HTMLSelectElement;
-  const results = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLButtonElement>('.picker-result'));
+  const results = (root: HTMLElement) => queryAll<HTMLButtonElement>(root, '[data-picker-result]', { min: 0 });
 
   function type(root: HTMLElement, id: string, value: string) {
     const element = field(root, id);

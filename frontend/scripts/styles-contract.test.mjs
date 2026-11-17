@@ -45,6 +45,7 @@ const MIGRATED_FILES = [
   'src/app/subscriptions/payment-options-page.ts',
   'src/app/subscriptions/subscription-detail-page.html',
   'src/app/subscriptions/subscription-detail-page.ts',
+  'src/app/subscriptions/subscription-form-page.html',
   'src/app/subscriptions/subscription-form-page.ts',
   'src/app/subscriptions/subscription-overview.html',
   'src/app/subscriptions/subscription-overview.ts',
