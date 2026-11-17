@@ -44,6 +44,10 @@ const MIGRATED_FILES = [
   'src/app/subscriptions/subscription-detail-page.ts',
   'src/app/subscriptions/subscription-form-page.ts',
   'src/app/subscriptions/subscription-overview.ts',
+  'src/app/ui/form-field.ts',
+  'src/app/ui/notice.ts',
+  'src/app/ui/panel.ts',
+  'src/app/ui/status-badge.ts',
   'src/index.html',
 ];
 
@@ -481,6 +485,75 @@ test('check 1: no *.scss under src (once template checks are enabled)', () => {
   if (!ENABLE_TEMPLATE_CHECKS) return;
   const scss = walk('src/', (name) => name.endsWith('.scss'));
   assert.deepEqual(scss, []);
+});
+
+// ---------- spec lint: no optional chaining on query results (always on) ----------
+
+// A migrated spec reads its hooks through query()/queryAll() from src/app/testing/query.ts, which throw on a missing
+// element. `query(...)?.x` or `const el = query(...); el?.x` would turn a missing element back into a silent skip.
+const QUERY_HELPERS = new Set(['query', 'queryAll']);
+
+/** Findings for `?.` applied to a query()/queryAll() result, directly or through a const bound to one, in one spec's source. */
+export function specLint(text, file) {
+  const sourceFile = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  const lineOf = (node) => sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+  const unwrap = (node) => {
+    let current = node;
+    while (ts.isParenthesizedExpression(current) || ts.isNonNullExpression(current) || ts.isAsExpression(current) || ts.isElementAccessExpression(current)) current = current.expression;
+    return current;
+  };
+  const isHelperCall = (node) => {
+    const target = unwrap(node);
+    return ts.isCallExpression(target) && ts.isIdentifier(target.expression) && QUERY_HELPERS.has(target.expression.text);
+  };
+  const bound = new Set();
+  const collect = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && isHelperCall(node.initializer)) bound.add(node.name.text);
+    ts.forEachChild(node, collect);
+  };
+  collect(sourceFile);
+  const findings = [];
+  const visit = (node) => {
+    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node) || ts.isCallExpression(node)) && node.questionDotToken) {
+      const target = unwrap(node.expression);
+      if (isHelperCall(node.expression) || (ts.isIdentifier(target) && bound.has(target.text))) findings.push(`${file}:${lineOf(node)}: "?." on a query()/queryAll() result (a missing element must throw, not skip): ${node.getText(sourceFile)}`);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return findings;
+}
+
+/** Specs held to the lint: the spec of every migrated .ts file, plus any spec that imports the query helpers. */
+function migratedSpecs() {
+  const specs = walk('src/', isSpec);
+  const wanted = new Set(MIGRATED_FILES.filter((file) => file.endsWith('.ts')).map((file) => file.replace(/\.ts$/, '.spec.ts')));
+  return specs.filter((file) => wanted.has(file) || /testing\/query['"]/.test(read(file))).sort();
+}
+
+test('spec lint: migrated specs never use ?. on a query() or queryAll() result', () => {
+  const specs = migratedSpecs();
+  assert.ok(specs.some((file) => file.startsWith('src/app/ui/')), 'the ui component specs must be linted');
+  assert.deepEqual(specs.flatMap((file) => specLint(read(file), file)), []);
+});
+
+test('negative: the spec lint reports ?. on a query result, directly, through a const, an index and a cast, and accepts safe forms', () => {
+  const bad = [
+    "const a = query(fixture, 'x')?.textContent;",
+    "const el = query(fixture, 'x'); expect(el?.id).toBe('y');",
+    "const list = queryAll(fixture, 'x', { min: 1 }); list[0]?.click();",
+    "(query(fixture, 'x') as HTMLElement)?.focus();",
+    "query(fixture, 'x')!?.click?.();",
+  ];
+  for (const source of bad) assert.ok(specLint(source, 'fixture.spec.ts').length >= 1, source);
+  assert.equal(specLint("const el = query(fixture, 'x'); expect(el?.id).toBe('y'); expect(el?.title).toBe('z');", 'fixture.spec.ts').length, 2);
+  const good = [
+    "const a = query(fixture, 'x').textContent;",
+    "const raw = fixture.nativeElement.querySelector('x'); expect(raw?.id).toBe('y');",
+    "const el = query(fixture, 'x'); const other = null; expect(other?.id).toBeUndefined();",
+    "const list = queryAll(fixture, 'x'); expect(list.length).toBe(1);",
+  ];
+  for (const source of good) assert.deepEqual(specLint(source, 'fixture.spec.ts'), [], source);
 });
 
 // ---------- always-on checks 2 and 3 ----------
