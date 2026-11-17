@@ -39,6 +39,7 @@
 
       <section class="panel" aria-labelledby="summary-heading">
         <h2 id="summary-heading">{{ 'detail.summaryHeading' | t }}</h2>
+        <app-period-selector />
         <dl class="summary">
           <dt>{{ 'subscriptions.col.status' | t }}</dt>
           <dd><span class="badge" [class]="'badge status-' + d.status">{{ statusKey(d.status) | t }}</span></dd>
@@ -53,8 +54,8 @@
           <dd>{{ money(d.currentPrice.amount) }} · {{ cadence(d.currentPrice.cadenceUnit, d.currentPrice.cadenceCount) }}</dd>
           <dt>{{ 'subscriptions.col.perMonth' | t }}</dt>
           <dd>{{ money(d.normalizedMonthly) }}</dd>
-          <dt>{{ 'subscriptions.col.perYear' | t }}</dt>
-          <dd>{{ money(d.normalizedYearly) }}</dd>
+          <dt>{{ totalHeading().key | t: totalHeading().params }}</dt>
+          <dd>{{ money(d.periodTotal) }}</dd>
           @if (isHttpsUrl(d.effectiveUnsubscribeUrl)) {
             <dt>{{ 'detail.unsubscribe' | t }}</dt>
             <dd><a [href]="d.effectiveUnsubscribeUrl" target="_blank" rel="noopener noreferrer">{{ 'detail.unsubscribeLink' | t }}</a></dd>

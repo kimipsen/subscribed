@@ -2,7 +2,7 @@
 
 // Money in the browser is text only: it is parsed from input, formatted for display, and sent as a canonical decimal string
 // (a dot, no grouping). It never goes through Number or parseFloat (TS-005). The one arithmetic allowed is exact integer
-// BigInt addition of canonical strings in sumDecimalStrings (used for per-category group totals).
+// BigInt arithmetic on canonical strings in sumDecimalStrings and averagePerMonth (used for per-category group totals).
 
 /** The active language's decimal separator, without Intl grouping: "." for en-GB and "," for da-DK. */
 export function decimalSeparator(locale: string): string {
@@ -89,4 +89,22 @@ export function sumDecimalStrings(values: string[], minorUnit: number): string |
   const digits = total.toString().padStart(minorUnit + 1, '0');
   if (minorUnit === 0) return digits;
   return `${digits.slice(0, -minorUnit)}.${digits.slice(-minorUnit)}`;
+}
+
+/** The number of months of every report period. */
+export const MONTHS_PER_PERIOD = 12;
+
+/**
+ * A canonical non-negative decimal string divided by 12 and rounded to the minor unit, half away from zero (for a non-negative
+ * value that is half up), or null when the input is malformed for this minor unit. Exact BigInt integer arithmetic: whole minor
+ * units are doubled so the half is an integer comparison, never a float. A period total is never negative, so there is no sign.
+ * Zero decimals (JPY) and three decimals (KWD) follow the currency's own minor unit.
+ */
+export function averagePerMonth(total: string, minorUnit: number): string | null {
+  const minor = toMinorUnits(total, minorUnit);
+  if (minor === null) return null;
+  const months = BigInt(MONTHS_PER_PERIOD);
+  const average = (minor * 2n + months) / (months * 2n);
+  const digits = average.toString().padStart(minorUnit + 1, '0');
+  return minorUnit === 0 ? digits : `${digits.slice(0, -minorUnit)}.${digits.slice(-minorUnit)}`;
 }

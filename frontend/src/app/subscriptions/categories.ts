@@ -1,4 +1,4 @@
-import { sumDecimalStrings } from './money';
+import { averagePerMonth, sumDecimalStrings } from './money';
 import { SubscriptionSummary } from './subscription.models';
 
 // Pure helpers behind the client-side category view (filter, group, form suggestions). Categories stay free text on the wire;
@@ -21,8 +21,10 @@ export type CategorySelection = { kind: 'all' } | { kind: 'uncategorized' } | { 
 export interface GroupTotal {
   currency: string;
   minorUnit: number;
-  monthly: string;
-  yearly: string;
+  /** The sum of the rows' period totals. */
+  total: string;
+  /** That sum divided by the 12 months of the period. */
+  monthlyAverage: string;
   activeCount: number;
 }
 
@@ -109,10 +111,13 @@ export function selectionExists(selection: CategorySelection, set: CategorySet):
 }
 
 /**
- * Per-currency totals over the active rows of a group. These are exact sums of the rows' displayed (already rounded) monthly and
- * yearly strings. That is a documented divergence from the server's round-once totals (SubscriptionCalculator.Totals): three rows
- * that each show 0.00 total 0.00 here. A currency whose sums are malformed is dropped. The minor unit comes from the rows of that
- * currency, never from the household totals.
+ * Per-currency totals over the rows of a group that are active in the period (`activeInPeriod`: at least one chargeable day), so
+ * ended, not-yet-started and mostly paused rows count and the row's current `status` is irrelevant. The total is the exact sum of
+ * the rows' displayed (already rounded) period totals, and the monthly average is that sum divided by 12 and rounded once
+ * (averagePerMonth). That is a documented divergence from the server's round-once totals (SubscriptionCalculator.Totals): the
+ * server rounds the exact unrounded sum, so a group can differ from it by a minor unit, and three rows that each show 0.00 total
+ * 0.00 here. A currency whose sums are malformed is dropped. The minor unit comes from the rows of that currency, never from
+ * the household totals.
  */
 function groupTotals(rows: SubscriptionSummary[]): GroupTotal[] {
   const byCurrency = new Map<string, SubscriptionSummary[]>();
@@ -124,13 +129,13 @@ function groupTotals(rows: SubscriptionSummary[]): GroupTotal[] {
   const totals: GroupTotal[] = [];
   for (const currency of [...byCurrency.keys()].sort()) {
     const ofCurrency = byCurrency.get(currency) as SubscriptionSummary[];
-    const active = ofCurrency.filter((row) => row.status === 'active');
+    const active = ofCurrency.filter((row) => row.activeInPeriod);
     if (active.length === 0) continue;
     const minorUnit = ofCurrency[0].minorUnit;
-    const monthly = sumDecimalStrings(active.map((row) => row.normalizedMonthly), minorUnit);
-    const yearly = sumDecimalStrings(active.map((row) => row.normalizedYearly), minorUnit);
-    if (monthly === null || yearly === null) continue;
-    totals.push({ currency, minorUnit, monthly, yearly, activeCount: active.length });
+    const total = sumDecimalStrings(active.map((row) => row.periodTotal), minorUnit);
+    const monthlyAverage = total === null ? null : averagePerMonth(total, minorUnit);
+    if (total === null || monthlyAverage === null) continue;
+    totals.push({ currency, minorUnit, total, monthlyAverage, activeCount: active.length });
   }
   return totals;
 }

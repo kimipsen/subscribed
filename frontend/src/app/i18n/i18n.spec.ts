@@ -148,5 +148,32 @@ describe('Translation catalogs', () => {
       expect(da[key], key).not.toBe(en[key]);
     }
   });
-});
 
+  it('has English and Danish text for every period key, differing between the languages', () => {
+    const keys: MessageKey[] = [
+      'subscriptions.period.label',
+      'subscriptions.period.last12',
+      'subscriptions.period.next12',
+      'subscriptions.col.periodTotal.year',
+      'subscriptions.col.periodTotal.last12',
+      'subscriptions.col.periodTotal.next12',
+      'subscriptions.totalsHeading',
+      'subscriptions.totalsLine',
+      'subscriptions.totalsActive',
+      'subscriptions.totalsNone',
+    ];
+    for (const key of keys) {
+      expect(en[key], key).toBeTruthy();
+      expect(da[key], key).toBeTruthy();
+      expect(da[key], key).not.toBe(en[key]);
+    }
+    expect(en['subscriptions.totalsLine']).toContain('{total}');
+    expect(en['subscriptions.totalsLine']).toContain('{average}');
+    expect(da['subscriptions.col.periodTotal.year']).toContain('{year}');
+  });
+
+  it('no longer carries the run-rate per-year texts', () => {
+    expect(Object.keys(en)).not.toContain('subscriptions.col.perYear');
+    expect(en['subscriptions.totalsLine']).not.toMatch(/\{(monthly|yearly)\}/);
+  });
+});

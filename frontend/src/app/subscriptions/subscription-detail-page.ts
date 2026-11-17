@@ -9,6 +9,8 @@ import { SessionService } from '../session';
 import { PaymentOptionLogo } from './payment-option-logo';
 import { optionText } from './payment-option-text';
 import { PaymentOptionsService } from './payment-options.service';
+import { PeriodSelector } from './period-selector';
+import { PeriodService, parsePeriodKey, periodTotalMessage } from './period';
 import { formatMoney, formatPercentChange, formatSignedMoney, parseAmountInput, toAmountInput, decimalSeparator } from './money';
 import { ServiceLogo } from './service-logo';
 import { SessionUnavailable } from './session-unavailable';
@@ -50,7 +52,7 @@ const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.i
 
 @Component({
   selector: 'app-subscription-detail-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo, PeriodSelector],
   templateUrl: './subscription-detail-page.html',
 })
 export class SubscriptionDetailPage {
@@ -58,6 +60,7 @@ export class SubscriptionDetailPage {
   readonly session = inject(SessionService);
   private readonly service = inject(SubscriptionsService);
   private readonly paymentOptionsService = inject(PaymentOptionsService);
+  private readonly period = inject(PeriodService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
@@ -101,6 +104,12 @@ export class SubscriptionDetailPage {
 
   private started = false;
   private optionsLoaded = false;
+  /** The latest detail request wins: a response of an earlier one (an out-of-order answer) must never overwrite the current selection's data. */
+  private latest = 0;
+  private requestedKey = '';
+
+  /** The heading of the period-total value: for the period the loaded detail is for, so it never disagrees with the figure. */
+  readonly totalHeading = computed(() => periodTotalMessage(parsePeriodKey(this.detail()?.period.key) ?? this.period.effective()));
 
   readonly separator = computed(() => decimalSeparator(this.i18n.dateLocale()));
   readonly amountExample = computed(() => toAmountInput(this.minorUnit() === 0 ? '129' : '129.00', this.i18n.dateLocale()));
@@ -126,6 +135,13 @@ export class SubscriptionDetailPage {
         untracked(() => this.load());
       }
     });
+    // A new selection (the selector sits on this page) reloads the detail in place, without touching the messages.
+    effect(() => {
+      const key = this.period.effectiveKey();
+      untracked(() => {
+        if (this.started && key !== this.requestedKey) this.refresh();
+      });
+    });
     effect(() => {
       const locale = this.i18n.dateLocale();
       untracked(() => {
@@ -145,12 +161,16 @@ export class SubscriptionDetailPage {
     this.clearProblems();
     if (!this.optionsLoaded) this.loadOptions();
     if (!this.householdZone()) this.service.householdZone().subscribe({ next: (zone) => this.householdZone.set(zone || null), error: () => undefined });
-    this.service.detail(this.id).subscribe({
+    const request = ++this.latest;
+    this.requestedKey = this.period.effectiveKey();
+    this.service.detail(this.id, this.period.effective()).subscribe({
       next: (detail) => {
+        if (request !== this.latest) return;
         this.detail.set(detail);
         this.loading.set(false);
       },
       error: (error: HttpErrorResponse) => {
+        if (request !== this.latest) return;
         this.loading.set(false);
         if (error.status === 404) this.notFound.set(true);
         else if (error.status === 403) this.problem.set({ key: 'subscriptions.form.forbidden' });
@@ -283,8 +303,8 @@ export class SubscriptionDetailPage {
     }
     const body = this.entryBody(detail, form);
     const request = form.mode === 'add' ?
-      this.service.addPrice(detail.id, detail.version, body) :
-      this.service.correctPrice(detail.id, detail.version, form.entry.entryId, body);
+      this.service.addPrice(detail.id, detail.version, body, this.period.effective()) :
+      this.service.correctPrice(detail.id, detail.version, form.entry.entryId, body, this.period.effective());
     this.run(request, 'entry', () => {
       this.entryForm.set(null);
       this.focusLater('#add-entry');
@@ -309,7 +329,7 @@ export class SubscriptionDetailPage {
     const entry = this.confirmEntry();
     if (!detail || !entry || this.saving()) return;
     this.clearProblems();
-    this.run(this.service.removePrice(detail.id, detail.version, entry.entryId), 'other', () => this.confirmEntry.set(null));
+    this.run(this.service.removePrice(detail.id, detail.version, entry.entryId, this.period.effective()), 'other', () => this.confirmEntry.set(null));
   }
 
   /** The body comes from the page's own fields and the loaded entry, never from a form's value (a disabled date control is left out of it). The details PUT (see `details`) carries no option. */
@@ -366,7 +386,8 @@ export class SubscriptionDetailPage {
     const detail = this.detail();
     if (!detail || this.saving() || !(pausing ? this.canPause(detail) : detail.paused)) return;
     this.clearProblems();
-    const request = pausing ? this.service.pause(detail.id, detail.version) : this.service.resume(detail.id, detail.version);
+    const period = this.period.effective();
+    const request = pausing ? this.service.pause(detail.id, detail.version, period) : this.service.resume(detail.id, detail.version, period);
     this.run(request, 'other', () => {
       this.notice.set({ key: pausing ? 'subscriptions.paused' : 'subscriptions.resumed', params: { name: detail.name } });
       this.focusLater('#pause-toggle');
@@ -398,14 +419,14 @@ export class SubscriptionDetailPage {
       this.focusLater('#end-date');
       return;
     }
-    this.run(this.service.update(detail.id, detail.version, this.details(detail, this.endDateValue)), 'end', () => this.endOpen.set(false));
+    this.run(this.service.update(detail.id, detail.version, this.details(detail, this.endDateValue), this.period.effective()), 'end', () => this.endOpen.set(false));
   }
 
   reinstate(): void {
     const detail = this.detail();
     if (!detail || this.saving()) return;
     this.clearProblems();
-    this.run(this.service.update(detail.id, detail.version, this.details(detail, null)), 'other', () => undefined);
+    this.run(this.service.update(detail.id, detail.version, this.details(detail, null), this.period.effective()), 'other', () => undefined);
   }
 
   askRemove(): void {
@@ -459,8 +480,11 @@ export class SubscriptionDetailPage {
     request.subscribe({
       next: (updated) => {
         this.saving.set(false);
+        this.latest++;
         this.detail.set(updated);
         done();
+        // The selection changed while the request was in flight: the response is for the old period, so show the current one.
+        if (updated.period.key !== this.period.effectiveKey()) this.refresh();
       },
       error: (error: HttpErrorResponse) => {
         this.saving.set(false);
@@ -494,10 +518,14 @@ export class SubscriptionDetailPage {
 
   /** Replaces the detail without touching the messages: a plain `load()` would clear the problem it follows. */
   private refresh(): void {
-    this.service.detail(this.id).subscribe({
-      next: (detail) => this.detail.set(detail),
+    const request = ++this.latest;
+    this.requestedKey = this.period.effectiveKey();
+    this.service.detail(this.id, this.period.effective()).subscribe({
+      next: (detail) => {
+        if (request === this.latest) this.detail.set(detail);
+      },
       error: (error: HttpErrorResponse) => {
-        if (error.status === 404) this.notFound.set(true);
+        if (request === this.latest && error.status === 404) this.notFound.set(true);
       },
     });
   }

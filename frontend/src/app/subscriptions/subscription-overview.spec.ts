@@ -11,6 +11,9 @@ import { SubscriptionOverviewComponent } from './subscription-overview';
 import { SubscriptionOverview, SubscriptionSummary } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
 import { overviewFixture, overviewWith } from './testing/fixtures';
+import { PERIOD_STORAGE_KEY, flushPeriods, memoryStorage, periodOptionsFixture, periodTestProviders, throwingStorage } from './testing/period-providers';
+
+const OVERVIEW_URL = '/api/subscriptions?period=year-2026';
 
 const plain = (value: string | null | undefined) => (value ?? '').replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -23,6 +26,7 @@ describe('SubscriptionOverviewComponent', () => {
         provideRouter([]),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
       ],
@@ -34,7 +38,8 @@ describe('SubscriptionOverviewComponent', () => {
   async function render(data: SubscriptionOverview = overviewFixture()) {
     const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
     fixture.detectChanges();
-    http.expectOne('/api/subscriptions').flush(data);
+    http.expectOne(OVERVIEW_URL).flush(data);
+    flushPeriods(http);
     await fixture.whenStable();
     fixture.detectChanges();
     return fixture;
@@ -49,18 +54,20 @@ describe('SubscriptionOverviewComponent', () => {
     expect(root.querySelector('a[href="/payment-options"]')?.textContent?.trim()).toBe(en['paymentOptions.link']);
     TestBed.inject(LanguageService).setLanguage('da');
     TestBed.createComponent(SubscriptionOverviewComponent).detectChanges();
-    http.expectOne('/api/subscriptions').flush(overviewFixture());
+    http.expectOne(OVERVIEW_URL).flush(overviewFixture());
+    flushPeriods(http);
   });
 
   it('shows a loading status first', () => {
     const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
     fixture.detectChanges();
     expect(element(fixture).querySelector('[role=status]')?.textContent).toContain(en['subscriptions.loading']);
-    http.expectOne('/api/subscriptions').flush(overviewFixture());
+    http.expectOne(OVERVIEW_URL).flush(overviewFixture());
+    flushPeriods(http);
   });
 
   it('renders the empty state with the entry point to add a subscription', async () => {
-    const fixture = await render({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+    const fixture = await render({ ...overviewFixture(), subscriptions: [], totals: [] });
     const root = element(fixture);
     expect(root.textContent).toContain(en['subscriptions.emptyHeading']);
     expect(root.querySelector('a[href="/subscriptions/new"]')).toBeTruthy();
@@ -86,8 +93,9 @@ describe('SubscriptionOverviewComponent', () => {
     expect(lines.length).toBe(data.totals.length);
     expect(lines.length).toBeGreaterThan(1);
     expect(lines[0]).toContain('DKK');
-    expect(lines[0]).toContain('per month');
-    expect(lines[0]).toContain('per year');
+    expect(lines[0]).toBe('DKK 3,862.32 · DKK 321.86 per month on average (4 active in the period)');
+    expect(lines[1]).toBe('EUR 96.58 · EUR 8.05 per month on average (1 active in the period)');
+    expect(lines[0]).not.toContain('per year');
     expect(lines.some((line) => line.includes('DKK') && line.includes('EUR'))).toBe(false);
   });
 
@@ -112,14 +120,15 @@ describe('SubscriptionOverviewComponent', () => {
   it('shows an error with the reference and retries', async () => {
     const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
     fixture.detectChanges();
-    http.expectOne('/api/subscriptions').flush({ traceId: 'trace-123' }, { status: 503, statusText: 'Unavailable' });
+    http.expectOne(OVERVIEW_URL).flush({ traceId: 'trace-123' }, { status: 503, statusText: 'Unavailable' });
+    flushPeriods(http);
     await fixture.whenStable();
     fixture.detectChanges();
     const root = element(fixture);
     expect(root.querySelector('[role=alert]')?.textContent).toContain(en['subscriptions.loadFailed']);
     expect(root.textContent).toContain('trace-123');
     (Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === en['common.retry']) as HTMLButtonElement).click();
-    http.expectOne('/api/subscriptions').flush(overviewFixture());
+    http.expectOne(OVERVIEW_URL).flush(overviewFixture());
     await fixture.whenStable();
     fixture.detectChanges();
     expect(root.querySelector('table')).toBeTruthy();
@@ -150,15 +159,15 @@ describe('SubscriptionOverviewComponent', () => {
     const fixture = await render(data);
     const root = element(fixture);
     const streamCo = data.subscriptions.find((s) => s.name === 'StreamCo')!;
-    expect(plain(rowFor(root, 'StreamCo').textContent)).toContain('DKK 1,548.00');
+    expect(plain(rowFor(root, 'StreamCo').textContent)).toContain('DKK 1,463.18');
     expect(plain(rowFor(root, 'StreamCo').textContent)).toContain(en['cadence.monthly']);
-    expect(streamCo.normalizedYearly).toBe('1548.00');
+    expect(streamCo.periodTotal).toBe('1463.18');
 
     TestBed.inject(LanguageService).setLanguage('da');
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(plain(rowFor(root, 'StreamCo').textContent)).toContain('1.548,00 DKK');
+    expect(plain(rowFor(root, 'StreamCo').textContent)).toContain('1.463,18 DKK');
     expect(plain(rowFor(root, 'StreamCo').textContent)).toContain(da['cadence.monthly']);
     expect(rowFor(root, 'StreamCo').querySelector('.badge')?.textContent?.trim()).toBe(da['subscriptions.status.active']);
     expect(englishLeftovers(root)).toEqual([]);
@@ -212,7 +221,7 @@ describe('SubscriptionOverviewComponent', () => {
       const fixture = await render(overview);
       const root = element(fixture);
       actionFor(root, 'StreamCo')!.click();
-      const post = http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'StreamCo')}/pause` });
+      const post = http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'StreamCo')}/pause?period=year-2026` });
       expect(post.request.headers.get('If-Match')).toBe('"7"');
       expect(post.request.body).toBeNull();
 
@@ -222,7 +231,7 @@ describe('SubscriptionOverviewComponent', () => {
       row.paused = true;
       row.version = 8;
       post.flush({});
-      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(after);
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(after);
       await fixture.whenStable();
       fixture.detectChanges();
 
@@ -237,7 +246,7 @@ describe('SubscriptionOverviewComponent', () => {
       const fixture = await render(overview);
       const root = element(fixture);
       actionFor(root, 'VideoTube')!.click();
-      const post = http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'VideoTube')}/resume` });
+      const post = http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'VideoTube')}/resume?period=year-2026` });
       expect(post.request.headers.get('If-Match')).toBe('"5"');
       expect(post.request.body).toBeNull();
 
@@ -247,7 +256,7 @@ describe('SubscriptionOverviewComponent', () => {
       row.paused = false;
       row.version = 6;
       post.flush({});
-      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(after);
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(after);
       await fixture.whenStable();
       fixture.detectChanges();
 
@@ -267,7 +276,7 @@ describe('SubscriptionOverviewComponent', () => {
       const post = http.expectOne((r) => r.method === 'POST');
       expect(Array.from(root.querySelectorAll<HTMLButtonElement>('td button')).every((b) => b.disabled)).toBe(true);
       post.flush({});
-      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(overview);
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(overview);
       await fixture.whenStable();
       fixture.detectChanges();
       expect(Array.from(root.querySelectorAll<HTMLButtonElement>('td button')).every((b) => !b.disabled)).toBe(true);
@@ -281,7 +290,7 @@ describe('SubscriptionOverviewComponent', () => {
       http.expectOne((r) => r.method === 'POST').flush({ traceId: 'trace-412', currentVersion: 9 }, { status: 412, statusText: 'Precondition Failed' });
       const reloaded = structuredClone(overview);
       reloaded.subscriptions.find((s) => s.name === 'StreamCo')!.version = 9;
-      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(reloaded);
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(reloaded);
       await fixture.whenStable();
       fixture.detectChanges();
 
@@ -292,7 +301,7 @@ describe('SubscriptionOverviewComponent', () => {
       const retry = http.expectOne((r) => r.method === 'POST');
       expect(retry.request.headers.get('If-Match')).toBe('"9"');
       retry.flush({});
-      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(reloaded);
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(reloaded);
       await fixture.whenStable();
       fixture.detectChanges();
       expect(root.querySelector('[role=alert]')).toBeNull();
@@ -304,7 +313,7 @@ describe('SubscriptionOverviewComponent', () => {
       const root = element(fixture);
       actionFor(root, 'VideoTube')!.click();
       http.expectOne((r) => r.method === 'POST').flush({ traceId: 't', currentVersion: 5 }, { status: 409, statusText: 'Conflict' });
-      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(overview);
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(overview);
       await fixture.whenStable();
       fixture.detectChanges();
       expect(root.querySelector('[role=alert]')?.textContent).toContain(en['subscriptions.pauseInvalid']);
@@ -316,7 +325,7 @@ describe('SubscriptionOverviewComponent', () => {
       const root = element(fixture);
       actionFor(root, 'StreamCo')!.click();
       http.expectOne((r) => r.method === 'POST').flush({ traceId: 'trace-500', title: 'Backend English' }, { status: 500, statusText: 'Server Error' });
-      http.expectOne({ method: 'GET', url: '/api/subscriptions' }).flush(overview);
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(overview);
       await fixture.whenStable();
       fixture.detectChanges();
       const alert = root.querySelector('[role=alert]')?.textContent ?? '';
@@ -374,6 +383,7 @@ describe('SubscriptionOverviewComponent categories', () => {
         provideRouter([]),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
       ],
@@ -387,7 +397,8 @@ describe('SubscriptionOverviewComponent categories', () => {
   async function render(data: SubscriptionOverview) {
     const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
     fixture.detectChanges();
-    http.expectOne('/api/subscriptions').flush(data);
+    http.expectOne(OVERVIEW_URL).flush(data);
+    flushPeriods(http);
     await settle(fixture);
     return fixture;
   }
@@ -493,20 +504,20 @@ describe('SubscriptionOverviewComponent categories', () => {
   });
 
   it('shows no toolbar and keeps the empty state when there are no subscriptions (AC8)', async () => {
-    const el = root(await render({ asOf: '2026-11-13', subscriptions: [], totals: [] }));
+    const el = root(await render({ ...overviewFixture(), subscriptions: [], totals: [] }));
     expect(el.textContent).toContain(en['subscriptions.emptyHeading']);
     expect(select(el)).toBeNull();
     expect(el.textContent).not.toContain(en['subscriptions.filter.emptyBody']);
   });
 
-  it('groups alphabetically with Uncategorized last, counts every status and totals active rows per currency (AC4, AC5)', async () => {
+  it('groups alphabetically with Uncategorized last, counts every status and totals the rows active in the period per currency (AC4, AC5)', async () => {
     const fixture = await render(
       rows(
-        { name: 'A', category: 'Media', currency: 'DKK', normalizedMonthly: '79.00', normalizedYearly: '948.00' },
-        { name: 'B', category: 'media', currency: 'DKK', normalizedMonthly: '10.50', normalizedYearly: '126.00' },
-        { name: 'C', category: 'Media', currency: 'EUR', normalizedMonthly: '5.00', normalizedYearly: '60.00' },
-        { name: 'D', category: 'Media', currency: 'DKK', status: 'ended', normalizedMonthly: '9.00', normalizedYearly: '108.00' },
-        { name: 'E', category: 'Bills', status: 'not-started' },
+        { name: 'A', category: 'Media', currency: 'DKK', periodTotal: '948.00' },
+        { name: 'B', category: 'media', currency: 'DKK', periodTotal: '126.00' },
+        { name: 'C', category: 'Media', currency: 'EUR', periodTotal: '60.00' },
+        { name: 'D', category: 'Media', currency: 'DKK', status: 'ended', periodTotal: '0.00', activeInPeriod: false },
+        { name: 'E', category: 'Bills', status: 'not-started', activeInPeriod: false },
         { name: 'F', category: null },
       ),
     );
@@ -517,11 +528,11 @@ describe('SubscriptionOverviewComponent categories', () => {
     expect(plain(sections[1].querySelector('p')?.textContent)).toBe('Subscriptions: 4');
     const lines = Array.from(sections[1].querySelectorAll('.totals li')).map((li) => plain(li.textContent));
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toContain('DKK 89.50 per month · DKK 1,074.00 per year');
-    expect(lines[0]).toContain('2 active');
-    expect(lines[1]).toContain('EUR 5.00 per month');
+    expect(lines[0]).toContain('DKK 1,074.00 · DKK 89.50 per month on average');
+    expect(lines[0]).toContain('2 active in the period');
+    expect(lines[1]).toContain('EUR 60.00 · EUR 5.00 per month on average');
     expect(lines.some((line) => line.includes('DKK') && line.includes('EUR'))).toBe(false);
-    // No active subscription in Bills: rows and count, but no totals line.
+    // No row of Bills is active in the period: rows and count, but no totals line.
     expect(sections[0].querySelector('.totals')).toBeNull();
     expect(sections[0].querySelectorAll('tbody tr')).toHaveLength(1);
     await group(fixture, false);
@@ -546,7 +557,7 @@ describe('SubscriptionOverviewComponent categories', () => {
   });
 
   it('omits a group totals line for malformed amounts but still renders the rows', async () => {
-    const fixture = await render(rows({ name: 'A', category: 'Bad', normalizedMonthly: '1,50' }, { name: 'B', category: 'Good' }));
+    const fixture = await render(rows({ name: 'A', category: 'Bad', periodTotal: '1,50' }, { name: 'B', category: 'Good' }));
     const el = root(fixture);
     await group(fixture);
     const [bad, good] = Array.from(el.querySelectorAll('.category-group'));
@@ -604,5 +615,257 @@ describe('SubscriptionOverviewComponent categories', () => {
     for (const head of Array.from(el.querySelectorAll('thead'))) {
       expect(Array.from(head.querySelectorAll('th')).map((th) => th.textContent?.trim())).toEqual(flat);
     }
+  });
+});
+
+describe('SubscriptionOverviewComponent period', () => {
+  let http: HttpTestingController;
+
+  function setup(storage: Pick<Storage, 'getItem' | 'setItem'> | null = memoryStorage()) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        provideHttpClient(withInterceptors([csrfInterceptor])),
+        provideHttpClientTesting(),
+        ...periodTestProviders(storage),
+        { provide: BROWSER_LANGUAGES, useValue: ['en'] },
+        { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+  }
+  afterEach(() => http.verify());
+
+  const url = (key: string) => `/api/subscriptions?period=${key}`;
+  const periodData = (key: string, factor: string): SubscriptionOverview => {
+    const data = overviewFixture();
+    data.period = { ...data.period, key };
+    for (const row of data.subscriptions) row.periodTotal = factor === '' ? row.periodTotal : `${factor}${row.periodTotal}`;
+    return data;
+  };
+
+  async function settle(fixture: { whenStable(): Promise<unknown>; detectChanges(): void }) {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  async function render(requested = 'year-2026', data: SubscriptionOverview = overviewFixture()) {
+    const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
+    fixture.detectChanges();
+    http.expectOne(url(requested)).flush(data);
+    flushPeriods(http);
+    await settle(fixture);
+    return { fixture, root: fixture.nativeElement as HTMLElement };
+  }
+
+  const select = (root: HTMLElement) => root.querySelector<HTMLSelectElement>('#period-select')!;
+  const headers = (root: HTMLElement) => Array.from(root.querySelectorAll('thead th')).map((th) => plain(th.textContent));
+  const stream = (root: HTMLElement) => plain(Array.from(root.querySelectorAll('tbody tr')).find((r) => r.querySelector('th a')?.textContent?.trim() === 'StreamCo')?.textContent);
+
+  async function choose(fixture: { whenStable(): Promise<unknown>; detectChanges(): void }, root: HTMLElement, key: string) {
+    select(root).value = key;
+    select(root).dispatchEvent(new Event('change'));
+    await settle(fixture);
+  }
+
+  it('puts a labelled selector above the table, with the years from the periods response, then Last and Next 12 months', async () => {
+    setup();
+    const { root } = await render();
+    expect(root.querySelector('label[for=period-select]')?.textContent?.trim()).toBe(en['subscriptions.period.label']);
+    const table = root.querySelector('table')!;
+    expect(select(root).compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(Array.from(select(root).options).map((option) => [option.value, plain(option.textContent)])).toEqual([
+      ['year-2024', '2024'],
+      ['year-2025', '2025'],
+      ['year-2026', '2026'],
+      ['year-2027', '2027'],
+      ['last-12-months', en['subscriptions.period.last12']],
+      ['next-12-months', en['subscriptions.period.next12']],
+    ]);
+    expect(select(root).value).toBe('year-2026');
+  });
+
+  it('loads the periods once, not again when the selection changes', async () => {
+    setup();
+    const { fixture, root } = await render();
+    await choose(fixture, root, 'next-12-months');
+    http.expectOne(url('next-12-months')).flush(periodData('next-12-months', ''));
+    await settle(fixture);
+    http.expectNone('/api/subscriptions/periods');
+  });
+
+  it('names the period in the column header, for each kind', async () => {
+    setup();
+    const { fixture, root } = await render();
+    expect(headers(root)).toContain('Total 2026');
+    expect(headers(root)).not.toContain('Per year');
+    expect(headers(root)).toContain(en['subscriptions.col.perMonth']);
+    await choose(fixture, root, 'last-12-months');
+    http.expectOne(url('last-12-months')).flush(periodData('last-12-months', ''));
+    await settle(fixture);
+    expect(headers(root)).toContain(en['subscriptions.col.periodTotal.last12']);
+    await choose(fixture, root, 'next-12-months');
+    http.expectOne(url('next-12-months')).flush(periodData('next-12-months', ''));
+    await settle(fixture);
+    expect(headers(root)).toContain(en['subscriptions.col.periodTotal.next12']);
+    await choose(fixture, root, 'year-2025');
+    http.expectOne(url('year-2025')).flush(periodData('year-2025', ''));
+    await settle(fixture);
+    expect(headers(root)).toContain('Total 2025');
+  });
+
+  it('shows the period total in the total cell and keeps the per-month cell on the normalized monthly price', async () => {
+    setup();
+    const { root } = await render();
+    // StreamCo: periodTotal 1463.18, normalizedMonthly 129.00 (the current price per month, unrelated to the period).
+    const cells = Array.from(root.querySelectorAll('tbody tr')).find((r) => r.querySelector('th a')?.textContent?.trim() === 'StreamCo')!.querySelectorAll('td');
+    expect(plain(cells[3].textContent)).toBe('DKK 129.00');
+    expect(plain(cells[4].textContent)).toBe('DKK 1,463.18');
+    expect(root.textContent).not.toContain('1,548.00');
+  });
+
+  it('reloads in place when the selection changes: a new ?period= request, the table never replaced by a skeleton, the choice remembered', async () => {
+    const storage = memoryStorage();
+    setup(storage);
+    const { fixture, root } = await render();
+    const table = root.querySelector('table');
+    await choose(fixture, root, 'last-12-months');
+    expect(root.querySelector('.skeleton')).toBeNull();
+    expect(root.querySelector('table')).toBe(table);
+    const data = periodData('last-12-months', '1');
+    http.expectOne(url('last-12-months')).flush(data);
+    await settle(fixture);
+    expect(root.querySelector('table')).toBe(table);
+    expect(stream(root)).toContain('DKK 11,463.18');
+    expect(select(root).value).toBe('last-12-months');
+    expect(storage.values.get(PERIOD_STORAGE_KEY)).toBe('last-12-months');
+  });
+
+  it('shows the totals panel as the period total and the average per month, per currency', async () => {
+    setup();
+    const { fixture, root } = await render();
+    const lines = () => Array.from(root.querySelectorAll('.totals-panel .totals li')).map((li) => plain(li.textContent));
+    expect(lines()[0]).toBe('DKK 3,862.32 · DKK 321.86 per month on average (4 active in the period)');
+    const next = overviewFixture();
+    next.period.key = 'next-12-months';
+    next.totals = [{ currency: 'DKK', minorUnit: 2, total: '1000.00', monthlyAverage: '83.33', activeCount: 2 }];
+    await choose(fixture, root, 'next-12-months');
+    http.expectOne(url('next-12-months')).flush(next);
+    await settle(fixture);
+    expect(lines()).toEqual(['DKK 1,000.00 · DKK 83.33 per month on average (2 active in the period)']);
+  });
+
+  it('does not let an out-of-order response overwrite the data of the current selection', async () => {
+    setup();
+    const { fixture, root } = await render();
+    await choose(fixture, root, 'last-12-months');
+    const slow = http.expectOne(url('last-12-months'));
+    await choose(fixture, root, 'next-12-months');
+    const fast = http.expectOne(url('next-12-months'));
+    fast.flush(periodData('next-12-months', '2'));
+    await settle(fixture);
+    slow.flush(periodData('last-12-months', '3'));
+    await settle(fixture);
+    expect(select(root).value).toBe('next-12-months');
+    expect(headers(root)).toContain(en['subscriptions.col.periodTotal.next12']);
+    expect(stream(root)).toContain('DKK 21,463.18');
+    expect(stream(root)).not.toContain('31,463.18');
+  });
+
+  it('shows a failed reload with its reference and retries for the current selection', async () => {
+    setup();
+    const { fixture, root } = await render();
+    await choose(fixture, root, 'next-12-months');
+    http.expectOne(url('next-12-months')).flush({ traceId: 'trace-period' }, { status: 503, statusText: 'Unavailable' });
+    await settle(fixture);
+    expect(root.querySelector('[role=alert]')?.textContent).toContain(en['subscriptions.loadFailed']);
+    expect(root.textContent).toContain('trace-period');
+    // The selector stays, so the member can pick another period instead of retrying.
+    expect(select(root).value).toBe('next-12-months');
+    (Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === en['common.retry']) as HTMLButtonElement).click();
+    http.expectOne(url('next-12-months')).flush(periodData('next-12-months', ''));
+    await settle(fixture);
+    expect(root.querySelector('table')).toBeTruthy();
+    expect(root.querySelector('[role=alert]')).toBeNull();
+  });
+
+  it('restores a stored selection and requests it first', async () => {
+    setup(memoryStorage({ [PERIOD_STORAGE_KEY]: 'last-12-months' }));
+    const { root } = await render('last-12-months', periodData('last-12-months', ''));
+    expect(select(root).value).toBe('last-12-months');
+    expect(headers(root)).toContain(en['subscriptions.col.periodTotal.last12']);
+  });
+
+  it('falls back to the current year when the stored year is not offered, and keeps the stored choice', async () => {
+    const storage = memoryStorage({ [PERIOD_STORAGE_KEY]: 'year-2019' });
+    setup(storage);
+    const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
+    fixture.detectChanges();
+    http.expectOne(url('year-2019')).flush(periodData('year-2019', ''));
+    flushPeriods(http);
+    await settle(fixture);
+    http.expectOne(url('year-2026')).flush(overviewFixture());
+    await settle(fixture);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(select(root).value).toBe('year-2026');
+    expect(headers(root)).toContain('Total 2026');
+    expect(storage.values.get(PERIOD_STORAGE_KEY)).toBe('year-2019');
+  });
+
+  it('keeps working, and keeps offering the fallback years, when the periods request fails', async () => {
+    setup();
+    const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
+    fixture.detectChanges();
+    http.expectOne(url('year-2026')).flush(overviewFixture());
+    http.expectOne('/api/subscriptions/periods').flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+    await settle(fixture);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(Array.from(select(root).options).map((option) => option.value)).toEqual(['year-2026', 'year-2027', 'last-12-months', 'next-12-months']);
+    expect(root.querySelector('table')).toBeTruthy();
+  });
+
+  it('keeps working when the storage throws on every access', async () => {
+    setup(throwingStorage);
+    const { fixture, root } = await render();
+    await choose(fixture, root, 'next-12-months');
+    http.expectOne(url('next-12-months')).flush(periodData('next-12-months', ''));
+    await settle(fixture);
+    expect(select(root).value).toBe('next-12-months');
+    expect(root.querySelector('table')).toBeTruthy();
+  });
+
+  it('sends the selected period with pause and reloads the overview for it', async () => {
+    setup(memoryStorage({ [PERIOD_STORAGE_KEY]: 'next-12-months' }));
+    const data = periodData('next-12-months', '');
+    const { fixture, root } = await render('next-12-months', data);
+    const row = data.subscriptions.find((s) => s.name === 'StreamCo')!;
+    root.querySelector<HTMLButtonElement>(`#action-${row.id}`)!.click();
+    http.expectOne({ method: 'POST', url: `/api/subscriptions/${row.id}/pause?period=next-12-months` }).flush({});
+    http.expectOne({ method: 'GET', url: url('next-12-months') }).flush(data);
+    await settle(fixture);
+    expect(root.querySelector('table')).toBeTruthy();
+  });
+
+  it('renders the selector, the headings and the totals line in Danish with no English application copy', async () => {
+    setup();
+    TestBed.inject(LanguageService).setLanguage('da');
+    const { root } = await render();
+    expect(root.querySelector('label[for=period-select]')?.textContent?.trim()).toBe(da['subscriptions.period.label']);
+    expect(headers(root)).toContain('I alt 2026');
+    expect(plain(root.querySelector('.totals-panel .totals li')?.textContent)).toBe('3.862,32 DKK · 321,86 DKK pr. måned i gennemsnit (4 aktive i perioden)');
+    expect(Array.from(select(root).options).map((o) => plain(o.textContent))).toContain(da['subscriptions.period.next12']);
+    expect(englishLeftovers(root)).toEqual([]);
+  });
+
+  it('shows the empty state with the selector still reachable', async () => {
+    setup();
+    const { root } = await render('year-2026', { ...overviewFixture(), subscriptions: [], totals: [] });
+    expect(root.textContent).toContain(en['subscriptions.emptyHeading']);
+    expect(select(root)).toBeTruthy();
+  });
+
+  it('offers a year option for every fixture year', () => {
+    expect(periodOptionsFixture().years).toEqual([2024, 2025, 2026, 2027]);
   });
 });

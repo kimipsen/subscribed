@@ -13,8 +13,11 @@ import { SubscriptionDetailPage } from './subscription-detail-page';
 import { SubscriptionsService } from './subscriptions.service';
 import { PaymentOptionList, SubscriptionDetail } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
-import { detailFixture, paymentOptionListFixture } from './testing/fixtures';
+import { detailFixture, overviewFixture, paymentOptionListFixture } from './testing/fixtures';
+import { PERIOD_STORAGE_KEY, flushPeriods, memoryStorage, periodOptionsFixture, periodTestProviders, throwingStorage } from './testing/period-providers';
 import '../app.config';
+
+const Q = '?period=year-2026';
 
 const plain = (value: string | null | undefined) => (value ?? '').replace(/[\u00a0\u202f]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -33,6 +36,7 @@ describe('SubscriptionDetailPage', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
       ],
@@ -53,7 +57,9 @@ describe('SubscriptionDetailPage', () => {
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush(options);
     http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
-    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    http.expectOne(`/api/subscriptions/${detail.id}${Q}`).flush(detail);
+    await settle(harness);
+    flushPeriods(http);
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement, detail };
   }
@@ -75,7 +81,9 @@ describe('SubscriptionDetailPage', () => {
   }
 
   const entrySubmit = (harness: RouterTestingHarness) => submitForm(harness, '.entry-form');
-  const request = (detail: SubscriptionDetail, suffix = '') => http.expectOne(`/api/subscriptions/${detail.id}${suffix}`);
+  /** Removing the subscription answers 204 with no body, so its DELETE carries no period. */
+  const removeRequest = (detail: SubscriptionDetail) => http.expectOne(`/api/subscriptions/${detail.id}`);
+  const request = (detail: SubscriptionDetail, suffix = '') => http.expectOne(`/api/subscriptions/${detail.id}${suffix}${Q}`);
 
   async function respond(harness: RouterTestingHarness, req: TestRequest, body: SubscriptionDetail) {
     req.flush(body);
@@ -245,7 +253,7 @@ describe('SubscriptionDetailPage', () => {
     expect(root.querySelector(`#remove-${initial.entryId}`)).toBeNull();
     el<HTMLButtonElement>(root, `#remove-${second.entryId}`).click();
     await settle(harness);
-    http.expectNone(`/api/subscriptions/${detail.id}/prices/${second.entryId}`);
+    http.expectNone(`/api/subscriptions/${detail.id}/prices/${second.entryId}${Q}`);
     expect(document.activeElement?.id).toBe('confirm-entry');
     buttonByText(root, en['detail.entry.removeYes']).click();
     const req = request(detail, `/prices/${second.entryId}`);
@@ -274,7 +282,7 @@ describe('SubscriptionDetailPage', () => {
     type(root, 'entry-effectiveFrom', detail.priceHistory[1].effectiveFrom);
     type(root, 'entry-amount', '70.00');
     await entrySubmit(harness);
-    http.expectNone(`/api/subscriptions/${detail.id}/prices`);
+    http.expectNone(`/api/subscriptions/${detail.id}/prices${Q}`);
     expect(el(root, '#entry-effectiveFrom').getAttribute('aria-invalid')).toBe('true');
     expect(el(root, '#entry-effectiveFrom').getAttribute('aria-describedby')).toContain('entry-effectiveFrom-error');
     expect(el(root, '#entry-effectiveFrom-error').textContent).toContain(en['detail.error.effectiveFrom']);
@@ -342,7 +350,7 @@ describe('SubscriptionDetailPage', () => {
     await settle(harness);
     type(root, 'end-date', detail.startDate);
     await submitForm(harness, 'form:not(.entry-form)');
-    http.expectNone(`/api/subscriptions/${detail.id}`);
+    http.expectNone(`/api/subscriptions/${detail.id}${Q}`);
     expect(el(root, '#end-date-error').textContent).toContain(en['detail.end.error']);
   });
 
@@ -418,7 +426,9 @@ describe('SubscriptionDetailPage', () => {
     await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
     http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
-    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    http.expectOne(`/api/subscriptions/${detail.id}${Q}`).flush(detail);
+    await settle(harness);
+    flushPeriods(http);
     await settle(harness);
     const root = harness.routeNativeElement as HTMLElement;
     expect(el(root, 'h1').textContent).toBe(detail.name);
@@ -569,7 +579,9 @@ describe('SubscriptionDetailPage', () => {
     await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne('/api/household').flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
-    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    http.expectOne(`/api/subscriptions/${detail.id}${Q}`).flush(detail);
+    await settle(harness);
+    flushPeriods(http);
     await settle(harness);
     const value = plain(cancelByRow(harness.routeNativeElement as HTMLElement)?.nextElementSibling?.textContent);
     expect(value).toMatch(/9:30/);
@@ -681,15 +693,16 @@ describe('SubscriptionDetailPage', () => {
     await settle(harness);
     expect(document.activeElement?.id).toBe('confirm-remove');
     expect(el(root, '#confirm-remove').textContent).toContain(detail.name);
-    http.expectNone(`/api/subscriptions/${detail.id}`);
+    http.expectNone(`/api/subscriptions/${detail.id}${Q}`);
     buttonByText(root, en['detail.remove.yes']).click();
-    const req = request(detail);
+    const req = removeRequest(detail);
     expect(req.request.method).toBe('DELETE');
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     req.flush(null, { status: 204, statusText: 'No Content' });
     await settle(harness);
     expect(TestBed.inject(Router).url).toBe('/');
-    http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+    http.expectOne(`/api/subscriptions${Q}`).flush({ ...overviewFixture(), subscriptions: [], totals: [] });
+    flushPeriods(http);
     await settle(harness);
     expect(el(harness.routeNativeElement as HTMLElement, '[role=status]').textContent).toContain(`${detail.name} was removed.`);
     expect(TestBed.inject(SubscriptionsService).notice()).toBeNull();
@@ -702,7 +715,7 @@ describe('SubscriptionDetailPage', () => {
     await harness.navigateByUrl(`/subscriptions/${'b'.repeat(32)}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
-    http.expectOne(`/api/subscriptions/${'b'.repeat(32)}`).flush({ traceId: 't' }, { status: 404, statusText: 'Not Found' });
+    http.expectOne(`/api/subscriptions/${'b'.repeat(32)}${Q}`).flush({ traceId: 't' }, { status: 404, statusText: 'Not Found' });
     await settle(harness);
     const root = harness.routeNativeElement as HTMLElement;
     expect(root.textContent).toContain(en['subscriptions.notFound']);
@@ -714,7 +727,7 @@ describe('SubscriptionDetailPage', () => {
     el<HTMLButtonElement>(root, '#remove-open').click();
     await settle(harness);
     buttonByText(root, en['detail.remove.yes']).click();
-    request(detail).flush({ traceId: 't' }, { status: 403, statusText: 'Forbidden' });
+    removeRequest(detail).flush({ traceId: 't' }, { status: 403, statusText: 'Forbidden' });
     await settle(harness);
     expect(root.textContent).toContain(en['subscriptions.form.forbidden']);
   });
@@ -739,7 +752,7 @@ describe('SubscriptionDetailPage', () => {
   // ---- pause and resume ------------------------------------------------------------------------------
 
   const pauseRequest = (detail: SubscriptionDetail, action: 'pause' | 'resume') =>
-    http.expectOne({ method: 'POST', url: `/api/subscriptions/${detail.id}/${action}` });
+    http.expectOne({ method: 'POST', url: `/api/subscriptions/${detail.id}/${action}${Q}` });
   const toggle = (root: HTMLElement) => root.querySelector<HTMLButtonElement>('#pause-toggle');
 
   it('offers Pause on an active subscription and sends a body-less POST with the version in If-Match', async () => {
@@ -865,10 +878,10 @@ describe('SubscriptionDetailPage', () => {
   it('re-renders amounts, dates, cadence labels and badges on a language switch with no request (EX-018)', async () => {
     const { harness, root, detail } = await open();
     const current = detail.priceHistory.find((e) => e.current)!;
-    expect(plain(root.textContent)).toContain('DKK 948.00');
+    expect(plain(root.textContent)).toContain('DKK 920.38');
     TestBed.inject(LanguageService).setLanguage('da');
     await settle(harness);
-    expect(plain(root.textContent)).toContain('948,00 DKK');
+    expect(plain(root.textContent)).toContain('920,38 DKK');
     expect(plain(root.textContent)).toContain(da['cadence.monthly']);
     expect(root.textContent).toContain(da['detail.badge.current']);
     expect(plain(rows(root)[detail.priceHistory.indexOf(current)].textContent)).toContain(da['detail.badge.current']);
@@ -886,5 +899,227 @@ describe('SubscriptionDetailPage', () => {
     await settle(harness);
     expect(el<HTMLInputElement>(root, '#entry-amount').value).toBe('1490,00');
     expect(el(root, '#entry-amount').getAttribute('aria-invalid')).toBeNull();
+  });
+});
+
+
+describe('SubscriptionDetailPage period', () => {
+  let http: HttpTestingController;
+
+  function setup(storage: Pick<Storage, 'getItem' | 'setItem'> | null = memoryStorage()) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(withInterceptors([csrfInterceptor])),
+        provideHttpClientTesting(),
+        ...periodTestProviders(storage),
+        { provide: BROWSER_LANGUAGES, useValue: ['en'] },
+        { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    TestBed.inject(SessionService).current.set({ state: 'member', user: { displayName: 'Synthetic', memberId: '1' }, expiresAt: '' });
+  }
+  afterEach(() => http.verify());
+
+  const forPeriod = (key: string, total: string): SubscriptionDetail => {
+    const detail = detailFixture();
+    const dates: Record<string, [string, string]> = {
+      'last-12-months': ['2025-11-18', '2026-11-17'],
+      'next-12-months': ['2026-11-17', '2027-11-16'],
+      'year-2025': ['2025-01-01', '2025-12-31'],
+      'year-2026': ['2026-01-01', '2026-12-31'],
+    };
+    return { ...detail, periodTotal: total, period: { key, from: dates[key][0], to: dates[key][1], months: 12 } };
+  };
+  const url = (key: string) => `/api/subscriptions/${detailFixture().id}?period=${key}`;
+
+  async function settle(harness: RouterTestingHarness) {
+    harness.detectChanges();
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+  }
+
+  /** Opens the page and answers the detail request for `requested` with `first`; the periods answer follows once the selector shows. */
+  async function open(requested: string, first: SubscriptionDetail, years = periodOptionsFixture()) {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/subscriptions/${first.id}`, SubscriptionDetailPage);
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
+    http.expectOne(url(requested)).flush(first);
+    await settle(harness);
+    flushPeriods(http, years);
+    await settle(harness);
+    return { harness, root: harness.routeNativeElement as HTMLElement };
+  }
+
+  const summaryTerms = (root: HTMLElement) => Array.from(root.querySelectorAll('.summary dt')).map((dt) => plain(dt.textContent));
+  const summaryValueOf = (root: HTMLElement, term: string) => {
+    const dt = Array.from(root.querySelectorAll('.summary dt')).find((candidate) => plain(candidate.textContent) === term);
+    return plain(dt?.nextElementSibling?.textContent);
+  };
+  const periodSelect = (root: HTMLElement) => root.querySelector<HTMLSelectElement>('#period-select')!;
+
+  async function choose(harness: RouterTestingHarness, root: HTMLElement, key: string) {
+    const select = periodSelect(root);
+    select.value = key;
+    select.dispatchEvent(new Event('change'));
+    await settle(harness);
+  }
+
+  it('shows the period total under the period heading and keeps the per-month figure', async () => {
+    setup();
+    const { root } = await open('year-2026', forPeriod('year-2026', '920.38'));
+    expect(summaryTerms(root)).toContain('Total 2026');
+    expect(summaryValueOf(root, 'Total 2026')).toBe('DKK 920.38');
+    expect(summaryValueOf(root, en['subscriptions.col.perMonth'])).toBe('DKK 79.00');
+    expect(summaryTerms(root)).not.toContain('Per year');
+  });
+
+  it('puts a labelled selector at the top of the summary, offering the years, then Last and Next 12 months', async () => {
+    setup();
+    const { root } = await open('year-2026', forPeriod('year-2026', '920.38'));
+    const summary = root.querySelector('#summary-heading')!.parentElement!;
+    expect(summary.querySelector('#period-select')).toBe(periodSelect(root));
+    expect(summary.querySelector('h2')!.nextElementSibling!.contains(periodSelect(root))).toBe(true);
+    expect(root.querySelector('label[for=period-select]')?.textContent?.trim()).toBe(en['subscriptions.period.label']);
+    const options = Array.from(periodSelect(root).options).map((option) => [option.value, plain(option.textContent)]);
+    expect(options).toEqual([
+      ['year-2024', '2024'],
+      ['year-2025', '2025'],
+      ['year-2026', '2026'],
+      ['year-2027', '2027'],
+      ['last-12-months', en['subscriptions.period.last12']],
+      ['next-12-months', en['subscriptions.period.next12']],
+    ]);
+    expect(periodSelect(root).value).toBe('year-2026');
+  });
+
+  it('reloads in place with ?period= when the selection changes, relabels the total and remembers the choice', async () => {
+    const storage = memoryStorage();
+    setup(storage);
+    const { harness, root } = await open('year-2026', forPeriod('year-2026', '920.38'));
+    const heading = root.querySelector('h1');
+    await choose(harness, root, 'last-12-months');
+    http.expectOne(url('last-12-months')).flush(forPeriod('last-12-months', '987.65'));
+    await settle(harness);
+    // In place: the page never went back to its skeleton, so the same heading element is still there.
+    expect(root.querySelector('h1')).toBe(heading);
+    expect(summaryValueOf(root, en['subscriptions.col.periodTotal.last12'])).toBe('DKK 987.65');
+    expect(periodSelect(root).value).toBe('last-12-months');
+    expect(storage.values.get(PERIOD_STORAGE_KEY)).toBe('last-12-months');
+  });
+
+  it('renders the selector and the period total in Danish with no English application copy', async () => {
+    setup();
+    TestBed.inject(LanguageService).setLanguage('da');
+    const { root } = await open('year-2026', forPeriod('year-2026', '920.38'));
+    expect(root.querySelector('label[for=period-select]')?.textContent?.trim()).toBe(da['subscriptions.period.label']);
+    expect(summaryTerms(root)).toContain('I alt 2026');
+    expect(Array.from(periodSelect(root).options).map((option) => plain(option.textContent))).toContain(da['subscriptions.period.last12']);
+    expect(englishLeftovers(root)).toEqual([]);
+  });
+
+  it('reads the selection shared with the overview and restores a stored one', async () => {
+    setup(memoryStorage({ [PERIOD_STORAGE_KEY]: 'next-12-months' }));
+    const { root } = await open('next-12-months', forPeriod('next-12-months', '1000.00'));
+    expect(periodSelect(root).value).toBe('next-12-months');
+    expect(summaryValueOf(root, en['subscriptions.col.periodTotal.next12'])).toBe('DKK 1,000.00');
+  });
+
+  it('falls back to the current year for a stored year that is not offered, without clearing the stored choice', async () => {
+    const storage = memoryStorage({ [PERIOD_STORAGE_KEY]: 'year-2019' });
+    setup(storage);
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/subscriptions/${detailFixture().id}`, SubscriptionDetailPage);
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
+    http.expectOne(url('year-2019')).flush({ ...forPeriod('year-2026', '0.00'), period: { key: 'year-2019', from: '2019-01-01', to: '2019-12-31', months: 12 } });
+    await settle(harness);
+    flushPeriods(http);
+    await settle(harness);
+    // The list does not contain 2019, so the page reloads for the current year.
+    http.expectOne(url('year-2026')).flush(forPeriod('year-2026', '920.38'));
+    await settle(harness);
+    const root = harness.routeNativeElement as HTMLElement;
+    expect(periodSelect(root).value).toBe('year-2026');
+    expect(summaryValueOf(root, 'Total 2026')).toBe('DKK 920.38');
+    expect(storage.values.get(PERIOD_STORAGE_KEY)).toBe('year-2019');
+  });
+
+  it('keeps working when the storage throws on every access', async () => {
+    setup(throwingStorage);
+    const { harness, root } = await open('year-2026', forPeriod('year-2026', '920.38'));
+    await choose(harness, root, 'year-2025');
+    http.expectOne(url('year-2025')).flush(forPeriod('year-2025', '700.00'));
+    await settle(harness);
+    expect(periodSelect(root).value).toBe('year-2025');
+    expect(summaryValueOf(root, 'Total 2025')).toBe('DKK 700.00');
+  });
+
+  it('keeps offering the fallback years when the periods request fails', async () => {
+    setup();
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/subscriptions/${detailFixture().id}`, SubscriptionDetailPage);
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
+    http.expectOne(url('year-2026')).flush(forPeriod('year-2026', '920.38'));
+    await settle(harness);
+    http.expectOne('/api/subscriptions/periods').flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+    await settle(harness);
+    const root = harness.routeNativeElement as HTMLElement;
+    expect(Array.from(periodSelect(root).options).map((option) => option.value)).toEqual([
+      'year-2026', 'year-2027', 'last-12-months', 'next-12-months',
+    ]);
+    expect(summaryValueOf(root, 'Total 2026')).toBe('DKK 920.38');
+  });
+
+  it('does not let an out-of-order response overwrite the data of the current selection', async () => {
+    setup();
+    const { harness, root } = await open('year-2026', forPeriod('year-2026', '920.38'));
+    await choose(harness, root, 'last-12-months');
+    const slow = http.expectOne(url('last-12-months'));
+    await choose(harness, root, 'next-12-months');
+    const fast = http.expectOne(url('next-12-months'));
+    fast.flush(forPeriod('next-12-months', '1111.11'));
+    await settle(harness);
+    slow.flush(forPeriod('last-12-months', '2222.22'));
+    await settle(harness);
+    expect(periodSelect(root).value).toBe('next-12-months');
+    expect(summaryValueOf(root, en['subscriptions.col.periodTotal.next12'])).toBe('DKK 1,111.11');
+    expect(root.textContent).not.toContain('2,222.22');
+  });
+
+  it('sends the selected period with pause and shows the answer for it', async () => {
+    setup(memoryStorage({ [PERIOD_STORAGE_KEY]: 'last-12-months' }));
+    const first = forPeriod('last-12-months', '987.65');
+    const { harness, root } = await open('last-12-months', first);
+    root.querySelector<HTMLButtonElement>('#pause-toggle')!.click();
+    const post = http.expectOne({ method: 'POST', url: `/api/subscriptions/${first.id}/pause?period=last-12-months` });
+    post.flush({ ...first, version: first.version + 1, status: 'paused', paused: true, periodTotal: '900.00' });
+    await settle(harness);
+    expect(summaryValueOf(root, en['subscriptions.col.periodTotal.last12'])).toBe('DKK 900.00');
+  });
+
+  it('reloads the detail when a mutation answers for a period that is no longer selected', async () => {
+    setup();
+    const first = forPeriod('year-2026', '920.38');
+    const { harness, root } = await open('year-2026', first);
+    root.querySelector<HTMLButtonElement>('#pause-toggle')!.click();
+    const post = http.expectOne({ method: 'POST', url: `/api/subscriptions/${first.id}/pause?period=year-2026` });
+    await choose(harness, root, 'next-12-months');
+    // The selection change already asked for the next 12 months.
+    const reload = http.expectOne(url('next-12-months'));
+    post.flush({ ...first, version: first.version + 1, status: 'paused', paused: true });
+    await settle(harness);
+    // The answer was for 2026, so it must not stand: the page asks again for the selection (a fresh version too) and ignores the stale request.
+    const pending = http.match(url('next-12-months'));
+    expect(pending).toHaveLength(1);
+    pending[0].flush(forPeriod('next-12-months', '1111.11'));
+    // The first reload answers last: its response belongs to a superseded request and is ignored.
+    reload.flush(forPeriod('next-12-months', '9999.99'));
+    await settle(harness);
+    expect(summaryValueOf(root, en['subscriptions.col.periodTotal.next12'])).toBe('DKK 1,111.11');
+    expect(root.textContent).not.toContain('9,999.99');
   });
 });

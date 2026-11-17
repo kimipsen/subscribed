@@ -14,6 +14,7 @@ import { SubscriptionFormPage } from './subscription-form-page';
 import { Catalog, CatalogPlan, CatalogService, PaymentOptionList, SubscriptionDetail, SubscriptionOptions, SubscriptionOverview } from './subscription.models';
 import { englishLeftovers } from './testing/english-leftovers';
 import { catalogFixture, detailFixture, optionsFixture, overviewFixture, overviewWith, paymentOptionListFixture, validationProblemFixture } from './testing/fixtures';
+import { flushPeriods, periodTestProviders } from './testing/period-providers';
 import './../app.config';
 
 describe('SubscriptionFormPage', () => {
@@ -26,6 +27,7 @@ describe('SubscriptionFormPage', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
       ],
@@ -129,7 +131,9 @@ describe('SubscriptionFormPage', () => {
     await settle(harness);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
-    http.expectOne(`/api/subscriptions/${saved.id}`).flush(saved);
+    http.expectOne(`/api/subscriptions/${saved.id}?period=year-2026`).flush(saved);
+    await settle(harness);
+    flushPeriods(http);
     await settle(harness);
   }
 
@@ -842,6 +846,7 @@ describe('SubscriptionFormPage catalog picker', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
       ],
