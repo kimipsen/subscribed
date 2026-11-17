@@ -35,7 +35,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     }
 
     private static NewSubscription Sub(string name = "StreamCo", string currency = "DKK", string amount = "129.00", string start = "2024-03-01") =>
-        SubscriptionDecisions.ParseAdd(new AddInput(name, null, null, currency, start, null, amount, "month", 1));
+        SubscriptionDecisions.ParseAdd(new AddInput(name, null, null, currency, start, null, amount, "month", 1), TimeZoneInfo.Utc);
 
     private static PriceEntryChange Entry(string from, string amount, string unit = "month", int count = 1) =>
         SubscriptionDecisions.ParsePriceEntry(new PriceInput(from, amount, unit, count));
@@ -419,7 +419,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     }
 
     private static NewSubscription LinkedSub(string catalogId) =>
-        SubscriptionDecisions.ParseAdd(new AddInput("StreamCo", null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, catalogId));
+        SubscriptionDecisions.ParseAdd(new AddInput("StreamCo", null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, catalogId), TimeZoneInfo.Utc);
 
     private static DetailsUpdate LinkTo(SubscriptionState s, string? catalogId) =>
         new(s.Name, s.Category, s.Notes, s.Currency, s.StartDate, s.EndDate, catalogId);
@@ -467,7 +467,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     private const string UnsubscribeUrl = "https://example.com/cancel";
 
     private static NewSubscription SubWithUrl(string? url) =>
-        SubscriptionDecisions.ParseAdd(new AddInput("StreamCo", null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, UnsubscribeUrl: url));
+        SubscriptionDecisions.ParseAdd(new AddInput("StreamCo", null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, UnsubscribeUrl: url), TimeZoneInfo.Utc);
 
     [Fact]
     public async Task A_url_is_stored_in_the_event_and_the_snapshot_and_survives_a_projection_rebuild()
@@ -528,7 +528,7 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         var old = await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct);
         Assert.Null(old!.UnsubscribeUrl);
 
-        var update = SubscriptionDecisions.ParseUpdate(new UpdateInput(old.Name, old.Category, old.Notes, old.Currency, "2024-03-01", null, null, UnsubscribeUrl));
+        var update = SubscriptionDecisions.ParseUpdate(new UpdateInput(old.Name, old.Category, old.Notes, old.Currency, "2024-03-01", null, null, UnsubscribeUrl), TimeZoneInfo.Utc);
         var saved = await service.UpdateAsync(SubscriptionIds.Bare(added.Id), old.Version, update, Member, Ct);
         Assert.Equal(UnsubscribeUrl, saved.UnsubscribeUrl);
         Assert.Equal(UnsubscribeUrl, await db.ScalarAsMigratorAsync<string>($"SELECT data->>'unsubscribeUrl' FROM subscribed.mt_doc_subscription_view WHERE id = '{key}'"));

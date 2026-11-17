@@ -20,6 +20,7 @@ public sealed class SubscriptionEventTests
     [InlineData(SubscriptionEventTypes.Resumed, typeof(SubscriptionResumed))]
     [InlineData(SubscriptionEventTypes.CatalogLinked, typeof(SubscriptionCatalogLinked))]
     [InlineData(SubscriptionEventTypes.PriceEntryPaymentChanged, typeof(SubscriptionPriceEntryPaymentChanged))]
+    [InlineData(SubscriptionEventTypes.CancelByChanged, typeof(SubscriptionCancelByChanged))]
     public void Golden_fixtures_deserialize_and_round_trip(string alias, Type type)
     {
         var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "events", alias + ".json")).Trim();
@@ -66,7 +67,7 @@ public sealed class SubscriptionEventTests
             Assert.Contains(type.GetProperties(), p => p.Name == "RecordedAt");
         }
 
-        Assert.Equal(12, SubscriptionEventTypes.ByAlias.Count);
+        Assert.Equal(13, SubscriptionEventTypes.ByAlias.Count);
         Assert.All(SubscriptionEventTypes.ByAlias.Keys, a => Assert.Matches(@"^subscription\.[a-z_]+\.v1$", a));
     }
 
@@ -90,7 +91,7 @@ public sealed class SubscriptionDecisionTests
 
     internal static List<object> Added(AddInput input, string entryId = "e1")
     {
-        var events = SubscriptionDecisions.Add(SubscriptionDecisions.ParseAdd(input), "household-default", entryId, Now);
+        var events = SubscriptionDecisions.Add(SubscriptionDecisions.ParseAdd(input, TestZones.Utc), "household-default", entryId, Now);
         return [.. events];
     }
 
@@ -121,13 +122,13 @@ public sealed class SubscriptionDecisionTests
     [Theory]
     [InlineData("", "name")]
     [InlineData("   ", "name")]
-    public void EX_013_empty_name(string name, string key) => Assert.Equal(key, Key(() => SubscriptionDecisions.ParseAdd(Input(name))));
+    public void EX_013_empty_name(string name, string key) => Assert.Equal(key, Key(() => SubscriptionDecisions.ParseAdd(Input(name), TestZones.Utc)));
 
     [Fact]
-    public void EX_013_name_of_81_characters() => Assert.Equal("name", Key(() => SubscriptionDecisions.ParseAdd(Input(new string('a', 81)))));
+    public void EX_013_name_of_81_characters() => Assert.Equal("name", Key(() => SubscriptionDecisions.ParseAdd(Input(new string('a', 81)), TestZones.Utc)));
 
     [Fact]
-    public void EX_013_unknown_currency() => Assert.Equal("currency", Key(() => SubscriptionDecisions.ParseAdd(Input(currency: "XYZ"))));
+    public void EX_013_unknown_currency() => Assert.Equal("currency", Key(() => SubscriptionDecisions.ParseAdd(Input(currency: "XYZ"), TestZones.Utc)));
 
     [Theory]
     [InlineData("-5.00")]
@@ -137,16 +138,16 @@ public sealed class SubscriptionDecisionTests
     [InlineData("1e3")]
     [InlineData("abc")]
     [InlineData("١٢٣")]
-    public void Invalid_amount_shapes(string amount) => Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(amount: amount))));
+    public void Invalid_amount_shapes(string amount) => Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(amount: amount), TestZones.Utc)));
 
     [Fact]
     public void EX_013_minor_unit_precision_on_add()
     {
-        Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(amount: "99.955"))));
-        Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(currency: "JPY", amount: "1200.5"))));
-        Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(currency: "JPY", amount: "1200.0"))));
-        Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(currency: "KWD", amount: "1.2345"))));
-        Assert.Equal(1.234m, SubscriptionDecisions.ParseAdd(Input(currency: "KWD", amount: "1.234")).Amount);
+        Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(amount: "99.955"), TestZones.Utc)));
+        Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(currency: "JPY", amount: "1200.5"), TestZones.Utc)));
+        Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(currency: "JPY", amount: "1200.0"), TestZones.Utc)));
+        Assert.Equal("amount", Key(() => SubscriptionDecisions.ParseAdd(Input(currency: "KWD", amount: "1.2345"), TestZones.Utc)));
+        Assert.Equal(1.234m, SubscriptionDecisions.ParseAdd(Input(currency: "KWD", amount: "1.234"), TestZones.Utc).Amount);
     }
 
     [Theory]
@@ -156,16 +157,16 @@ public sealed class SubscriptionDecisionTests
     [InlineData("day", 1)]
     public void Invalid_cadence(string unit, int count)
     {
-        var errors = Rejected(() => SubscriptionDecisions.ParseAdd(Input(unit: unit, count: count))).Errors;
+        var errors = Rejected(() => SubscriptionDecisions.ParseAdd(Input(unit: unit, count: count), TestZones.Utc)).Errors;
         Assert.Contains(errors.Keys, k => k is "cadenceUnit" or "cadenceCount");
     }
 
     [Fact]
     public void Missing_required_fields_are_each_reported_and_collected_together()
     {
-        var errors = Rejected(() => SubscriptionDecisions.ParseAdd(new AddInput(null, null, null, null, null, null, null, null, null))).Errors;
+        var errors = Rejected(() => SubscriptionDecisions.ParseAdd(new AddInput(null, null, null, null, null, null, null, null, null), TestZones.Utc)).Errors;
         Assert.Equal(["amount", "cadenceCount", "cadenceUnit", "currency", "name", "startDate"], errors.Keys.Order(StringComparer.Ordinal));
-        var several = Rejected(() => SubscriptionDecisions.ParseAdd(Input("", "XYZ", "-1", "day", 0, "2024-13-01"))).Errors;
+        var several = Rejected(() => SubscriptionDecisions.ParseAdd(Input("", "XYZ", "-1", "day", 0, "2024-13-01"), TestZones.Utc)).Errors;
         Assert.Equal(["amount", "cadenceCount", "cadenceUnit", "currency", "name", "startDate"], several.Keys.Order(StringComparer.Ordinal));
     }
 
@@ -177,17 +178,17 @@ public sealed class SubscriptionDecisionTests
     [InlineData("2024-03-01T00:00:00")]
     [InlineData(" 2024-03-01")]
     [InlineData("")]
-    public void Dates_must_be_yyyy_MM_dd(string date) => Assert.Equal("startDate", Key(() => SubscriptionDecisions.ParseAdd(Input(start: date))));
+    public void Dates_must_be_yyyy_MM_dd(string date) => Assert.Equal("startDate", Key(() => SubscriptionDecisions.ParseAdd(Input(start: date), TestZones.Utc)));
 
     [Fact]
     public void Text_fields_are_normalized_and_checked()
     {
-        var parsed = SubscriptionDecisions.ParseAdd(Input() with { Name = "  Stream  ", Category = "  ", Notes = "a\r\nb" });
+        var parsed = SubscriptionDecisions.ParseAdd(Input() with { Name = "  Stream  ", Category = "  ", Notes = "a\r\nb" }, TestZones.Utc);
         Assert.Equal("Stream", parsed.Name);
         Assert.Null(parsed.Category);
         Assert.Equal("a\nb", parsed.Notes);
-        Assert.Equal("category", Key(() => SubscriptionDecisions.ParseAdd(Input() with { Category = new string('c', 41) })));
-        Assert.Equal("notes", Key(() => SubscriptionDecisions.ParseAdd(Input() with { Notes = "a\tb" })));
+        Assert.Equal("category", Key(() => SubscriptionDecisions.ParseAdd(Input() with { Category = new string('c', 41) }, TestZones.Utc)));
+        Assert.Equal("notes", Key(() => SubscriptionDecisions.ParseAdd(Input() with { Notes = "a\tb" }, TestZones.Utc)));
     }
 
     // ---- add and invariants ------------------------------------------------------------------------
@@ -196,7 +197,7 @@ public sealed class SubscriptionDecisionTests
     public void Add_emits_one_event_in_utc_with_the_initial_entry()
     {
         var offset = new DateTimeOffset(2026, 11, 13, 14, 0, 0, TimeSpan.FromHours(2));
-        var events = SubscriptionDecisions.Add(SubscriptionDecisions.ParseAdd(Input()), "household-default", "e1", offset);
+        var events = SubscriptionDecisions.Add(SubscriptionDecisions.ParseAdd(Input(), TestZones.Utc), "household-default", "e1", offset);
         var added = Assert.IsType<SubscriptionAdded>(Assert.Single(events));
         Assert.Equal(TimeSpan.Zero, added.RecordedAt.Offset);
         Assert.Equal(offset.UtcDateTime, added.RecordedAt.UtcDateTime);
@@ -207,7 +208,7 @@ public sealed class SubscriptionDecisionTests
 
     [Fact]
     public void EX_013_end_before_start_is_rejected_on_add() =>
-        Assert.Equal("endDate", Key(() => SubscriptionDecisions.Add(SubscriptionDecisions.ParseAdd(Input(start: "2024-03-01", end: "2024-01-01")), "h", "e1", Now)));
+        Assert.Equal("endDate", Key(() => SubscriptionDecisions.Add(SubscriptionDecisions.ParseAdd(Input(start: "2024-03-01", end: "2024-01-01"), TestZones.Utc), "h", "e1", Now)));
 
     [Fact]
     public void EX_014_moving_the_start_date_earlier_moves_the_initial_entry()

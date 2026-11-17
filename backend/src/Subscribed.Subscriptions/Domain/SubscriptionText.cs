@@ -8,6 +8,12 @@ public static class SubscriptionText
     public const int MaxNotes = 1000;
     public const int MaxUnsubscribeUrl = 2048;
 
+    /// <summary>Field error texts for <c>cancelBy</c>. English only; the UI maps the field to its own message.</summary>
+    public const string CancelByFormat = "The cancel-by time must be a local time in yyyy-MM-ddTHH:mm format, without an offset or Z.";
+
+    public const string CancelByGap = "That local time does not exist in the household time zone (clocks move forward).";
+    public const string CancelByBeforeStart = "The cancel-by date cannot be before the start date.";
+
     /// <summary>Trimmed, 1–80 UTF-16 code units, no control characters. Duplicates are allowed (BR-002).</summary>
     public static bool TryNormalizeName(string? raw, out string name)
     {

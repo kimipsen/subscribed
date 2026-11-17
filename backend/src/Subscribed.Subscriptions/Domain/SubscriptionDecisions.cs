@@ -4,16 +4,24 @@ using Subscribed.Subscriptions.PaymentOptions;
 namespace Subscribed.Subscriptions.Domain;
 
 /// <summary>Raw request fields, exactly as the client sent them. Omitted means null (D-10).</summary>
-public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount, string? CatalogId = null, string? UnsubscribeUrl = null, string? PaymentOptionId = null);
+public sealed record AddInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? Amount, string? CadenceUnit, int? CadenceCount, string? CatalogId = null, string? UnsubscribeUrl = null, string? PaymentOptionId = null, string? CancelBy = null);
 
-public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null);
+public sealed record UpdateInput(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null, string? CancelBy = null);
 
 public sealed record PriceInput(string? EffectiveFrom, string? Amount, string? CadenceUnit, int? CadenceCount, string? PaymentOptionId = null);
 
-/// <summary>Fields that passed the shape rules.</summary>
-public sealed record NewSubscription(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, decimal Amount, Cadence Cadence, string? CatalogId = null, string? UnsubscribeUrl = null, string? PaymentOptionId = null);
+/// <summary>
+/// Fields that passed the shape rules. <paramref name="CancelBy"/> is the parsed UTC instant; <paramref name="Zone"/> is the
+/// household zone it was parsed in, and the zone the date rule (D5) is checked in. A null zone means UTC.
+/// </summary>
+public sealed record NewSubscription(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, decimal Amount, Cadence Cadence, string? CatalogId = null, string? UnsubscribeUrl = null, string? PaymentOptionId = null, DateTimeOffset? CancelBy = null, TimeZoneInfo? Zone = null);
 
-public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null);
+/// <summary>
+/// <paramref name="CancelByLocal"/> is the submitted deadline as a normalised local string (<c>yyyy-MM-ddTHH:mm</c>, with
+/// <c>:ss</c> only when the seconds are not zero), or null. The update decision compares it with the current local rendering
+/// of the stored instant, never instant with instant. A null zone means UTC.
+/// </summary>
+public sealed record DetailsUpdate(string Name, string? Category, string? Notes, string Currency, DateOnly StartDate, DateOnly? EndDate, string? CatalogId = null, string? UnsubscribeUrl = null, DateTimeOffset? CancelBy = null, string? CancelByLocal = null, TimeZoneInfo? Zone = null);
 
 public sealed record PriceEntryChange(DateOnly EffectiveFrom, decimal Amount, Cadence Cadence, string? PaymentOptionId = null);
 
@@ -26,9 +34,11 @@ public static class SubscriptionDecisions
 {
     // ---- step 1: shape -------------------------------------------------------------------------------
 
-    public static NewSubscription ParseAdd(AddInput input)
+    /// <summary>The zone is required, with no default, so a call site cannot forget the household zone.</summary>
+    public static NewSubscription ParseAdd(AddInput input, TimeZoneInfo zone)
     {
         ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(zone);
         var errors = new FieldErrors();
         var name = Name(input.Name, errors);
         var category = Category(input.Category, errors);
@@ -40,13 +50,16 @@ public static class SubscriptionDecisions
         var catalogId = CatalogId(input.CatalogId, errors);
         var paymentOptionId = PaymentOptionId(input.PaymentOptionId, errors);
         var unsubscribeUrl = UnsubscribeUrl(input.UnsubscribeUrl, errors);
+        var (cancelBy, _) = CancelBy(input.CancelBy, zone, errors);
         errors.ThrowIfAny();
-        return new NewSubscription(name!, category, notes, currency!, start!.Value, end, amount!.Value, cadence!.Value, catalogId, unsubscribeUrl, paymentOptionId);
+        return new NewSubscription(name!, category, notes, currency!, start!.Value, end, amount!.Value, cadence!.Value, catalogId, unsubscribeUrl, paymentOptionId, cancelBy, zone);
     }
 
-    public static DetailsUpdate ParseUpdate(UpdateInput input)
+    /// <summary>The zone is required, with no default, so a call site cannot forget the household zone.</summary>
+    public static DetailsUpdate ParseUpdate(UpdateInput input, TimeZoneInfo zone)
     {
         ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(zone);
         var errors = new FieldErrors();
         var name = Name(input.Name, errors);
         var category = Category(input.Category, errors);
@@ -56,8 +69,9 @@ public static class SubscriptionDecisions
         var end = Date(input.EndDate, "endDate", false, errors);
         var catalogId = CatalogId(input.CatalogId, errors);
         var unsubscribeUrl = UnsubscribeUrl(input.UnsubscribeUrl, errors);
+        var (cancelBy, cancelByLocal) = CancelBy(input.CancelBy, zone, errors);
         errors.ThrowIfAny();
-        return new DetailsUpdate(name!, category, notes, currency!, start!.Value, end, catalogId, unsubscribeUrl);
+        return new DetailsUpdate(name!, category, notes, currency!, start!.Value, end, catalogId, unsubscribeUrl, cancelBy, cancelByLocal, zone);
     }
 
     /// <summary>Shape only. The minor-unit rule needs the subscription's currency and runs with the invariants.</summary>
@@ -86,8 +100,18 @@ public static class SubscriptionDecisions
             errors.Add("endDate", "The end date cannot be before the start date.");
         }
 
+        if (command.CancelBy is { } cancelBy && LocalDate(cancelBy, command.Zone) < candidate.StartDate)
+        {
+            errors.Add("cancelBy", SubscriptionText.CancelByBeforeStart);
+        }
+
         errors.ThrowIfAny();
         var events = new List<object> { added };
+        if (command.CancelBy is not null)
+        {
+            events.Add(new SubscriptionCancelByChanged(command.CancelBy.Value.ToUniversalTime(), now.ToUniversalTime()));
+        }
+
         if (command.CatalogId is not null)
         {
             events.Add(new SubscriptionCatalogLinked(command.CatalogId, now.ToUniversalTime()));
@@ -130,6 +154,14 @@ public static class SubscriptionDecisions
             events.Add(new SubscriptionCatalogLinked(command.CatalogId, at));
         }
 
+        // Changed means the submitted local string differs from the current local rendering of the stored instant. Comparing
+        // instants would let a save that did not touch the deadline move it (DST overlap, tz database change, household zone change).
+        var cancelByChanged = !string.Equals(command.CancelByLocal, RenderCancelBy(current.CancelBy, command.Zone), StringComparison.Ordinal);
+        if (cancelByChanged)
+        {
+            events.Add(new SubscriptionCancelByChanged(command.CancelBy?.ToUniversalTime(), at));
+        }
+
         if (events.Count == 0)
         {
             return [];
@@ -150,6 +182,14 @@ public static class SubscriptionDecisions
         if (candidate.EndDate is { } last && candidate.Entries.Any(e => e.EffectiveFrom > last) && !errors.Has("endDate"))
         {
             errors.Add("endDate", "The end date cannot be before a price entry.");
+        }
+
+        // D5 runs only when the deadline or the start date is part of this change, so a rename is never blocked by a stale deadline.
+        if ((cancelByChanged || command.StartDate != current.StartDate)
+            && candidate.CancelBy is { } effective
+            && LocalDate(effective, command.Zone) < candidate.StartDate)
+        {
+            errors.Add("cancelBy", SubscriptionText.CancelByBeforeStart);
         }
 
         MinorUnit(candidate.Currency, out var minor);
@@ -392,6 +432,61 @@ public static class SubscriptionDecisions
 
         errors.Add("currency", "Currency must be a three-letter ISO 4217 code in capitals.");
         return null;
+    }
+
+    /// <summary>
+    /// The local rendering of a stored deadline in the zone: <c>yyyy-MM-ddTHH:mm</c>, with <c>:ss</c> only when the seconds are not
+    /// zero, or null for no deadline. A null zone means UTC. The API shows this string and the update decision compares against it.
+    /// </summary>
+    public static string? RenderCancelBy(DateTimeOffset? instant, TimeZoneInfo? zone) =>
+        instant is { } value ? FormatLocal(TimeZoneInfo.ConvertTime(value, zone ?? TimeZoneInfo.Utc).DateTime) : null;
+
+    private static string FormatLocal(DateTime local) =>
+        local.ToString(local.Second == 0 ? "yyyy-MM-ddTHH:mm" : "yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+
+    private static DateOnly LocalDate(DateTimeOffset instant, TimeZoneInfo? zone) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone ?? TimeZoneInfo.Utc).DateTime);
+
+    /// <summary>
+    /// Parses a local wall time in the household zone (D3, D4). Null or empty means no deadline. Only <c>yyyy-MM-ddTHH:mm</c> and
+    /// <c>yyyy-MM-ddTHH:mm:ss</c> are accepted, so an offset or <c>Z</c> is a format error. A time inside a DST gap is rejected;
+    /// a time inside a DST overlap resolves to the earlier instant. The instant is returned in UTC with the normalised local string.
+    /// </summary>
+    private static (DateTimeOffset? Instant, string? Local) CancelBy(string? raw, TimeZoneInfo zone, FieldErrors errors)
+    {
+        var trimmed = (raw ?? "").Trim();
+        if (trimmed.Length == 0)
+        {
+            return (null, null);
+        }
+
+        if (!DateTime.TryParseExact(trimmed, ["yyyy-MM-ddTHH:mm", "yyyy-MM-ddTHH:mm:ss"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
+            || local.Kind != DateTimeKind.Unspecified
+            || trimmed.AsSpan(11, 2).SequenceEqual("24"))
+        {
+            errors.Add("cancelBy", SubscriptionText.CancelByFormat);
+            return (null, null);
+        }
+
+        if (zone.IsInvalidTime(local))
+        {
+            errors.Add("cancelBy", SubscriptionText.CancelByGap);
+            return (null, null);
+        }
+
+        // In an overlap the earlier instant has the larger UTC offset.
+        var offset = zone.IsAmbiguousTime(local) ? zone.GetAmbiguousTimeOffsets(local).Max() : zone.GetUtcOffset(local);
+        try
+        {
+            // Subtract the offset on the DateTime: the DateTimeOffset constructor can reject offsets that are not whole minutes (LMT).
+            var utc = DateTime.SpecifyKind(local - offset, DateTimeKind.Utc);
+            return (new DateTimeOffset(utc), FormatLocal(local));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            errors.Add("cancelBy", SubscriptionText.CancelByFormat);
+            return (null, null);
+        }
     }
 
     private static DateOnly? Date(string? raw, string field, bool required, FieldErrors errors)

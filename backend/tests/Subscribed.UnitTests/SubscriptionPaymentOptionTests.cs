@@ -58,7 +58,7 @@ public sealed class SubscriptionPaymentOptionTests
     [InlineData("   ")]
     public void Blank_option_id_becomes_null(string blank)
     {
-        Assert.Null(SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { PaymentOptionId = blank }).PaymentOptionId);
+        Assert.Null(SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { PaymentOptionId = blank }, TestZones.Utc).PaymentOptionId);
         Assert.Null(Entry("2025-01-01", "1.00", blank).PaymentOptionId);
     }
 
@@ -77,7 +77,7 @@ public sealed class SubscriptionPaymentOptionTests
     {
         var ex = Assert.Throws<SubscriptionValidationException>(() => Entry("2025-01-01", "1.00", id));
         Assert.Equal("paymentOptionId", Assert.Single(ex.Errors).Key);
-        Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { PaymentOptionId = id }));
+        Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { PaymentOptionId = id }, TestZones.Utc));
     }
 
     // ---- add and correct price entries -------------------------------------------------------------

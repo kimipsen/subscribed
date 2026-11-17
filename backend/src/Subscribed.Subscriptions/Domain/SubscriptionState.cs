@@ -49,6 +49,9 @@ public sealed class SubscriptionState
     /// <summary>The user-specified unsubscribe link, or null. Snapshots written before this property existed read as null.</summary>
     public string? UnsubscribeUrl { get; set; }
 
+    /// <summary>The cancel-by deadline as a UTC instant, or null. Snapshots written before this property existed read as null.</summary>
+    public DateTimeOffset? CancelBy { get; set; }
+
     public List<PriceEntryState> Entries { get; set; } = [];
 
     public DateTimeOffset AddedAt { get; set; }
@@ -166,6 +169,12 @@ public sealed class SubscriptionState
         CatalogId = e.CatalogId;
     }
 
+    public void Apply(SubscriptionCancelByChanged e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        CancelBy = e.CancelBy;
+    }
+
     /// <summary>Nothing is deleted: the flag hides the subscription from reads (D-5).</summary>
     public void Apply(SubscriptionRemoved e)
     {
@@ -224,6 +233,7 @@ public sealed class SubscriptionState
                     case SubscriptionResumed x: target.Apply(x); break;
                     case SubscriptionCatalogLinked x: target.Apply(x); break;
                     case SubscriptionPriceEntryPaymentChanged x: target.Apply(x); break;
+                    case SubscriptionCancelByChanged x: target.Apply(x); break;
                     default: throw new InvalidOperationException($"Unsupported subscription event {e.GetType().Name}.");
                 }
             }

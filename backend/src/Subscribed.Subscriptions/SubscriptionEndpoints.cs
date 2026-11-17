@@ -82,7 +82,7 @@ public static class SubscriptionEndpoints
         NewSubscription command;
         try
         {
-            command = SubscriptionDecisions.ParseAdd(body.Value!.ToInput());
+            command = SubscriptionDecisions.ParseAdd(body.Value!.ToInput(), HouseholdZone(context));
         }
         catch (SubscriptionValidationException ex)
         {
@@ -104,7 +104,7 @@ public static class SubscriptionEndpoints
 
     private static Task<IResult> UpdateAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateAsync<UpdateSubscriptionRequest, DetailsUpdate>(id, context, service, loggers,
-            request => SubscriptionDecisions.ParseUpdate(request.ToInput()),
+            request => SubscriptionDecisions.ParseUpdate(request.ToInput(), HouseholdZone(context)),
             (bare, version, command, write) => service.UpdateAsync(bare, version, command, write, context.RequestAborted),
             state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
@@ -265,6 +265,13 @@ public static class SubscriptionEndpoints
         context.Response.Headers.CacheControl = "no-store";
         return Results.Json(value);
     }
+
+    /// <summary>
+    /// The household zone for this request, resolved once. A stored id this server cannot resolve falls back to UTC. Work item
+    /// "subscription-cancel-by-api" adds the warning log and the DTO side.
+    /// </summary>
+    private static TimeZoneInfo HouseholdZone(HttpContext context) =>
+        Subscribed.Household.Domain.TimeZoneIds.TryResolve(HouseholdMembership.ViewFor(context).TimeZoneId, out var zone) ? zone : TimeZoneInfo.Utc;
 
     private static IResult NotFound() => Problem.Result(404, ProblemCodes.NotFound, "Subscription not found.");
 
