@@ -100,6 +100,32 @@ describe('SubscriptionsService period requests', () => {
     http.verify();
   });
 
+  it('sends the pause-period calls to /pauses with the bodies, the period and the If-Match header', () => {
+    const { http, service } = setup();
+    const period: Period = { kind: 'year', year: 2026 };
+    const closed = { pauseDate: '2026-03-01', resumeDate: '2026-03-10' };
+    const open = { pauseDate: '2026-04-01', resumeDate: null };
+
+    service.addPause('x', 5, closed, period).subscribe();
+    const add = http.expectOne({ method: 'POST', url: '/api/subscriptions/x/pauses?period=year-2026' });
+    expect(add.request.headers.get('If-Match')).toBe('"5"');
+    expect(add.request.body).toEqual(closed);
+    add.flush(detailFixture());
+
+    service.changePause('x', 6, 'p1', open, period).subscribe();
+    const change = http.expectOne({ method: 'PUT', url: '/api/subscriptions/x/pauses/p1?period=year-2026' });
+    expect(change.request.headers.get('If-Match')).toBe('"6"');
+    expect(change.request.body).toEqual({ pauseDate: '2026-04-01', resumeDate: null });
+    change.flush(detailFixture());
+
+    service.removePause('x', 7, 'p1', { kind: 'last-12-months' }).subscribe();
+    const remove = http.expectOne({ method: 'DELETE', url: '/api/subscriptions/x/pauses/p1?period=last-12-months' });
+    expect(remove.request.headers.get('If-Match')).toBe('"7"');
+    expect(remove.request.body).toBeNull();
+    remove.flush(detailFixture());
+    http.verify();
+  });
+
   it('puts the period on an update only when asked, and keeps the If-Match header', () => {
     const { http, service } = setup();
     const body = { name: 'n', category: null, notes: null, currency: 'DKK', startDate: '2026-01-01', endDate: null, catalogId: null, unsubscribeUrl: null, cancelBy: null };

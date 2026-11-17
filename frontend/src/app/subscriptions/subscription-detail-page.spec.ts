@@ -67,7 +67,7 @@ describe('SubscriptionDetailPage', () => {
   const el = <T extends HTMLElement = HTMLElement>(root: HTMLElement, selector: string) => root.querySelector(selector) as T;
   const buttonByText = (root: HTMLElement, text: string) =>
     Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
-  const rows = (root: HTMLElement) => Array.from(root.querySelectorAll('tbody tr')) as HTMLElement[];
+  const rows = (root: HTMLElement) => Array.from(root.querySelectorAll('[aria-labelledby="history-heading"] tbody tr')) as HTMLElement[];
 
   function type(root: HTMLElement, id: string, value: string, event = 'input') {
     const field = el<HTMLInputElement>(root, `#${id}`);
@@ -381,7 +381,7 @@ describe('SubscriptionDetailPage', () => {
 
   it('shows a Payment option column: the name and label, "(removed)" for a removed option, and a dash for none', async () => {
     const { root, detail } = await open(withOptions());
-    expect(Array.from(root.querySelectorAll('thead th')).map((th) => plain(th.textContent))).toEqual([
+    expect(Array.from(root.querySelectorAll('[aria-labelledby="history-heading"] thead th')).map((th) => plain(th.textContent))).toEqual([
       en['detail.col.period'], en['detail.col.price'], en['detail.col.perMonth'], en['detail.col.change'], en['detail.col.paymentOption'], en['detail.col.actions'],
     ]);
     const cells = rows(root).map((row) => plain(row.querySelectorAll('td')[3].textContent));
@@ -899,6 +899,277 @@ describe('SubscriptionDetailPage', () => {
     await settle(harness);
     expect(el<HTMLInputElement>(root, '#entry-amount').value).toBe('1490,00');
     expect(el(root, '#entry-amount').getAttribute('aria-invalid')).toBeNull();
+  });
+
+  // ---- pause history ---------------------------------------------------------------------------------
+
+  const pausesSection = (root: HTMLElement) => el(root, '[aria-labelledby="pauses-heading"]');
+  const pauseRows = (root: HTMLElement) => Array.from(pausesSection(root).querySelectorAll('tbody tr')) as HTMLElement[];
+  const pauseRequest2 = (detail: SubscriptionDetail, method: string, suffix: string) =>
+    http.expectOne({ method, url: `/api/subscriptions/${detail.id}/pauses${suffix}${Q}` });
+  const withPauses = (pauseHistory: SubscriptionDetail['pauseHistory']): SubscriptionDetail => ({ ...detailFixture(), pauseHistory });
+
+  it('lists the pauses chronologically with Ongoing for an open one, after the price history', async () => {
+    const { root } = await open(withPauses([
+      { id: 'p2', pauseDate: '2026-11-01', resumeDate: null },
+      { id: 'p1', pauseDate: '2026-03-01', resumeDate: '2026-03-10' },
+    ]));
+    expect(el(root, '#pauses-heading').textContent?.trim()).toBe(en['pauses.heading']);
+    const headings = Array.from(root.querySelectorAll('section h2')).map((h) => h.id);
+    expect(headings.indexOf('pauses-heading')).toBe(headings.indexOf('history-heading') + 1);
+    const cells = pauseRows(root).map((row) => plain(row.textContent));
+    expect(cells.length).toBe(2);
+    expect(cells[0]).toContain('1 Mar 2026');
+    expect(cells[0]).toContain('10 Mar 2026');
+    expect(cells[1]).toContain('1 Nov 2026');
+    expect(cells[1]).toContain(en['pauses.ongoing']);
+    expect(el(root, '#edit-pause-p1').textContent?.trim()).toBe(en['pauses.edit']);
+    expect(el(root, '#delete-pause-p2').textContent?.trim()).toBe(en['pauses.delete']);
+  });
+
+  it('shows a message instead of an empty table when there is no pause', async () => {
+    const { root } = await open(withPauses([]));
+    expect(pauseRows(root).length).toBe(0);
+    expect(pausesSection(root).textContent).toContain(en['pauses.empty']);
+  });
+
+  it('limits both date inputs to today', async () => {
+    const { harness, root } = await open(withPauses([]));
+    el<HTMLButtonElement>(root, '#add-pause').click();
+    await settle(harness);
+    expect(el<HTMLInputElement>(root, '#pause-pauseDate').max).toBe('2026-11-17');
+    expect(el<HTMLInputElement>(root, '#pause-resumeDate').max).toBe('2026-11-17');
+  });
+
+  it('adds an open pause with an explicit null resumeDate and the version in If-Match, then shows it with a notice and focus', async () => {
+    const { harness, root, detail } = await open(withPauses([]));
+    el<HTMLButtonElement>(root, '#add-pause').click();
+    await settle(harness);
+    expect(document.activeElement).toBe(el(root, '#pause-form-heading'));
+    type(root, 'pause-pauseDate', '2026-11-10');
+    await submitForm(harness, '.pause-form');
+    const req = pauseRequest2(detail, 'POST', '');
+    expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
+    expect(req.request.body).toEqual({ pauseDate: '2026-11-10', resumeDate: null });
+    await respond(harness, req, bump(detail, { paused: true, pauseHistory: [{ id: 'n1', pauseDate: '2026-11-10', resumeDate: null }] }));
+    expect(root.querySelector('.pause-form')).toBeNull();
+    expect(pauseRows(root).length).toBe(1);
+    expect(plain(pauseRows(root)[0].textContent)).toContain(en['pauses.ongoing']);
+    expect(el(root, 'output.status').textContent).toContain(en['pauses.added']);
+    expect(document.activeElement).toBe(el(root, '#add-pause'));
+  });
+
+  it('adds a closed pause and sends the next request with the new version', async () => {
+    const { harness, root, detail } = await open(withPauses([]));
+    el<HTMLButtonElement>(root, '#add-pause').click();
+    await settle(harness);
+    type(root, 'pause-pauseDate', '2026-03-01');
+    type(root, 'pause-resumeDate', '2026-03-10');
+    await submitForm(harness, '.pause-form');
+    const req = pauseRequest2(detail, 'POST', '');
+    expect(req.request.body).toEqual({ pauseDate: '2026-03-01', resumeDate: '2026-03-10' });
+    const next = bump(detail, { pauseHistory: [{ id: 'n1', pauseDate: '2026-03-01', resumeDate: '2026-03-10' }] });
+    await respond(harness, req, next);
+    el<HTMLButtonElement>(root, '#delete-pause-n1').click();
+    await settle(harness);
+    buttonByText(root, en['pauses.deleteYes']).click();
+    expect(pauseRequest2(next, 'DELETE', '/n1').request.headers.get('If-Match')).toBe(`"${next.version}"`);
+  });
+
+  it('edits a pause with its own values pre-filled and sends a PUT to that pause', async () => {
+    const { harness, root, detail } = await open(withPauses([{ id: 'p1', pauseDate: '2026-03-01', resumeDate: '2026-03-10' }]));
+    el<HTMLButtonElement>(root, '#edit-pause-p1').click();
+    await settle(harness);
+    expect(el(root, '#pause-form-heading').textContent?.trim()).toBe(en['pauses.editHeading']);
+    expect(el<HTMLInputElement>(root, '#pause-pauseDate').value).toBe('2026-03-01');
+    expect(el<HTMLInputElement>(root, '#pause-resumeDate').value).toBe('2026-03-10');
+    type(root, 'pause-resumeDate', '');
+    await submitForm(harness, '.pause-form');
+    const req = pauseRequest2(detail, 'PUT', '/p1');
+    expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
+    expect(req.request.body).toEqual({ pauseDate: '2026-03-01', resumeDate: null });
+    await respond(harness, req, bump(detail, { pauseHistory: [{ id: 'p1', pauseDate: '2026-03-01', resumeDate: null }] }));
+    expect(plain(pauseRows(root)[0].textContent)).toContain(en['pauses.ongoing']);
+    expect(el(root, 'output.status').textContent).toContain(en['pauses.changed']);
+    expect(document.activeElement).toBe(el(root, '#add-pause'));
+  });
+
+  it('returns focus to the Edit button when an edit is cancelled', async () => {
+    const { harness, root } = await open(withPauses([{ id: 'p1', pauseDate: '2026-03-01', resumeDate: '2026-03-10' }]));
+    el<HTMLButtonElement>(root, '#edit-pause-p1').click();
+    await settle(harness);
+    buttonByText(root, en['subscriptions.form.cancel']).click();
+    await settle(harness);
+    expect(root.querySelector('.pause-form')).toBeNull();
+    expect(document.activeElement).toBe(el(root, '#edit-pause-p1'));
+  });
+
+  it('deletes a pause after confirmation, with If-Match, a notice and focus', async () => {
+    const { harness, root, detail } = await open(withPauses([{ id: 'p1', pauseDate: '2026-03-01', resumeDate: '2026-03-10' }]));
+    el<HTMLButtonElement>(root, '#delete-pause-p1').click();
+    await settle(harness);
+    expect(document.activeElement).toBe(el(root, '#confirm-pause'));
+    expect(el(root, '#confirm-pause').textContent).toContain('1 Mar 2026');
+    http.expectNone(() => true);
+    buttonByText(root, en['pauses.deleteYes']).click();
+    const req = pauseRequest2(detail, 'DELETE', '/p1');
+    expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
+    await respond(harness, req, bump(detail, { pauseHistory: [] }));
+    expect(pauseRows(root).length).toBe(0);
+    expect(el(root, 'output.status').textContent).toContain(en['pauses.deleted']);
+    expect(document.activeElement).toBe(el(root, '#add-pause'));
+  });
+
+  it('keeps the pause and returns focus to Delete when the confirmation is cancelled', async () => {
+    const { harness, root } = await open(withPauses([{ id: 'p1', pauseDate: '2026-03-01', resumeDate: '2026-03-10' }]));
+    el<HTMLButtonElement>(root, '#delete-pause-p1').click();
+    await settle(harness);
+    buttonByText(root, en['detail.keep']).click();
+    await settle(harness);
+    expect(root.querySelector('#confirm-pause')).toBeNull();
+    expect(pauseRows(root).length).toBe(1);
+    expect(document.activeElement).toBe(el(root, '#delete-pause-p1'));
+  });
+
+  const clientCases: { name: string; pause: string; resume: string; field: string; key: keyof typeof en }[] = [
+    { name: 'a missing pause date', pause: '', resume: '', field: 'pauseDate', key: 'pauses.error.malformed' },
+    { name: 'a pause date in the future', pause: '2026-11-18', resume: '', field: 'pauseDate', key: 'pauses.error.pauseFuture' },
+    { name: 'a resume date in the future', pause: '2026-11-10', resume: '2026-11-18', field: 'resumeDate', key: 'pauses.error.resumeFuture' },
+    { name: 'a resume date equal to the pause date', pause: '2026-11-10', resume: '2026-11-10', field: 'resumeDate', key: 'pauses.error.resumeNotAfter' },
+    { name: 'a resume date before the pause date', pause: '2026-11-10', resume: '2026-11-01', field: 'resumeDate', key: 'pauses.error.resumeNotAfter' },
+  ];
+  for (const c of clientCases) {
+    it(`flags ${c.name} next to its own input before sending, and sends nothing`, async () => {
+      const { harness, root } = await open(withPauses([]));
+      el<HTMLButtonElement>(root, '#add-pause').click();
+      await settle(harness);
+      type(root, 'pause-pauseDate', c.pause);
+      type(root, 'pause-resumeDate', c.resume);
+      await submitForm(harness, '.pause-form');
+      const other = c.field === 'pauseDate' ? 'resumeDate' : 'pauseDate';
+      expect(el(root, `#pause-${c.field}-error`).textContent?.trim()).toBe(en[c.key]);
+      expect(el(root, `#pause-${c.field}`).getAttribute('aria-invalid')).toBe('true');
+      expect(el(root, `#pause-${c.field}`).getAttribute('aria-describedby')).toBe(`pause-${c.field}-error`);
+      expect(root.querySelector(`#pause-${other}-error`)).toBeNull();
+      expect(document.activeElement).toBe(el(root, `#pause-${c.field}`));
+      http.expectNone(() => true);
+    });
+  }
+
+  const serverCases: { field: string; sentence: string; key: keyof typeof en }[] = [
+    { field: 'pauseDate', sentence: 'The pause overlaps another pause.', key: 'pauses.error.overlap' },
+    { field: 'pauseDate', sentence: 'The pause date cannot be in the future.', key: 'pauses.error.pauseFuture' },
+    { field: 'pauseDate', sentence: 'The date must be in yyyy-MM-dd format.', key: 'pauses.error.malformed' },
+    { field: 'resumeDate', sentence: 'The resume date must be after the pause date.', key: 'pauses.error.resumeNotAfter' },
+    { field: 'resumeDate', sentence: 'The resume date cannot be in the future.', key: 'pauses.error.resumeFuture' },
+    { field: 'resumeDate', sentence: 'Only the latest pause can be open.', key: 'pauses.error.onlyLatestOpen' },
+    { field: 'resumeDate', sentence: 'The date must be in yyyy-MM-dd format.', key: 'pauses.error.malformed' },
+  ];
+  for (const c of serverCases) {
+    it(`maps the server's ${c.field} error "${c.sentence}" to a localized message next to that input`, async () => {
+      const { harness, root, detail } = await open(withPauses([]));
+      el<HTMLButtonElement>(root, '#add-pause').click();
+      await settle(harness);
+      type(root, 'pause-pauseDate', '2026-11-10');
+      await submitForm(harness, '.pause-form');
+      pauseRequest2(detail, 'POST', '').flush({ traceId: 't', errors: { [c.field]: [c.sentence] } }, { status: 400, statusText: 'Bad Request' });
+      await settle(harness);
+      expect(el(root, `#pause-${c.field}-error`).textContent?.trim()).toBe(en[c.key]);
+      expect(el(root, `#pause-${c.field}`).getAttribute('aria-invalid')).toBe('true');
+      expect(el<HTMLInputElement>(root, '#pause-pauseDate').value).toBe('2026-11-10');
+      expect(document.activeElement).toBe(el(root, `#pause-${c.field}`));
+    });
+  }
+
+  it('shows the generic failure for a 400 with an error it does not know, keeping the form', async () => {
+    const { harness, root, detail } = await open(withPauses([]));
+    el<HTMLButtonElement>(root, '#add-pause').click();
+    await settle(harness);
+    type(root, 'pause-pauseDate', '2026-11-10');
+    await submitForm(harness, '.pause-form');
+    pauseRequest2(detail, 'POST', '').flush({ traceId: 't', errors: { pauseDate: ['Something new'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(el(root, 'p.error[role=alert]').textContent).toContain(en['subscriptions.form.saveFailed']);
+    expect(root.textContent).not.toContain('Something new');
+    expect(root.querySelector('.pause-form')).not.toBeNull();
+  });
+
+  it('shows the conflict banner on a 412, keeps the input and reloads the latest on request', async () => {
+    const { harness, root, detail } = await open(withPauses([]));
+    el<HTMLButtonElement>(root, '#add-pause').click();
+    await settle(harness);
+    type(root, 'pause-pauseDate', '2026-11-10');
+    await submitForm(harness, '.pause-form');
+    pauseRequest2(detail, 'POST', '').flush({ traceId: 't', currentVersion: detail.version + 1 }, { status: 412, statusText: 'Precondition Failed' });
+    await settle(harness);
+    expect(el(root, '.notice[role=alert]').textContent).toContain(en['subscriptions.form.conflict']);
+    expect(el<HTMLInputElement>(root, '#pause-pauseDate').value).toBe('2026-11-10');
+    buttonByText(root, en['subscriptions.form.reloadLatest']).click();
+    request(detail).flush(bump(detail, { pauseHistory: [{ id: 'z', pauseDate: '2026-05-05', resumeDate: '2026-05-06' }] }));
+    await settle(harness);
+    expect(root.textContent).not.toContain(en['subscriptions.form.conflict']);
+    expect(pauseRows(root).length).toBe(1);
+  });
+
+  for (const [name, act] of [
+    ['an add', async (root: HTMLElement, harness: RouterTestingHarness) => {
+      el<HTMLButtonElement>(root, '#add-pause').click();
+      await settle(harness);
+      type(root, 'pause-pauseDate', '2026-11-10');
+      await submitForm(harness, '.pause-form');
+      return { method: 'POST', suffix: '' };
+    }],
+    ['a delete', async (root: HTMLElement, harness: RouterTestingHarness) => {
+      el<HTMLButtonElement>(root, '#delete-pause-p1').click();
+      await settle(harness);
+      buttonByText(root, en['pauses.deleteYes']).click();
+      return { method: 'DELETE', suffix: '/p1' };
+    }],
+  ] as const) {
+    it(`shows "not found" when the subscription is gone meanwhile (404 on ${name})`, async () => {
+      const { harness, root, detail } = await open(withPauses([{ id: 'p1', pauseDate: '2026-03-01', resumeDate: '2026-03-10' }]));
+      const { method, suffix } = await act(root, harness);
+      pauseRequest2(detail, method, suffix).flush({ traceId: 't' }, { status: 404, statusText: 'Not Found' });
+      await settle(harness);
+      expect(root.textContent).toContain(en['subscriptions.notFound']);
+    });
+  }
+
+  it('sends exactly one request for a double submit and disables the save button while in flight', async () => {
+    const { harness, root, detail } = await open(withPauses([]));
+    el<HTMLButtonElement>(root, '#add-pause').click();
+    await settle(harness);
+    type(root, 'pause-pauseDate', '2026-11-10');
+    const form = el<HTMLFormElement>(root, '.pause-form');
+    form.dispatchEvent(new Event('submit'));
+    form.dispatchEvent(new Event('submit'));
+    harness.detectChanges();
+    expect(el<HTMLButtonElement>(root, '.pause-form button[type=submit]').disabled).toBe(true);
+    pauseRequest2(detail, 'POST', '').flush(bump(detail));
+    await settle(harness);
+  });
+
+  it('leaves the Pause button as it was: it still sends the body-less pause request', async () => {
+    const { harness, root, detail } = await open(withPauses([]));
+    toggle(root)!.click();
+    const req = pauseRequest(detail, 'pause');
+    expect(req.request.body).toBeNull();
+    await respond(harness, req, bump(detail, { status: 'paused', paused: true, pauseHistory: [{ id: 'n', pauseDate: '2026-11-17', resumeDate: null }] }));
+    expect(pauseRows(root).length).toBe(1);
+    expect(toggle(root)?.textContent?.trim()).toBe(en['subscriptions.resume']);
+  });
+
+  it('renders the section in Danish with no English application copy', async () => {
+    const { harness, root } = await open(withPauses([{ id: 'p1', pauseDate: '2026-03-01', resumeDate: null }]));
+    TestBed.inject(LanguageService).setLanguage('da');
+    await settle(harness);
+    el<HTMLButtonElement>(root, '#add-pause').click();
+    await settle(harness);
+    const text = plain(pausesSection(root).textContent);
+    expect(text).toContain(da['pauses.heading']);
+    expect(text).toContain(da['pauses.ongoing']);
+    expect(text).toContain(da['pauses.field.pauseDate']);
+    expect(englishLeftovers(pausesSection(root))).toEqual([]);
   });
 });
 

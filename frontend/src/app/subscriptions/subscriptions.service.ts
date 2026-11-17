@@ -6,6 +6,7 @@ import { Observable, map } from 'rxjs';
 import {
   AddSubscriptionBody,
   Catalog,
+  PauseBody,
   PeriodOptions,
   PriceEntryBody,
   SubscriptionDetail,
@@ -92,5 +93,17 @@ export class SubscriptionsService {
 
   removePrice(id: string, version: number, entryId: string, period: Period): Observable<SubscriptionDetail> {
     return this.http.delete<SubscriptionDetail>(`${BASE}/${id}/prices/${entryId}`, { ...ifMatch(version), ...periodParams(period) });
+  }
+
+  addPause(id: string, version: number, body: PauseBody, period: Period): Observable<SubscriptionDetail> {
+    return this.http.post<SubscriptionDetail>(`${BASE}/${id}/pauses`, body, { ...ifMatch(version), ...periodParams(period) });
+  }
+
+  changePause(id: string, version: number, periodId: string, body: PauseBody, period: Period): Observable<SubscriptionDetail> {
+    return this.http.put<SubscriptionDetail>(`${BASE}/${id}/pauses/${periodId}`, body, { ...ifMatch(version), ...periodParams(period) });
+  }
+
+  removePause(id: string, version: number, periodId: string, period: Period): Observable<SubscriptionDetail> {
+    return this.http.delete<SubscriptionDetail>(`${BASE}/${id}/pauses/${periodId}`, { ...ifMatch(version), ...periodParams(period) });
   }
 }

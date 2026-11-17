@@ -198,6 +198,70 @@
         }
       </section>
 
+      <section class="panel" aria-labelledby="pauses-heading">
+        <h2 id="pauses-heading">{{ 'pauses.heading' | t }}</h2>
+        @if (pauses().length) {
+          <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'subscriptions.scrollRegion' | t">
+            <table class="data pauses">
+              <caption>{{ 'pauses.caption' | t }}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{{ 'pauses.col.pauseDate' | t }}</th>
+                  <th scope="col">{{ 'pauses.col.resumeDate' | t }}</th>
+                  <th scope="col">{{ 'pauses.col.actions' | t }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of pauses(); track row.id) {
+                  <tr>
+                    <th scope="row">{{ date(row.pauseDate) }}</th>
+                    <td>@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</td>
+                    <td>
+                      <button type="button" class="secondary" [id]="'edit-pause-' + row.id" (click)="openPause({ mode: 'edit', period: row })">{{ 'pauses.edit' | t }}</button>
+                      <button type="button" class="secondary" [id]="'delete-pause-' + row.id" (click)="askRemovePause(row)">{{ 'pauses.delete' | t }}</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <p class="muted">{{ 'pauses.empty' | t }}</p>
+        }
+
+        @if (confirmPause(); as pause) {
+          <div class="notice" role="alertdialog" aria-labelledby="confirm-pause">
+            <p id="confirm-pause" tabindex="-1">{{ 'pauses.deleteConfirm' | t: { date: date(pause.pauseDate) } }}</p>
+            <button type="button" [disabled]="saving()" (click)="removePause()">{{ 'pauses.deleteYes' | t }}</button>
+            <button type="button" class="secondary" (click)="cancelRemovePause()">{{ 'detail.keep' | t }}</button>
+          </div>
+        }
+
+        @if (!pauseForm()) {
+          <p class="actions"><button type="button" id="add-pause" (click)="openPause({ mode: 'add' })">{{ 'pauses.add' | t }}</button></p>
+        } @else {
+          <form class="pause-form form" (ngSubmit)="savePause()" novalidate>
+            <h3 id="pause-form-heading" tabindex="-1">{{ (pauseForm()?.mode === 'edit' ? 'pauses.editHeading' : 'pauses.addHeading') | t }}</h3>
+            <div class="field">
+              <label for="pause-pauseDate">{{ 'pauses.field.pauseDate' | t }}</label>
+              <input id="pause-pauseDate" name="pauseDateValue" type="date" [max]="maxDate()" [(ngModel)]="pauseDateValue"
+                [attr.aria-invalid]="pauseError('pauseDate') ? 'true' : null" [attr.aria-describedby]="pauseError('pauseDate') ? 'pause-pauseDate-error' : null" />
+              @if (pauseError('pauseDate'); as e) { <p class="field-error" id="pause-pauseDate-error">{{ e.key | t: e.params }}</p> }
+            </div>
+            <div class="field">
+              <label for="pause-resumeDate">{{ 'pauses.field.resumeDate' | t }}</label>
+              <input id="pause-resumeDate" name="resumeDateValue" type="date" [max]="maxDate()" [(ngModel)]="resumeDateValue"
+                [attr.aria-invalid]="pauseError('resumeDate') ? 'true' : null" [attr.aria-describedby]="pauseError('resumeDate') ? 'pause-resumeDate-error' : null" />
+              @if (pauseError('resumeDate'); as e) { <p class="field-error" id="pause-resumeDate-error">{{ e.key | t: e.params }}</p> }
+            </div>
+            <div class="actions">
+              <button type="submit" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'pauses.save') | t }}</button>
+              <button type="button" class="secondary" (click)="closePause()">{{ 'subscriptions.form.cancel' | t }}</button>
+            </div>
+          </form>
+        }
+      </section>
+
       <section class="panel" aria-labelledby="manage-heading">
         <h2 id="manage-heading">{{ 'subscriptions.form.editHeading' | t }}</h2>
         <div class="actions">
