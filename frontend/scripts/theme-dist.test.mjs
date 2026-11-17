@@ -105,13 +105,9 @@ test('T-D built stylesheet contains none of the sentinel utilities (specs, testi
 
 // ---------- built-CSS proofs for behaviour-protecting utilities ----------
 
-// These need the migrated templates (WP4 shell, WP5 pages), so each proof is enforced once the template that
-// provides it is in styles-contract.test.mjs MIGRATED_FILES, or everywhere once ENABLE_TEMPLATE_CHECKS is true.
+// These need the migrated templates (WP4 shell, WP5 pages), so they are enforced once ENABLE_TEMPLATE_CHECKS is true.
 const contractSource = readFileSync(new URL('./styles-contract.test.mjs', import.meta.url), 'utf8');
 const templateChecksEnabled = /const ENABLE_TEMPLATE_CHECKS = true;/.test(contractSource);
-const migratedFiles = new Set(
-  [...(/const MIGRATED_FILES = \[([\s\S]*?)\];/.exec(contractSource)?.[1] ?? '').matchAll(/'([^']+)'/g)].map(([, file]) => file));
-const enforced = (files) => templateChecksEnabled || files.some((file) => migratedFiles.has(file));
 
 /** Every `@media(...) { ... }` rule in the stylesheet, found by brace matching, with whitespace/quotes stripped. */
 function mediaBlocks(text) {
@@ -193,8 +189,8 @@ export const PROOFS = [
 
 for (const { name, files, check } of PROOFS) {
   test(`T-D built-CSS proof: ${name}`, (t) => {
-    if (!enforced(files)) {
-      t.diagnostic(`not enforced yet: ${files.join(', ')} not migrated (MIGRATED_FILES in styles-contract.test.mjs)`);
+    if (!templateChecksEnabled) {
+      t.diagnostic('not enforced yet: ENABLE_TEMPLATE_CHECKS is false');
       return;
     }
     check(css());

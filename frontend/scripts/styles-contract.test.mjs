@@ -13,10 +13,7 @@
 //  9 class names are complete literals          10 sidebar contract (nav: guard, group, no data-tip)
 // 11 control borders and placeholders per element
 //
-// Checks 1, 4 to 11 now run over the whole candidate set (ENABLE_TEMPLATE_CHECKS is true). While the migration was
-// under way they were gated by a flag and a ratchet: they ran for exactly the files in a hand-kept MIGRATED_FILES list,
-// and each page commit added its files. The commit that migrated the last token-bearing file flipped the flag and
-// replaced that list with the candidate set (MIGRATED_FILES below is now derived from it).
+// Checks 1, 4 to 11 run over the whole candidate set (ENABLE_TEMPLATE_CHECKS is true).
 //
 // Removed-selector fixture: scripts/fixtures/removed-scss-selectors.json is the sorted set of class names the old
 // SCSS defined. It was generated once from the pre-change sources on master (src/styles.scss, src/app/app.scss and
@@ -425,52 +422,26 @@ const TEMPLATE_CHECKS = [4, 5, 6, 7, 8, 9, 10, 11];
 
 export const runChecks = (unit, numbers = TEMPLATE_CHECKS) => numbers.flatMap((number) => CHECKS[number](unit).map((finding) => `check ${number}: ${finding}`));
 
-// ---------- the ratchet ----------
+// ---------- the candidate set ----------
 
 const units = candidateUnits();
-const unitByFile = new Map(units.map((unit) => [unit.file, unit]));
-
-// Every template check now covers the whole candidate set: the ratchet's file list is gone and this is its replacement.
-const MIGRATED_FILES = units.map((unit) => unit.file).sort();
-const checkedUnits = () => (ENABLE_TEMPLATE_CHECKS ? units : MIGRATED_FILES.map((file) => {
-  assert.ok(unitByFile.has(file), `MIGRATED_FILES lists ${file}, which is not in the candidate set`);
-  return unitByFile.get(file);
-}));
 
 test('candidate set parses without template errors', () => {
   assert.deepEqual(units.flatMap((unit) => unit.problems), []);
   assert.ok(units.some((unit) => unit.file === 'src/app/app.html'));
 });
 
-test('ratchet: MIGRATED_FILES entries are unique, sorted, exist and are in the candidate set', () => {
-  assert.deepEqual(MIGRATED_FILES, [...new Set(MIGRATED_FILES)].sort());
-  for (const file of MIGRATED_FILES) assert.ok(unitByFile.has(file), `${file} is not in the candidate set`);
-});
-
-test('ratchet: while the flag is false, no migrated file still has a legacy finding', () => {
-  if (ENABLE_TEMPLATE_CHECKS) return;
-  assert.deepEqual(MIGRATED_FILES.flatMap((file) => runChecks(unitByFile.get(file), LEGACY)), []);
-});
-
-test('self-enforcing flip: the flag cannot stay false once every file is migrated, and no token-free file is forgotten', () => {
-  const legacyFree = units.filter((unit) => runChecks(unit, LEGACY).length === 0).map((unit) => unit.file);
-  const legacyBearing = units.filter((unit) => runChecks(unit, LEGACY).length > 0).map((unit) => unit.file);
-  if (ENABLE_TEMPLATE_CHECKS) {
-    assert.deepEqual(legacyBearing, [], 'ENABLE_TEMPLATE_CHECKS is true, so no file may keep a removed token, style declaration or inline style');
-    return;
-  }
-  assert.ok(legacyBearing.length > 0, 'every file is migrated: set ENABLE_TEMPLATE_CHECKS = true and replace MIGRATED_FILES with the candidate set');
-  assert.deepEqual(legacyFree.filter((file) => !MIGRATED_FILES.includes(file)), [], 'token-free files missing from MIGRATED_FILES (a forgotten ratchet entry)');
+test('no file keeps a removed token, style declaration or inline style', () => {
+  assert.deepEqual(units.flatMap((unit) => runChecks(unit, LEGACY)), []);
 });
 
 for (const number of TEMPLATE_CHECKS) {
   test(`check ${number}: template contract over the checked files`, () => {
-    assert.deepEqual(checkedUnits().flatMap((unit) => CHECKS[number](unit)), []);
+    assert.deepEqual(units.flatMap((unit) => CHECKS[number](unit)), []);
   });
 }
 
-test('check 1: no *.scss under src (once template checks are enabled)', () => {
-  if (!ENABLE_TEMPLATE_CHECKS) return;
+test('check 1: no *.scss under src', () => {
   const scss = walk('src/', (name) => name.endsWith('.scss'));
   assert.deepEqual(scss, []);
 });
@@ -515,7 +486,7 @@ export function specLint(text, file) {
 /** Specs held to the lint: the spec of every migrated .ts file, plus any spec that imports the query helpers. */
 function migratedSpecs() {
   const specs = walk('src/', isSpec);
-  const wanted = new Set(MIGRATED_FILES.filter((file) => file.endsWith('.ts')).map((file) => file.replace(/\.ts$/, '.spec.ts')));
+  const wanted = new Set(units.map((unit) => unit.file).filter((file) => file.endsWith('.ts')).map((file) => file.replace(/\.ts$/, '.spec.ts')));
   return specs.filter((file) => wanted.has(file) || /testing\/query['"]/.test(read(file))).sort();
 }
 
