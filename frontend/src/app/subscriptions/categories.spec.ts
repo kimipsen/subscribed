@@ -145,46 +145,78 @@ describe('groupRows', () => {
     expect(group.rows.map((row) => row.id)).toEqual(['row-1', 'row-2', 'row-3']);
   });
 
-  it('totals the active rows per currency and never mixes currencies (AC4)', () => {
+  it('totals the rows that are active in the period per currency and never mixes currencies (AC4)', () => {
     const data = rows(
-      { category: 'Media', currency: 'DKK', minorUnit: 2, normalizedMonthly: '79.00', normalizedYearly: '948.00' },
-      { category: 'media', currency: 'DKK', minorUnit: 2, normalizedMonthly: '10.50', normalizedYearly: '126.00' },
-      { category: 'Media', currency: 'JPY', minorUnit: 0, normalizedMonthly: '1490', normalizedYearly: '17880' },
-      { category: 'Media', currency: 'DKK', minorUnit: 2, status: 'ended', normalizedMonthly: '5.00', normalizedYearly: '60.00' },
-      { category: 'Media', currency: 'KWD', minorUnit: 3, status: 'not-started', normalizedMonthly: '1.000', normalizedYearly: '12.000' },
+      { category: 'Media', currency: 'DKK', minorUnit: 2, periodTotal: '948.00' },
+      { category: 'media', currency: 'DKK', minorUnit: 2, periodTotal: '126.00' },
+      { category: 'Media', currency: 'JPY', minorUnit: 0, periodTotal: '17880' },
+      { category: 'Media', currency: 'DKK', minorUnit: 2, periodTotal: '60.00', activeInPeriod: false },
+      { category: 'Media', currency: 'KWD', minorUnit: 3, periodTotal: '12.000', activeInPeriod: false },
     );
     const [group] = groupRows(data, 'en-GB');
     expect(group.count).toBe(5);
     expect(group.totals).toEqual([
-      { currency: 'DKK', minorUnit: 2, monthly: '89.50', yearly: '1074.00', activeCount: 2 },
-      { currency: 'JPY', minorUnit: 0, monthly: '1490', yearly: '17880', activeCount: 1 },
+      { currency: 'DKK', minorUnit: 2, total: '1074.00', monthlyAverage: '89.50', activeCount: 2 },
+      { currency: 'JPY', minorUnit: 0, total: '17880', monthlyAverage: '1490', activeCount: 1 },
     ]);
   });
 
-  it('shows no totals for a group without active rows', () => {
-    const [group] = groupRows(rows({ category: 'Old', status: 'ended' }, { category: 'Soon', status: 'not-started' }), 'en-GB');
+  it('counts ended, not-started and paused rows by activeInPeriod, whatever their status says', () => {
+    const data = rows(
+      { category: 'Mixed', status: 'ended', periodTotal: '100.00', activeInPeriod: true },
+      { category: 'Mixed', status: 'not-started', periodTotal: '50.00', activeInPeriod: true },
+      { category: 'Mixed', status: 'paused', periodTotal: '25.00', activeInPeriod: true },
+      { category: 'Mixed', status: 'active', periodTotal: '0.00', activeInPeriod: false },
+    );
+    const [group] = groupRows(data, 'en-GB');
+    expect(group.totals).toEqual([{ currency: 'DKK', minorUnit: 2, total: '175.00', monthlyAverage: '14.58', activeCount: 3 }]);
+  });
+
+  it('keeps two currencies of one category apart, each with its own minor unit and average', () => {
+    const data = rows(
+      { category: 'Mixed', currency: 'KWD', minorUnit: 3, periodTotal: '10.000' },
+      { category: 'Mixed', currency: 'DKK', minorUnit: 2, periodTotal: '10.00' },
+      { category: 'Mixed', currency: 'KWD', minorUnit: 3, periodTotal: '0.005' },
+    );
+    const [group] = groupRows(data, 'en-GB');
+    expect(group.totals).toEqual([
+      { currency: 'DKK', minorUnit: 2, total: '10.00', monthlyAverage: '0.83', activeCount: 1 },
+      { currency: 'KWD', minorUnit: 3, total: '10.005', monthlyAverage: '0.834', activeCount: 2 },
+    ]);
+  });
+
+  it('shows no totals for a group without rows that are active in the period', () => {
+    const [group] = groupRows(rows({ category: 'Old', activeInPeriod: false }, { category: 'Soon', activeInPeriod: false }), 'en-GB');
     expect(group.totals).toEqual([]);
   });
 
-  it('sums the displayed per-row strings exactly: three 0.00 rows total 0.00', () => {
+  it('sums the displayed per-row strings exactly: three 0.00 rows total 0.00 (documented divergence)', () => {
     // Documented divergence from the server's round-once total (SubscriptionCalculator.Totals): the server sums the unrounded
-    // values and rounds once, so it could show 0.01 for the same rows. A later switch to server totals must be deliberate.
-    const zero = { category: 'Tiny', normalizedMonthly: '0.00', normalizedYearly: '0.00' };
+    // period costs and rounds once, so three rows that each show 0.00 (say 0.004 each) can total 0.01 there. Here the exact sum
+    // of the displayed strings is 0.00. A later switch to server totals must be a deliberate decision, so this pins it.
+    const zero = { category: 'Tiny', periodTotal: '0.00' };
     const [group] = groupRows(rows(zero, zero, zero), 'en-GB');
-    expect(group.totals).toEqual([{ currency: 'DKK', minorUnit: 2, monthly: '0.00', yearly: '0.00', activeCount: 3 }]);
+    expect(group.totals).toEqual([{ currency: 'DKK', minorUnit: 2, total: '0.00', monthlyAverage: '0.00', activeCount: 3 }]);
   });
 
-  it('sums monthly and yearly exactly beyond the float range', () => {
-    const big = { category: 'Big', normalizedMonthly: '9007199254740993.00', normalizedYearly: '0.10' };
-    const small = { category: 'Big', normalizedMonthly: '0.01', normalizedYearly: '0.20' };
+  it('pins a case where the sum of rounded rows differs by one minor unit from the exact sum', () => {
+    // Exact period costs 1.004 + 1.004 + 1.004 = 3.012 -> the server shows 3.01; the rows show 1.00 each -> 3.00 here.
+    const row = { category: 'Rounded', periodTotal: '1.00' };
+    const [group] = groupRows(rows(row, row, row), 'en-GB');
+    expect(group.totals[0]).toMatchObject({ total: '3.00', monthlyAverage: '0.25' });
+  });
+
+  it('sums period totals exactly beyond the float range', () => {
+    const big = { category: 'Big', periodTotal: '9007199254740993.00' };
+    const small = { category: 'Big', periodTotal: '0.01' };
     const [group] = groupRows(rows(big, small), 'en-GB');
-    expect(group.totals[0]).toMatchObject({ monthly: '9007199254740993.01', yearly: '0.30' });
+    expect(group.totals[0]).toMatchObject({ total: '9007199254740993.01', monthlyAverage: '750599937895082.75' });
   });
 
   it('drops a currency with malformed amounts but keeps the rows and other currencies', () => {
     const data = rows(
-      { category: 'Mixed', currency: 'DKK', normalizedMonthly: '1,50', normalizedYearly: '18.00' },
-      { category: 'Mixed', currency: 'JPY', minorUnit: 0, normalizedMonthly: '100', normalizedYearly: '1200' },
+      { category: 'Mixed', currency: 'DKK', periodTotal: '1,50' },
+      { category: 'Mixed', currency: 'JPY', minorUnit: 0, periodTotal: '1200' },
     );
     const [group] = groupRows(data, 'en-GB');
     expect(group.rows).toHaveLength(2);
@@ -192,7 +224,7 @@ describe('groupRows', () => {
   });
 
   it('takes the minor unit from the group\'s own rows', () => {
-    const [group] = groupRows(rows({ category: 'Yen', currency: 'JPY', minorUnit: 0, status: 'active', normalizedMonthly: '100', normalizedYearly: '1200' }), 'en-GB');
+    const [group] = groupRows(rows({ category: 'Yen', currency: 'JPY', minorUnit: 0, periodTotal: '1200' }), 'en-GB');
     expect(group.totals[0].minorUnit).toBe(0);
   });
 

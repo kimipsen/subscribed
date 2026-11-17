@@ -44,6 +44,20 @@ public sealed record SubscriptionRemoved(DateTimeOffset RecordedAt);
 public sealed record SubscriptionPaused(DateTimeOffset RecordedAt);
 
 public sealed record SubscriptionResumed(DateTimeOffset RecordedAt);
+
+/// <summary>
+/// A dated pause period. <paramref name="PauseDate"/> is the first day not charged; <paramref name="ResumeDate"/> is the first day
+/// charged again, or null while the period is open. The legacy <see cref="SubscriptionPaused"/> and <see cref="SubscriptionResumed"/>
+/// events stay replayable and are converted to periods when the state is resolved.
+/// </summary>
+public sealed record SubscriptionPausePeriodAdded(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate, DateTimeOffset RecordedAt);
+
+/// <summary>Replaces both dates of one pause period. An unknown id is a no-op on replay.</summary>
+public sealed record SubscriptionPausePeriodChanged(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate, DateTimeOffset RecordedAt);
+
+/// <summary>Removes one pause period. An unknown id is a no-op on replay.</summary>
+public sealed record SubscriptionPausePeriodRemoved(string PeriodId, DateTimeOffset RecordedAt);
+
 /// <summary>Links the subscription to a catalog entry, or unlinks it when <paramref name="CatalogId"/> is null.</summary>
 public sealed record SubscriptionCatalogLinked(string? CatalogId, DateTimeOffset RecordedAt);
 
@@ -79,6 +93,9 @@ public static class SubscriptionEventTypes
     public const string CatalogLinked = "subscription.catalog_linked.v1";
     public const string PriceEntryPaymentChanged = "subscription.price_entry_payment_changed.v1";
     public const string CancelByChanged = "subscription.cancel_by_changed.v1";
+    public const string PausePeriodAdded = "subscription.pause_period_added.v1";
+    public const string PausePeriodChanged = "subscription.pause_period_changed.v1";
+    public const string PausePeriodRemoved = "subscription.pause_period_removed.v1";
 
     public static readonly IReadOnlyDictionary<string, Type> ByAlias = new Dictionary<string, Type>(StringComparer.Ordinal)
     {
@@ -95,6 +112,9 @@ public static class SubscriptionEventTypes
         [CatalogLinked] = typeof(SubscriptionCatalogLinked),
         [PriceEntryPaymentChanged] = typeof(SubscriptionPriceEntryPaymentChanged),
         [CancelByChanged] = typeof(SubscriptionCancelByChanged),
+        [PausePeriodAdded] = typeof(SubscriptionPausePeriodAdded),
+        [PausePeriodChanged] = typeof(SubscriptionPausePeriodChanged),
+        [PausePeriodRemoved] = typeof(SubscriptionPausePeriodRemoved),
     };
 
     /// <summary>

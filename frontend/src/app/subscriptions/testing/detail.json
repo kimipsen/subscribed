@@ -1,7 +1,7 @@
 {
-  "id": "01a1d9eef53f7bdeb478f493bb1f22da",
-  "version": 4,
-  "asOf": "2026-11-14",
+  "id": "01a1eaf4c689747ca12eb5f2d3ef72b1",
+  "version": 5,
+  "asOf": "2026-11-17",
   "name": "FilmPlus",
   "category": "Streaming",
   "catalogId": null,
@@ -9,13 +9,13 @@
   "notes": "Family plan",
   "status": "active",
   "paused": false,
-  "startDate": "2024-02-18",
+  "startDate": "2024-02-21",
   "endDate": null,
   "currency": "DKK",
   "minorUnit": 2,
   "currentPrice": {
-    "entryId": "01a1d9eef53f77e9bd9fb70505dc307a",
-    "effectiveFrom": "2026-01-18",
+    "entryId": "01a1eaf4c6897e009f864a6b2620e625",
+    "effectiveFrom": "2026-01-21",
     "amount": "79.00",
     "cadenceUnit": "month",
     "cadenceCount": 1,
@@ -25,10 +25,10 @@
   "normalizedYearly": "948.00",
   "priceHistory": [
     {
-      "entryId": "01a1d9eef53f7c7f839c4b5c89823d7a",
+      "entryId": "01a1eaf4c6897bb2a822af609c57b932",
       "initial": true,
-      "effectiveFrom": "2024-02-18",
-      "effectiveTo": "2024-12-13",
+      "effectiveFrom": "2024-02-21",
+      "effectiveTo": "2024-12-16",
       "amount": "59.00",
       "cadenceUnit": "month",
       "cadenceCount": 1,
@@ -40,10 +40,10 @@
       "paymentOptionId": null
     },
     {
-      "entryId": "01a1d9eef53f7e219cb7368e07c6e679",
+      "entryId": "01a1eaf4c6897b6b9cee164a5680be86",
       "initial": false,
-      "effectiveFrom": "2024-12-14",
-      "effectiveTo": "2026-01-17",
+      "effectiveFrom": "2024-12-17",
+      "effectiveTo": "2026-01-20",
       "amount": "69.00",
       "cadenceUnit": "month",
       "cadenceCount": 1,
@@ -58,10 +58,10 @@
       "paymentOptionId": null
     },
     {
-      "entryId": "01a1d9eef53f77e9bd9fb70505dc307a",
+      "entryId": "01a1eaf4c6897e009f864a6b2620e625",
       "initial": false,
-      "effectiveFrom": "2026-01-18",
-      "effectiveTo": "2026-12-13",
+      "effectiveFrom": "2026-01-21",
+      "effectiveTo": "2026-12-16",
       "amount": "79.00",
       "cadenceUnit": "month",
       "cadenceCount": 1,
@@ -76,9 +76,9 @@
       "paymentOptionId": null
     },
     {
-      "entryId": "01a1d9eef53f7651ba51bb1d58f2fd5a",
+      "entryId": "01a1eaf4c6897afaad21bd0d78ecb7aa",
       "initial": false,
-      "effectiveFrom": "2026-12-14",
+      "effectiveFrom": "2026-12-17",
       "effectiveTo": null,
       "amount": "89.00",
       "cadenceUnit": "month",
@@ -96,6 +96,20 @@
   ],
   "unsubscribeUrl": "https://example.com/cancel",
   "effectiveUnsubscribeUrl": "https://example.com/cancel",
+  "periodTotal": "920.38",
+  "period": {
+    "key": "year-2026",
+    "from": "2026-01-01",
+    "to": "2026-12-31",
+    "months": 12
+  },
+  "pauseHistory": [
+    {
+      "id": "01a1eaf4c6897729beec0b0c65241ac6",
+      "pauseDate": "2026-10-28",
+      "resumeDate": "2026-11-07"
+    }
+  ],
   "cancelBy": null,
   "cancelByInstant": null
 }

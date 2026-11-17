@@ -74,7 +74,7 @@ public sealed class CalendarFeedBuilderTests
     public void Paused_and_not_yet_started_subscriptions_are_included()
     {
         var paused = Sub(1, "2026-03-10T09:00:00Z");
-        paused.Paused = true;
+        paused.PausePeriods.Add(new PausePeriodState { PeriodId = "p1", PauseDate = new DateOnly(2026, 1, 1) });
         var future = Sub(2, "2026-03-10T09:00:00Z");
         future.StartDate = new DateOnly(2026, 2, 1);
 

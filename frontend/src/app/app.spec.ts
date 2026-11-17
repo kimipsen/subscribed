@@ -10,6 +10,7 @@ import { Session, SessionService, csrfInterceptor } from './session';
 import { SIDEBAR_STORAGE } from './sidebar/sidebar';
 import { COLOR_SCHEME_QUERY, THEME_STORAGE, ThemeService } from './theme/theme';
 import { APP_VERSION } from './version';
+import { flushPeriods, periodTestProviders } from './subscriptions/testing/period-providers';
 import './app.config';
 
 function fakeSidebarStorage(initial?: string) {
@@ -34,6 +35,7 @@ describe('Language selector', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem, setItem } },
         { provide: THEME_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
@@ -57,7 +59,8 @@ describe('Language selector', () => {
   }
 
   async function flushOverview(fixture: ComponentFixture<App>) {
-    http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+    http.expectOne('/api/subscriptions?period=year-2026').flush({ asOf: '2026-11-13', period: { key: 'year-2026', from: '2026-01-01', to: '2026-12-31', months: 12 }, subscriptions: [], totals: [] });
+    flushPeriods(http);
     await fixture.whenStable();
   }
 
@@ -158,6 +161,7 @@ describe('Theme selector', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: storage },
         { provide: THEME_STORAGE, useValue: storage },
@@ -178,7 +182,8 @@ describe('Theme selector', () => {
     await TestBed.inject(Router).navigateByUrl(url);
     await fixture.whenStable();
     if (session.state === 'member' && url === '/') {
-      http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+      http.expectOne('/api/subscriptions?period=year-2026').flush({ asOf: '2026-11-13', period: { key: 'year-2026', from: '2026-01-01', to: '2026-12-31', months: 12 }, subscriptions: [], totals: [] });
+      flushPeriods(http);
       await fixture.whenStable();
     }
     return fixture;
@@ -305,6 +310,7 @@ describe('Footer', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
         { provide: THEME_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
@@ -322,7 +328,8 @@ describe('Footer', () => {
     await TestBed.inject(Router).navigateByUrl('/');
     await fixture.whenStable();
     if (session.state === 'member') {
-      http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+      http.expectOne('/api/subscriptions?period=year-2026').flush({ asOf: '2026-11-13', period: { key: 'year-2026', from: '2026-01-01', to: '2026-12-31', months: 12 }, subscriptions: [], totals: [] });
+      flushPeriods(http);
       await fixture.whenStable();
     }
     return fixture;
@@ -366,6 +373,7 @@ describe('Collapsible sidebar', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
         { provide: THEME_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
@@ -392,7 +400,8 @@ describe('Collapsible sidebar', () => {
         http.expectOne('/api/payment-options').flush({ options: [] });
         http.match((request) => request.url.startsWith('/api/payment-options/')).forEach((r) => r.flush({ suggestions: [] }));
       } else {
-        http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+        http.expectOne('/api/subscriptions?period=year-2026').flush({ asOf: '2026-11-13', period: { key: 'year-2026', from: '2026-01-01', to: '2026-12-31', months: 12 }, subscriptions: [], totals: [] });
+        flushPeriods(http);
       }
       await fixture.whenStable();
     }

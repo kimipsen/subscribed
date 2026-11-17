@@ -40,6 +40,10 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     private static PriceEntryChange Entry(string from, string amount, string unit = "month", int count = 1) =>
         SubscriptionDecisions.ParsePriceEntry(new PriceInput(from, amount, unit, count));
 
+    private static readonly DateOnly Day = new(2026, 11, 13);
+
+    private static IReadOnlyList<PausePeriod> Periods(SubscriptionState s) => s.ResolvePausePeriods(TimeZoneInfo.Utc, Day);
+
     private static string StreamKey(SubscriptionState s) => SubscriptionIds.StreamKey(SubscriptionIds.Bare(s.Id));
 
     private static async Task<List<object>> HistoryAsync(DocumentStore store, string id)
@@ -212,18 +216,20 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
-        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var clock = new TestClock(DateTimeOffset.Parse("2026-11-13T09:30:00Z", CultureInfo.InvariantCulture));
+        var service = new SubscriptionService(store, clock, TestCatalog.Standard());
         var active = await service.AddAsync(Sub("Active"), Member, Ct);
         active = await service.AddPriceEntryAsync(SubscriptionIds.Bare(active.Id), active.Version, Entry("2025-01-01", "139.00"), Member, Ct);
         var removed = await service.AddAsync(Sub("Removed", "EUR", "5.00"), Member, Ct);
         await service.RemoveAsync(SubscriptionIds.Bare(removed.Id), removed.Version, Member, Ct);
         var paused = await service.AddAsync(Sub("Paused", "USD", "7.00"), Member, Ct);
-        paused = await service.PauseAsync(SubscriptionIds.Bare(paused.Id), paused.Version, Member, Ct);
+        paused = await service.PauseAsync(SubscriptionIds.Bare(paused.Id), paused.Version, TimeZoneInfo.Utc, Member, Ct);
         var resumed = await service.AddAsync(Sub("Resumed", "SEK", "9.00"), Member, Ct);
-        resumed = await service.PauseAsync(SubscriptionIds.Bare(resumed.Id), resumed.Version, Member, Ct);
-        resumed = await service.ResumeAsync(SubscriptionIds.Bare(resumed.Id), resumed.Version, Member, Ct);
-        Assert.True(paused.Paused);
-        Assert.False(resumed.Paused);
+        resumed = await service.PauseAsync(SubscriptionIds.Bare(resumed.Id), resumed.Version, TimeZoneInfo.Utc, Member, Ct);
+        clock.Advance(TimeSpan.FromDays(1));
+        resumed = await service.ResumeAsync(SubscriptionIds.Bare(resumed.Id), resumed.Version, TimeZoneInfo.Utc, Member, Ct);
+        Assert.True(SubscriptionCalculator.IsPausedOn(Periods(paused), Day));
+        Assert.False(SubscriptionCalculator.IsPausedOn(Periods(resumed), Day.AddDays(1)));
 
         const string sql = "SELECT string_agg(id || ':' || data::text, '|' ORDER BY id) FROM subscribed.mt_doc_subscription_view";
         var before = await db.ScalarAsMigratorAsync<string>(sql);
@@ -238,14 +244,13 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         Assert.Equal(before, await db.ScalarAsMigratorAsync<string>(sql));
         Assert.Equal(active.Version, (await service.GetAsync(SubscriptionIds.Bare(active.Id), Ct))!.Version);
 
-        // The rebuild reproduces the flag from the pause and resume events (NFR-1).
+        // The rebuild reproduces the pause periods from the pause events (NFR-1).
         var rebuiltPaused = (await service.GetAsync(SubscriptionIds.Bare(paused.Id), Ct))!;
-        Assert.True(rebuiltPaused.Paused);
-        Assert.Equal(paused.PausedAt, rebuiltPaused.PausedAt);
+        Assert.Equal(Periods(paused), Periods(rebuiltPaused));
         Assert.Equal(paused.Version, rebuiltPaused.Version);
         var rebuiltResumed = (await service.GetAsync(SubscriptionIds.Bare(resumed.Id), Ct))!;
-        Assert.False(rebuiltResumed.Paused);
-        Assert.Null(rebuiltResumed.PausedAt);
+        Assert.Equal(Periods(resumed), Periods(rebuiltResumed));
+        Assert.Equal(Day.AddDays(1), Assert.Single(Periods(rebuiltResumed)).ResumeDate);
         Assert.Equal(resumed.Version, rebuiltResumed.Version);
     }
 
@@ -259,33 +264,142 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         var added = await service.AddAsync(Sub(), Member, Ct);
         var id = SubscriptionIds.Bare(added.Id);
 
-        var paused = await service.PauseAsync(id, added.Version, Member, Ct);
-        Assert.True(paused.Paused);
-        Assert.Equal(clock.GetUtcNow(), paused.PausedAt);
+        var paused = await service.PauseAsync(id, added.Version, TimeZoneInfo.Utc, Member, Ct);
+        var period = Assert.Single(paused.PausePeriods);
+        Assert.Equal(Day, period.PauseDate);
+        Assert.Null(period.ResumeDate);
+        Assert.Matches("^[0-9a-f]{32}$", period.PeriodId);
+        Assert.True(SubscriptionCalculator.IsPausedOn(Periods(paused), Day));
         Assert.Equal(added.Version + 1, paused.Version);
         var stored = (await service.GetAsync(id, Ct))!;
-        Assert.True(stored.Paused);
+        Assert.Equal(Periods(paused), Periods(stored));
         Assert.Equal(paused.Version, stored.Version);
 
-        clock.Advance(TimeSpan.FromHours(1));
-        var resumed = await service.ResumeAsync(id, paused.Version, Member, Ct);
-        Assert.False(resumed.Paused);
-        Assert.Null(resumed.PausedAt);
-        Assert.False((await service.GetAsync(id, Ct))!.Paused);
+        clock.Advance(TimeSpan.FromDays(1));
+        var resumed = await service.ResumeAsync(id, paused.Version, TimeZoneInfo.Utc, Member, Ct);
+        Assert.Equal(Day.AddDays(1), Assert.Single(Periods(resumed)).ResumeDate);
+        Assert.False(SubscriptionCalculator.IsPausedOn(Periods((await service.GetAsync(id, Ct))!), Day.AddDays(1)));
 
         Assert.Equal(
-            ["subscription.added.v1", "subscription.paused.v1", "subscription.resumed.v1"],
+            ["subscription.added.v1", "subscription.pause_period_added.v1", "subscription.pause_period_changed.v1"],
             (await db.ScalarAsMigratorAsync<string>($"SELECT string_agg(type, ',' ORDER BY version) FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}'"))!.Split(','));
         var payload = JsonElement.Parse((await db.ScalarAsMigratorAsync<string>($"SELECT data::text FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}' AND version = 2"))!);
-        Assert.Equal(["recordedAt"], payload.EnumerateObject().Select(p => p.Name));
+        // The column is jsonb, which does not keep the property order, so the names are compared as a set.
+        Assert.Equal(["pauseDate", "periodId", "recordedAt", "resumeDate"], payload.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
+        Assert.Equal("2026-11-13", payload.GetProperty("pauseDate").GetString());
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("resumeDate").ValueKind);
         Assert.Equal("member:test-member", await db.ScalarAsMigratorAsync<string>($"SELECT headers->>'actor' FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}' AND version = 2"));
 
-        await Assert.ThrowsAsync<SubscriptionStateException>(() => service.ResumeAsync(id, resumed.Version, Member, Ct));
+        await Assert.ThrowsAsync<SubscriptionStateException>(() => service.ResumeAsync(id, resumed.Version, TimeZoneInfo.Utc, Member, Ct));
         Assert.Equal(3, await db.ScalarAsMigratorAsync<long>($"SELECT count(*) FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}'"));
     }
 
     [Fact]
-    public async Task A_snapshot_stored_before_the_feature_loads_as_not_paused_and_can_then_be_paused()
+    public async Task The_pause_period_endpoints_add_change_and_remove_through_the_service()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var clock = new TestClock(DateTimeOffset.Parse("2026-11-13T09:30:00Z", CultureInfo.InvariantCulture));
+        var service = new SubscriptionService(store, clock, TestCatalog.Standard());
+        var added = await service.AddAsync(Sub(), Member, Ct);
+        var id = SubscriptionIds.Bare(added.Id);
+
+        var one = await service.AddPausePeriodAsync(id, added.Version, new PauseChange(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 10)), TimeZoneInfo.Utc, Member, Ct);
+        var periodId = Assert.Single(one.PausePeriods).PeriodId;
+        var two = await service.ChangePausePeriodAsync(id, one.Version, periodId, new PauseChange(new DateOnly(2026, 3, 2), new DateOnly(2026, 3, 12)), TimeZoneInfo.Utc, Member, Ct);
+        Assert.Equal(new PausePeriod(periodId, new DateOnly(2026, 3, 2), new DateOnly(2026, 3, 12)), Assert.Single(Periods(two)));
+
+        // A stale version is a 412, and a validation failure appends nothing.
+        await Assert.ThrowsAsync<EventStoreException>(() => service.RemovePausePeriodAsync(id, one.Version, periodId, TimeZoneInfo.Utc, Member, Ct));
+        await Assert.ThrowsAsync<SubscriptionValidationException>(() => service.AddPausePeriodAsync(id, two.Version, new PauseChange(new DateOnly(2026, 3, 5), null), TimeZoneInfo.Utc, Member, Ct));
+        await Assert.ThrowsAsync<SubscriptionNotFoundException>(() => service.RemovePausePeriodAsync(id, two.Version, "legacy-9", TimeZoneInfo.Utc, Member, Ct));
+
+        var three = await service.RemovePausePeriodAsync(id, two.Version, periodId, TimeZoneInfo.Utc, Member, Ct);
+        Assert.Empty(Periods(three));
+        Assert.Equal(["subscription.added.v1", "subscription.pause_period_added.v1", "subscription.pause_period_changed.v1", "subscription.pause_period_removed.v1"],
+            (await db.ScalarAsMigratorAsync<string>($"SELECT string_agg(type, ',' ORDER BY version) FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}'"))!.Split(','));
+    }
+
+    /// <summary>Legacy events written straight into the stream, so the test cannot go through the new decisions by accident.</summary>
+    private static async Task<string> WriteLegacyStreamAsync(DocumentStore store, params object[] pauseEvents)
+    {
+        var id = SubscriptionIds.New(TimeProvider.System);
+        var added = SubscriptionDecisions.Add(Sub(start: "2024-01-01"), HouseholdService.StreamId, SubscriptionIds.New(TimeProvider.System), DateTimeOffset.Parse("2026-01-01T00:00:00Z", CultureInfo.InvariantCulture));
+        await using var session = store.LightweightSession();
+        session.Events.StartStream<SubscriptionState>(SubscriptionIds.StreamKey(id), [.. added, .. pauseEvents]);
+        await session.SaveChangesAsync(Ct);
+        return id;
+    }
+
+    private static DateTimeOffset At(string iso) => DateTimeOffset.Parse(iso, CultureInfo.InvariantCulture);
+
+    [Fact]
+    public async Task A_stream_of_legacy_pause_events_projects_to_periods_and_a_rebuild_reproduces_them()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+
+        var pair = await WriteLegacyStreamAsync(store, new SubscriptionPaused(At("2026-03-10T10:00:00Z")), new SubscriptionResumed(At("2026-03-20T10:00:00Z")));
+        var zeroDay = await WriteLegacyStreamAsync(store, new SubscriptionPaused(At("2026-03-10T08:00:00Z")), new SubscriptionResumed(At("2026-03-10T09:00:00Z")));
+        var orphan = await WriteLegacyStreamAsync(store, new SubscriptionResumed(At("2026-03-10T08:00:00Z")));
+        var open = await WriteLegacyStreamAsync(store, new SubscriptionPaused(At("2026-04-01T10:00:00Z")));
+
+        async Task<string> SnapshotAsync() => (await db.ScalarAsMigratorAsync<string>("SELECT string_agg(id || ':' || data::text, '|' ORDER BY id) FROM subscribed.mt_doc_subscription_view"))!;
+
+        void Check(SubscriptionState converted, SubscriptionState dropped, SubscriptionState orphaned, SubscriptionState opened)
+        {
+            Assert.Equal(new PausePeriod("legacy-1", new DateOnly(2026, 3, 10), new DateOnly(2026, 3, 20)), Assert.Single(Periods(converted)));
+            Assert.Empty(Periods(dropped));
+            Assert.Empty(Periods(orphaned));
+            Assert.Equal(new PausePeriod("legacy-1", new DateOnly(2026, 4, 1), null), Assert.Single(Periods(opened)));
+        }
+
+        async Task<SubscriptionState> LoadAsync(string id) => (await service.GetAsync(id, Ct))!;
+        Check(await LoadAsync(pair), await LoadAsync(zeroDay), await LoadAsync(orphan), await LoadAsync(open));
+
+        var before = await SnapshotAsync();
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
+        await using (var migrator = MigratorStore(db))
+        {
+            var rebuilt = await SubscriptionProjectionRebuilder.RebuildWithSummaryAsync(migrator, null, new FixedTime(new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.Zero)), Ct);
+            Assert.Equal(4, rebuilt.Documents);
+
+            // One converted pair and one open pause converted, one zero-day pair dropped (D7), one resume with nothing to close.
+            Assert.Equal(new PauseRebuildSummary(Converted: 2, DroppedZeroDay: 1, OrphanResumes: 1, ZoneFallback: 0), rebuilt.Pause);
+            Assert.Equal("pause-rebuild converted=2 dropped_zero_day=1 orphan_resumes=1 zone_fallback=0", rebuilt.Pause.ToLine());
+        }
+
+        Assert.Equal(before, await SnapshotAsync());
+        Check(await LoadAsync(pair), await LoadAsync(zeroDay), await LoadAsync(orphan), await LoadAsync(open));
+    }
+
+    [Fact]
+    public async Task The_rebuild_summary_counts_a_household_zone_that_falls_back_to_utc()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        await new HouseholdService(store, TimeProvider.System).InitializeAsync("Synthetic Household", "https://idp.test", "subject-owner", "Owner", Member, Ct);
+        await using (var session = store.LightweightSession())
+        {
+            session.Events.Append(HouseholdService.StreamId, new Subscribed.Household.Domain.HouseholdTimeZoneChanged("Mars/Olympus-Mons", At("2026-01-02T00:00:00Z")));
+            await session.SaveChangesAsync(Ct);
+        }
+
+        await WriteLegacyStreamAsync(store, new SubscriptionPaused(At("2026-03-10T10:00:00Z")), new SubscriptionResumed(At("2026-03-20T10:00:00Z")));
+
+        await using var migrator = MigratorStore(db);
+        var rebuilt = await SubscriptionProjectionRebuilder.RebuildWithSummaryAsync(migrator, null, new FixedTime(new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.Zero)), Ct);
+        Assert.Equal(new PauseRebuildSummary(Converted: 1, DroppedZeroDay: 0, OrphanResumes: 0, ZoneFallback: 1), rebuilt.Pause);
+    }
+
+    private sealed class FixedTime(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Fact]
+    public async Task A_snapshot_stored_before_pause_periods_loads_as_not_paused_and_can_then_be_paused()
     {
         await using var db = await pg.CreateDatabaseAsync();
         await using var store = AppStore(db);
@@ -293,17 +407,17 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         var added = await service.AddAsync(Sub(), Member, Ct);
         var id = SubscriptionIds.Bare(added.Id);
 
-        // Rows written before this feature have neither property.
-        await db.ExecuteAsMigratorAsync("UPDATE subscribed.mt_doc_subscription_view SET data = data - 'paused' - 'pausedAt'");
-        Assert.Equal(0, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM subscribed.mt_doc_subscription_view WHERE data ? 'paused' OR data ? 'pausedAt'"));
+        // Rows written by the previous build carry the flag and have no period list.
+        await db.ExecuteAsMigratorAsync("UPDATE subscribed.mt_doc_subscription_view SET data = (data - 'pausePeriods' - 'legacyPauseCount') || '{\"paused\": true, \"pausedAt\": \"2026-03-10T10:00:00+00:00\"}'::jsonb");
+        Assert.Equal(1, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM subscribed.mt_doc_subscription_view WHERE data ? 'paused' AND NOT data ? 'pausePeriods'"));
 
         var loaded = (await service.GetAsync(id, Ct))!;
-        Assert.False(loaded.Paused);
-        Assert.Null(loaded.PausedAt);
-        Assert.False(Assert.Single(await service.ListAsync(Ct)).Paused);
+        Assert.Empty(loaded.PausePeriods);
+        Assert.False(SubscriptionCalculator.IsPausedOn(Periods(loaded), Day));
+        Assert.Empty(Periods(Assert.Single(await service.ListAsync(Ct))));
 
-        var paused = await service.PauseAsync(id, loaded.Version, Member, Ct);
-        Assert.True(paused.Paused);
+        var paused = await service.PauseAsync(id, loaded.Version, TimeZoneInfo.Utc, Member, Ct);
+        Assert.Single(paused.PausePeriods);
     }
 
     [Fact]

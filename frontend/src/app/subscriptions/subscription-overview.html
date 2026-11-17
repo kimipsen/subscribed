@@ -8,6 +8,7 @@
       @if (actionTrace()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ actionTrace() }}</code></p> }
     </div>
   }
+  <app-period-selector />
   @if (loading()) {
     <p role="status">{{ 'subscriptions.loading' | t }}</p>
     <div class="skeleton" aria-hidden="true"></div>
@@ -34,8 +35,8 @@
             @for (total of data.totals; track total.currency) {
               <li>
                 {{ 'subscriptions.totalsLine' | t: {
-                  monthly: money(total.monthly, total.currency, total.minorUnit),
-                  yearly: money(total.yearly, total.currency, total.minorUnit)
+                  total: money(total.total, total.currency, total.minorUnit),
+                  average: money(total.monthlyAverage, total.currency, total.minorUnit)
                 } }}
                 <span class="muted">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
               </li>
@@ -72,7 +73,7 @@
             <th scope="col">{{ 'subscriptions.col.status' | t }}</th>
             <th scope="col">{{ 'subscriptions.col.price' | t }}</th>
             <th scope="col">{{ 'subscriptions.col.perMonth' | t }}</th>
-            <th scope="col">{{ 'subscriptions.col.perYear' | t }}</th>
+            <th scope="col">{{ totalHeading().key | t: totalHeading().params }}</th>
             <th scope="col">{{ 'subscriptions.col.actions' | t }}</th>
           </tr>
         </thead>
@@ -94,7 +95,7 @@
             }
           </td>
           <td>{{ money(row.normalizedMonthly, row.currency, row.minorUnit) }}</td>
-          <td>{{ money(row.normalizedYearly, row.currency, row.minorUnit) }}</td>
+          <td>{{ money(row.periodTotal, row.currency, row.minorUnit) }}</td>
           <td>
             @if (row.paused) {
               <button type="button" class="secondary" [id]="'action-' + row.id" [disabled]="acting() !== null"
@@ -121,8 +122,8 @@
                   @for (total of group.totals; track total.currency) {
                     <li>
                       {{ 'subscriptions.totalsLine' | t: {
-                        monthly: money(total.monthly, total.currency, total.minorUnit),
-                        yearly: money(total.yearly, total.currency, total.minorUnit)
+                        total: money(total.total, total.currency, total.minorUnit),
+                        average: money(total.monthlyAverage, total.currency, total.minorUnit)
                       } }}
                       <span class="muted">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
                     </li>

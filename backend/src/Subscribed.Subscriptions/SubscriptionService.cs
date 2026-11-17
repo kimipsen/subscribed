@@ -87,13 +87,25 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
     public Task<SubscriptionState> RemoveAsync(string id, long expectedVersion, WriteContext context, CancellationToken ct = default) =>
         WriteAsync(id, expectedVersion, history => SubscriptionDecisions.Remove(history, time.GetUtcNow()), context, ct);
 
-    /// <summary>Appends <c>subscription.paused.v1</c>. A paused subscription is rejected with <see cref="SubscriptionStateException"/>.</summary>
-    public Task<SubscriptionState> PauseAsync(string id, long expectedVersion, WriteContext context, CancellationToken ct = default) =>
-        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.Pause(history, time.GetUtcNow()), context, ct);
+    /// <summary>
+    /// Opens a pause period starting today (<c>subscription.pause_period_added.v1</c>). A paused subscription is rejected with
+    /// <see cref="SubscriptionStateException"/>. <paramref name="zone"/> is the household zone that resolves legacy pauses.
+    /// </summary>
+    public Task<SubscriptionState> PauseAsync(string id, long expectedVersion, TimeZoneInfo zone, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.Pause(history, SubscriptionIds.New(time), SubscriptionCalculator.Today(time), zone, time.GetUtcNow()), context, ct);
 
-    /// <summary>Appends <c>subscription.resumed.v1</c>. A subscription that is not paused is rejected with <see cref="SubscriptionStateException"/>.</summary>
-    public Task<SubscriptionState> ResumeAsync(string id, long expectedVersion, WriteContext context, CancellationToken ct = default) =>
-        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.Resume(history, time.GetUtcNow()), context, ct);
+    /// <summary>Closes today's open pause period. A subscription that is not paused is rejected with <see cref="SubscriptionStateException"/>.</summary>
+    public Task<SubscriptionState> ResumeAsync(string id, long expectedVersion, TimeZoneInfo zone, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.Resume(history, SubscriptionCalculator.Today(time), zone, time.GetUtcNow()), context, ct);
+
+    public Task<SubscriptionState> AddPausePeriodAsync(string id, long expectedVersion, PauseChange command, TimeZoneInfo zone, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.AddPausePeriod(history, command, SubscriptionIds.New(time), SubscriptionCalculator.Today(time), zone, time.GetUtcNow()), context, ct);
+
+    public Task<SubscriptionState> ChangePausePeriodAsync(string id, long expectedVersion, string periodId, PauseChange command, TimeZoneInfo zone, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.ChangePausePeriod(history, periodId, command, SubscriptionCalculator.Today(time), zone, time.GetUtcNow()), context, ct);
+
+    public Task<SubscriptionState> RemovePausePeriodAsync(string id, long expectedVersion, string periodId, TimeZoneInfo zone, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(id, expectedVersion, history => SubscriptionDecisions.RemovePausePeriod(history, periodId, SubscriptionCalculator.Today(time), zone, time.GetUtcNow()), context, ct);
 
     /// <summary>
     /// Fetch and rehydrate → 404 if missing or removed → stale version is a conflict → decide → append at version + N → one

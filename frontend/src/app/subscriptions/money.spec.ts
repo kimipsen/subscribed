@@ -1,4 +1,5 @@
 import {
+  averagePerMonth,
   decimalSeparator,
   formatMoney,
   formatPercentChange,
@@ -131,5 +132,48 @@ describe('sumDecimalStrings', () => {
   it('formats through formatMoney like any other amount', () => {
     const total = sumDecimalStrings(['1000.10', '548.20'], 2) as string;
     expect(plain(formatMoney(total, 'DKK', 2, 'en-GB'))).toBe('DKK 1,548.30');
+  });
+});
+
+describe('averagePerMonth', () => {
+  it('divides by 12 exactly where the result is exact', () => {
+    expect(averagePerMonth('1200.00', 2)).toBe('100.00');
+    expect(averagePerMonth('1074.00', 2)).toBe('89.50');
+    expect(averagePerMonth('0.00', 2)).toBe('0.00');
+    expect(averagePerMonth('0', 0)).toBe('0');
+  });
+
+  it('rounds half away from zero at the currency\'s own minor unit', () => {
+    // 0.06 / 12 = 0.005 exactly: the half rounds away from zero to 0.01, not to even.
+    expect(averagePerMonth('0.06', 2)).toBe('0.01');
+    expect(averagePerMonth('0.05', 2)).toBe('0.00');
+    expect(averagePerMonth('0.18', 2)).toBe('0.02');
+    expect(averagePerMonth('10.00', 2)).toBe('0.83');
+    expect(averagePerMonth('3.00', 2)).toBe('0.25');
+  });
+
+  it('handles zero decimals (JPY)', () => {
+    expect(averagePerMonth('6', 0)).toBe('1');
+    expect(averagePerMonth('5', 0)).toBe('0');
+    expect(averagePerMonth('17880', 0)).toBe('1490');
+    expect(averagePerMonth('18', 0)).toBe('2');
+  });
+
+  it('handles three decimals (KWD)', () => {
+    expect(averagePerMonth('0.006', 3)).toBe('0.001');
+    expect(averagePerMonth('0.005', 3)).toBe('0.000');
+    expect(averagePerMonth('10.005', 3)).toBe('0.834');
+    expect(averagePerMonth('12.000', 3)).toBe('1.000');
+  });
+
+  it('stays exact beyond the float range', () => {
+    expect(averagePerMonth('9007199254740993.00', 2)).toBe('750599937895082.75');
+  });
+
+  it('pads short fractions and returns null for malformed input instead of throwing', () => {
+    expect(averagePerMonth('12', 2)).toBe('1.00');
+    for (const bad of ['', '1,50', 'abc', '-1.00', '+1.00', '1.', '.5', ' 1.00']) expect(averagePerMonth(bad, 2)).toBeNull();
+    expect(averagePerMonth('1.234', 2)).toBeNull();
+    expect(averagePerMonth('1.5', 0)).toBeNull();
   });
 });

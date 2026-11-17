@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, Injector, afterNextRender, computed, inject, signal } from '@angular/core';
+import { Component, Injector, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
@@ -16,6 +16,8 @@ import {
   selectionValue,
 } from './categories';
 import { formatMoney } from './money';
+import { PeriodSelector } from './period-selector';
+import { PeriodService, parsePeriodKey, periodTotalMessage } from './period';
 import { ServiceLogo } from './service-logo';
 import { ApiProblem, Price, SubscriptionOverview, SubscriptionStatus, SubscriptionSummary } from './subscription.models';
 import { SubscriptionsService } from './subscriptions.service';
@@ -45,12 +47,13 @@ const FAILURE_KEYS: Record<number, MessageKey> = {
 
 @Component({
   selector: 'app-subscription-overview',
-  imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo],
+  imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo, PeriodSelector],
   templateUrl: './subscription-overview.html',
 })
 export class SubscriptionOverviewComponent {
   readonly i18n = inject(LanguageService);
   private readonly service = inject(SubscriptionsService);
+  private readonly period = inject(PeriodService);
   private readonly injector = inject(Injector);
   readonly loading = signal(true);
   readonly failed = signal(false);
@@ -62,6 +65,9 @@ export class SubscriptionOverviewComponent {
   readonly acting = signal<string | null>(null);
   readonly actionProblem = signal<Message | null>(null);
   readonly actionTrace = signal<string | undefined>(undefined);
+
+  /** The heading of the period-total column: for the period the loaded data is for, so it never disagrees with the figures below it. */
+  readonly totalHeading = computed(() => periodTotalMessage(parsePeriodKey(this.overview()?.period.key) ?? this.period.effective()));
 
   /** The API sorts by name ordinally; the screen re-sorts with the active language's collation, then start date, then id. */
   readonly rows = computed<SubscriptionSummary[]>(() => {
@@ -89,21 +95,46 @@ export class SubscriptionOverviewComponent {
   readonly visibleRows = computed(() => filterRows(this.rows(), this.effectiveFilter()));
   readonly groups = computed(() => (this.grouped() ? groupRows(this.visibleRows(), this.i18n.dateLocale()) : []));
 
+  /** The latest request wins: a response of an earlier one (an out-of-order answer) must never overwrite the current selection's data. */
+  private latest = 0;
+  private requestedKey = '';
+
   constructor() {
     this.notice.set(this.service.notice());
     this.service.notice.set(null);
-    this.load();
+    this.fetch(false);
+    // A new selection reloads in place (no skeleton), like a refresh after pause or resume.
+    effect(() => {
+      const key = this.period.effectiveKey();
+      untracked(() => {
+        if (key !== this.requestedKey) this.fetch(true);
+      });
+    });
   }
 
   load(): void {
-    this.loading.set(true);
-    this.failed.set(false);
-    this.service.overview().subscribe({
+    this.fetch(false);
+  }
+
+  /** Loads the overview for the effective period. `inPlace` keeps the table (and the keyboard focus) on screen meanwhile. */
+  private fetch(inPlace: boolean, focusRow?: string): void {
+    const request = ++this.latest;
+    const period = this.period.effective();
+    this.requestedKey = this.period.effectiveKey();
+    if (!inPlace) {
+      this.loading.set(true);
+      this.failed.set(false);
+    }
+    this.service.overview(period).subscribe({
       next: (overview) => {
+        if (request !== this.latest) return;
         this.overview.set(overview);
         this.loading.set(false);
+        this.failed.set(false);
+        if (focusRow) afterNextRender(() => document.querySelector<HTMLElement>(`#action-${focusRow}`)?.focus(), { injector: this.injector });
       },
       error: (error: HttpErrorResponse) => {
+        if (request !== this.latest) return;
         this.loading.set(false);
         this.failed.set(true);
         this.reference.set((error.error as ApiProblem | null)?.traceId);
@@ -123,7 +154,8 @@ export class SubscriptionOverviewComponent {
     this.actionProblem.set(null);
     this.actionTrace.set(undefined);
     this.notice.set(null);
-    (pausing ? this.service.pause(row.id, row.version) : this.service.resume(row.id, row.version)).subscribe({
+    const period = this.period.effective();
+    (pausing ? this.service.pause(row.id, row.version, period) : this.service.resume(row.id, row.version, period)).subscribe({
       next: () => {
         this.acting.set(null);
         this.notice.set({ key: pausing ? 'subscriptions.paused' : 'subscriptions.resumed', params: { name: row.name } });
@@ -140,16 +172,7 @@ export class SubscriptionOverviewComponent {
 
   /** Reloads the rows in place: no skeleton, so the table and the keyboard focus stay put. */
   private refresh(focusRow: string): void {
-    this.service.overview().subscribe({
-      next: (overview) => {
-        this.overview.set(overview);
-        afterNextRender(() => document.querySelector<HTMLElement>(`#action-${focusRow}`)?.focus(), { injector: this.injector });
-      },
-      error: (error: HttpErrorResponse) => {
-        this.failed.set(true);
-        this.reference.set((error.error as ApiProblem | null)?.traceId);
-      },
-    });
+    this.fetch(true, focusRow);
   }
 
   private fail(error: HttpErrorResponse): void {

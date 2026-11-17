@@ -97,7 +97,7 @@ public static partial class CalendarFeedBuilder
         subscriptions
             .Where(s => !s.Removed
                 && s.CancelBy is { } cancelBy && cancelBy >= now
-                && SubscriptionCalculator.StatusOn(s, today) != SubscriptionStatus.Ended)
+                && !SubscriptionCalculator.IsEnded(s, today))
             .OrderBy(s => s.CancelBy)
             .ThenBy(s => s.Name, StringComparer.Ordinal)
             .ThenBy(s => SubscriptionIds.Bare(s.Id), StringComparer.Ordinal);

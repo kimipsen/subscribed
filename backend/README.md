@@ -76,43 +76,115 @@ creates the table, records version 3 and re-applies `grants.sql`, and readiness 
 | --- | --- |
 | `src/Subscribed.Platform` | `SubscribedStore` (only Marten configuration), `EventStoreErrors.Map` (only library-aware error code), `Database/grants.sql` (embedded, single source), `SchemaMigrator` + `SchemaVersion`, `ReadinessProbe`, `MartenXmlRepository` (DP keys), RFC 9457 `Problem`, `MemberIdentity`, `SecurityLog` |
 | `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler; the household time zone (`TimeZoneIds`, `ITimeZoneSource`) and the calendar feed secret (`CalendarFeedSecrets`) |
-| `src/Subscribed.Subscriptions` | twelve `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, totals, with exact rational arithmetic), `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints; `PaymentOptions/` holds the three `payment_option.*.v1` events, `PaymentOptionState`, `PaymentOptionDecisions`, `PaymentOptionService`, its rebuilder and the `/api/payment-options` endpoints; `Calendar/` holds the iCal feed builder (`CalendarFeedBuilder`, `IcsWriter`, `VTimeZoneWriter`, `CalendarFeedText`), see "Calendar reminders" |
+| `src/Subscribed.Subscriptions` | sixteen `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, period totals, with exact rational arithmetic), `ReportPeriod`, `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints; `PaymentOptions/` holds the three `payment_option.*.v1` events, `PaymentOptionState`, `PaymentOptionDecisions`, `PaymentOptionService`, its rebuilder and the `/api/payment-options` endpoints; `Calendar/` holds the iCal feed builder (`CalendarFeedBuilder`, `IcsWriter`, `VTimeZoneWriter`, `CalendarFeedText`), see "Calendar reminders" |
 | `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli`, and `Calendar/CalendarEndpoints` (the anonymous `/calendar/{secret}/subscribed.ics` feed) |
 | `tests/Subscribed.UnitTests` | invariants (AC7), golden event fixtures + unknown alias (AC6), validators, error map |
 | `tests/Subscribed.Persistence.Tests` | AC1–AC5, AC19, AC20 on PostgreSQL 18 as the least-privilege role |
 | `tests/Subscribed.Api.Tests` | HTTP tests on TestServer with the in-process stub IdP (AC8–AC15, AC12b, AC21), child-process startup tests (AC13), admin CLI |
 | `tests/Subscribed.TestSupport` | PostgreSQL fixture, stub OpenID Provider, log capture (test-only; no production bypass) |
 
-## Pausing a subscription
+## Period totals and pause periods
 
-A household member can pause a subscription and resume it later. Nothing is deleted and no price changes: pausing only
-takes the subscription out of the totals.
+The overview and the detail show what a subscription **costs over a chosen period**, calculated day by day from its price
+history, its start and end dates and its pause periods. This replaces the old run-rate "per year" figure.
+
+### `/api/subscriptions`
 
 | Endpoint | Success | Notes |
 | --- | --- | --- |
-| `POST /api/subscriptions/{id}/pause` | `200` with the subscription detail and a new `ETag` | appends `subscription.paused.v1` |
-| `POST /api/subscriptions/{id}/resume` | `200` with the subscription detail and a new `ETag` | appends `subscription.resumed.v1` |
+| `GET /api/subscriptions?period=` | `200` overview: `asOf`, `period`, `subscriptions`, `totals` | `period` is optional |
+| `GET /api/subscriptions/{id}?period=` | `200` detail | same `period` rule |
+| `GET /api/subscriptions/periods` | `200` `{ years, currentYear }` | the calendar years the selector offers |
+| `POST /api/subscriptions/{id}/pauses` | `200` detail and a new `ETag` | body `{ pauseDate, resumeDate? }`, appends `subscription.pause_period_added.v1` |
+| `PUT /api/subscriptions/{id}/pauses/{periodId}` | `200` detail and a new `ETag` | same body, appends `subscription.pause_period_changed.v1` |
+| `DELETE /api/subscriptions/{id}/pauses/{periodId}` | `200` detail and a new `ETag` | appends `subscription.pause_period_removed.v1` |
+| `POST /api/subscriptions/{id}/pause` | `200` detail and a new `ETag` | the button: opens a period starting today |
+| `POST /api/subscriptions/{id}/resume` | `200` detail and a new `ETag` | the button: closes today's open period |
 
-Both take no body and use the same `If-Match` pipeline as the other writes, in this order: malformed id `404`, `If-Match`
-missing `428` or malformed `400`, removed or unknown subscription `404`, stale version `412`, state rule `409`, then the append
-(`412` if another writer won the race). The stale-version check runs before the state rule, so a stale `If-Match` on a
-subscription that is already paused answers `412`, not `409`.
+- **The `period` parameter.** `year-YYYY` (1900 to 9999, exactly four digits), `last-12-months` or `next-12-months`. Absent means
+  the current calendar year (UTC today). A calendar year runs Jan 1 to Dec 31. *Last 12 months* is `today - 12 months + 1 day`
+  through today and *next 12 months* is today through `today + 12 months - 1 day`, both inclusive, so every period is exactly 12
+  months and the average per month is `total / 12`. A value that cannot be parsed, or a repeated parameter, is `400` with a
+  `period` field error on `GET`. After a **mutation** the same mistake is not an error: the write has already happened, so the
+  response falls back to the current year.
+- **`period`** in the response is `{ key, from, to, months }` (the dates are inclusive, `months` is always 12).
+- **Overview row.** `periodTotal` is the subscription's cost over the period, rounded once to the currency's minor unit.
+  `activeInPeriod` is true when at least one day of the period was chargeable (inside the start and end dates and outside every
+  pause). `normalizedMonthly` and `normalizedYearly` are unchanged: they describe the **current** price, not the period.
+- **Totals.** One line per currency, never combined: `{ currency, minorUnit, total, monthlyAverage, activeCount }`. `total` is the
+  exact sum of the subscriptions' period costs rounded **once**; `monthlyAverage` is that unrounded sum divided by 12, rounded once.
+  `activeCount` counts the non-removed subscriptions with at least one chargeable day in the period, so an ended or not-yet-started
+  subscription counts when it was charged inside the period and a subscription paused for the whole period does not.
+  The old `monthly` and `yearly` names are gone. A currency whose subscriptions had no chargeable day keeps its line with `0.00`
+  and an `activeCount` of 0.
+  Because the panel rounds the sum and each row rounds itself, a total can differ from the sum of the displayed rows by one minor unit.
+- **The calculation.** For every segment of days where the price and the pause state are constant (split at each price change,
+  each pause boundary and every Jan 1), the cost is `yearly price * days / days-in-that-year` (365 or 366), as an exact fraction.
+  Nothing is rounded inside the calculation. Example: 100 a month from Jan 1 and 120 a month from Jul 1 gives
+  `1200 * 181/365 + 1440 * 184/365 = 1320.99` for the year.
+- **Removed subscriptions** are not in the response. The detail `period`, `periodTotal` and `pauseHistory` are always present;
+  `pauseHistory` is chronological and is not filtered by the period.
 
-- **Problem code `invalid-subscription-state` (`409`).** Pausing a subscription that is already paused, or resuming one that is
-  not paused, is rejected rather than treated as a no-op. The problem body carries `currentVersion`, like the `412`, so a client can refresh.
-- **Status precedence.** `status` is `paused` only when the subscription would otherwise be `active`. `not-started` and
-  `ended` win over a pause, because the dates stay authoritative. A pause is allowed in any non-removed state. The flag is kept:
-  a paused subscription whose end date is later cleared shows `paused` until it is resumed.
-- **DTOs.** Both the overview row and the detail carry `paused` (the flag itself, which the UI uses to offer Resume even when
-  `status` shows `ended` or `not-started`). The overview row also carries `version`, the `If-Match` value for a row action.
-- **Totals.** Per-currency totals and the active count include `active` subscriptions only, so a paused one is excluded.
-  Price history and the current price are unchanged by a pause.
-- **History view.** `priceHistory` lists price entries only. Pause and resume events are not shown there.
-- **Roll forward only.** Once a `subscription.paused.v1` or `subscription.resumed.v1` event exists, rolling the backend back to a
-  version that does not know them fails stream reads with `UnknownSubscriptionEventAliasException`. Recover by redeploying the new version.
-  Deploy the backend before or together with the frontend: the new UI reads `version` from the overview rows, which an old backend does not send.
-- **Existing data.** Existing streams and snapshot rows are valid as they are: a stored snapshot without `paused` or `pausedAt`
-  loads as not paused, and `admin projections rebuild` reproduces the flag from the events. No migration is needed.
+### Pause periods
+
+A pause is a date range `[pauseDate, resumeDate)`: `pauseDate` is the first day that is not charged and `resumeDate` the first
+day charged again. A period without `resumeDate` is open. Adjacent periods (one resumes the day the next pauses) are allowed.
+
+- **Validation (`400`, field errors on `pauseDate` / `resumeDate`).** `pauseDate` is required and both are `yyyy-MM-dd`. Neither
+  date may be after today (UTC), `resumeDate` must be after `pauseDate`, periods must not overlap, and only the latest period can
+  be open. A pause may lie before the start date or after the end date: it simply changes nothing there.
+- **Pipeline.** The three endpoints use the same order as the price endpoints: malformed id `404`, `If-Match` missing `428` or
+  malformed `400`, body and field shape `400`, removed or unknown subscription `404`, stale version `412`, invariants, then the append
+  (`412` if another writer won the race). A malformed or unknown `periodId` is `404`. Ids are 32 lowercase hex characters, or
+  `legacy-n` for a period rebuilt from the old events (below).
+- **The buttons keep their behaviour.** `pause` on a subscription that is already paused, and `resume` on one that is not, are
+  `409` `invalid-subscription-state` with `currentVersion`, as before. `resume` on the day the pause started removes the period
+  (a zero-length pause is not allowed), otherwise it closes the open period with today's date. The stale-version check still runs
+  before the state rule, so a stale `If-Match` answers `412`, not `409`.
+- **Status.** `paused` (row and detail) is true when today is inside a pause period, whatever the start and end dates say, so the
+  UI can still offer Resume. `status` is `paused` only when the subscription would otherwise be `active`: `not-started` and
+  `ended` win over a pause.
+- **The calendar feed** is unaffected: a paused subscription still bills until it is cancelled.
+
+### Data and rollout
+
+Pausing used to be a flag set by two events. Those events, `subscription.paused.v1` and `subscription.resumed.v1`, stay replayable
+forever and are now read into periods with the ids `legacy-1`, `legacy-2`, ... (the order of the old pause events, never
+reused). Their instants become dates in the **household time zone**, clamped to today (a date later than today cannot have happened).
+A legacy pair that ends up with `resume <= pause` is a zero-day pause: it never changed a charge and is dropped. A legacy resume with
+no open pause is ignored. New actions write `subscription.pause_period_added.v1`, `...changed.v1` and `...removed.v1`.
+There are now sixteen subscription events in all.
+
+**Deploy order (this matters).**
+
+1. **Take a database backup.** This is the point of no return, see below.
+2. Run the migrator: `admin db migrate` (no schema change is expected, but it is the normal first step).
+3. Run `admin projections rebuild` with the migrator connection **using the new binary**, before the new API takes traffic (or keep
+   the API stopped until it has finished). Existing snapshots lose `paused`/`pausedAt` and gain `pausePeriods`; they still load, but
+   show every subscription as not paused (and an empty pause history) until the rebuild, so period totals would charge paused days.
+   Writes stay correct in that window because decisions replay the events, but reads are stale.
+4. Start the new API.
+
+**The rebuild prints a one-line summary** after the three document counts, so an operator can compare before and after:
+
+```
+pause-rebuild converted=N dropped_zero_day=N orphan_resumes=N zone_fallback=N
+```
+
+`converted` is the number of legacy pause periods turned into dated periods, `dropped_zero_day` the zero-day pairs that were dropped,
+`orphan_resumes` the legacy resumes that found nothing to close, and `zone_fallback` is `1` when the stored household time zone could
+not be resolved on this server and UTC was used (the same fallback and warning as in the API).
+
+**Verify after the rebuild.** Open a subscription you know was paused before the deploy: `GET /api/subscriptions/{id}` must show
+`paused: true` (if it is still paused) and a non-empty `pauseHistory` containing a `legacy-n` period, and the overview totals must
+exclude its paused days. A subscription that was paused and resumed shows the closed period in its history.
+
+**Rolling back.** The new events are not known to the previous binary: once a `subscription.pause_period_*.v1` event exists, an older
+binary fails stream reads with `UnknownSubscriptionEventAliasException` (`Unsupported subscription event`). The point of no return is
+the **first pause action after the new API starts**. Before that, rolling back means redeploying the old binary and running
+`admin projections rebuild` with it. After it, the only way back is to restore the backup from step 1 and lose the writes made since.
+Deploy the backend before or together with the frontend: the new UI reads `period`, `periodTotal` and `total` / `monthlyAverage`, which
+the old backend does not send, and the old UI reads `monthly` / `yearly`, which this backend no longer sends. The SPA is served by the API, so they ship together.
 
 ## Calendar reminders
 
@@ -364,7 +436,7 @@ configuration, 2 usage/domain error, 3 conflict (e.g. already initialized), 4 da
 | --- | --- | --- |
 | `db migrate` | migrator | Marten DDL (diff, never drops), `schema_migrations` version, then re-applies `grants.sql` |
 | `db patch --output <file>` | migrator | writes pending DDL for DBA review; executes nothing |
-| `projections rebuild` | migrator | deletes the household, subscription and payment option view documents and reprojects each from events (prints the three counts) |
+| `projections rebuild` | migrator | deletes the household, subscription and payment option view documents and reprojects each from events (prints the three counts, and the `pause-rebuild converted=N dropped_zero_day=N orphan_resumes=N zone_fallback=N` summary after the subscription count, see "Period totals and pause periods") |
 | `household init --name <n> --owner-subject <sub> --owner-label <l>` | app | creates the household and grants the first member |
 | `household grant --subject <sub> --label <l>` | app | grants membership (no self-registration exists anywhere) |
 | `household revoke --member-id <id>` | app | revokes; effective on the member's next request; the last member cannot be revoked |

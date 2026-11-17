@@ -368,7 +368,7 @@ public sealed class UnsubscribeLinkResolutionTests
     public void Paused_and_removed_style_states_still_resolve()
     {
         var paused = State(null);
-        paused.Paused = true;
+        paused.PausePeriods.Add(new PausePeriodState { PeriodId = "p1", PauseDate = new DateOnly(2019, 1, 1) });
         paused.EndDate = new DateOnly(2020, 1, 1);
         Assert.Equal(CatalogUrl, UnsubscribeLink.Effective(paused, CatalogWith(CatalogUrl)));
     }
@@ -379,7 +379,7 @@ public sealed class UnsubscribeLinkResolutionTests
         var added = SubscriptionDecisionTests.Added(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = null });
         var state = SubscriptionState.Rehydrate(added);
         state.CatalogId = "streamco";
-        var dto = SubscriptionDetailDto.From(state, SubscriptionDecisionTests.Today, CatalogWith(CatalogUrl), TimeZoneInfo.Utc);
+        var dto = SubscriptionDetailDto.From(state, SubscriptionDecisionTests.Today, CatalogWith(CatalogUrl), TimeZoneInfo.Utc, ReportPeriod.CurrentYear(SubscriptionDecisionTests.Today));
         Assert.Null(dto.UnsubscribeUrl);
         Assert.Equal(CatalogUrl, dto.EffectiveUnsubscribeUrl);
         Assert.Equal(CatalogUrl, CatalogDto.From(CatalogWith(CatalogUrl)).Services[0].UnsubscribeUrl);
