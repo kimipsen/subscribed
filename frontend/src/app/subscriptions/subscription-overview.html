@@ -1,53 +1,54 @@
 <section aria-labelledby="subscriptions-heading">
-  <h2 id="subscriptions-heading">{{ 'subscriptions.heading' | t }}</h2>
-  <p class="actions"><a routerLink="/payment-options">{{ 'paymentOptions.link' | t }}</a></p>
-  @if (notice(); as message) { <p class="status" role="status">{{ message.key | t: message.params }}</p> }
+  <h2 id="subscriptions-heading" class="mb-2 text-2xl font-semibold wrap-anywhere">{{ 'subscriptions.heading' | t }}</h2>
+  <p class="my-2"><a class="text-primary underline" routerLink="/payment-options">{{ 'paymentOptions.link' | t }}</a></p>
+  @if (notice(); as message) {
+    <app-notice [role]="'status'" data-action-notice>{{ message.key | t: message.params }}</app-notice>
+  }
   @if (actionProblem(); as message) {
-    <div class="notice" role="alert">
-      <p>{{ message.key | t: message.params }}</p>
-      @if (actionTrace()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ actionTrace() }}</code></p> }
-    </div>
+    <app-notice>
+      <p class="m-0">{{ message.key | t: message.params }}</p>
+      @if (actionTrace()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ actionTrace() }}</code></p> }
+    </app-notice>
   }
   @if (loading()) {
-    <p role="status">{{ 'subscriptions.loading' | t }}</p>
-    <div class="skeleton" aria-hidden="true"></div>
+    <p class="my-2" role="status">{{ 'subscriptions.loading' | t }}</p>
+    <div class="skeleton h-24 w-full" aria-hidden="true"></div>
   } @else if (failed()) {
-    <div class="notice" role="alert">
-      <p>{{ 'subscriptions.loadFailed' | t }}</p>
-      @if (reference()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ reference() }}</code></p> }
-      <button type="button" (click)="load()">{{ 'common.retry' | t }}</button>
-    </div>
+    <app-notice>
+      <p class="m-0">{{ 'subscriptions.loadFailed' | t }}</p>
+      @if (reference()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ reference() }}</code></p> }
+      <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'common.retry' | t }}</button>
+    </app-notice>
   } @else if (overview(); as data) {
     @if (rows().length === 0) {
-      <div class="empty">
-        <h3>{{ 'subscriptions.emptyHeading' | t }}</h3>
-        <p>{{ 'subscriptions.emptyBody' | t }}</p>
-        <a class="button" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a>
+      <div class="my-4 rounded-box border border-base-300 bg-base-100 p-6" data-empty-state>
+        <h3 class="mt-0 mb-2 text-lg font-semibold">{{ 'subscriptions.emptyHeading' | t }}</h3>
+        <p class="mt-0 mb-4">{{ 'subscriptions.emptyBody' | t }}</p>
+        <a class="btn btn-primary" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a>
       </div>
     } @else {
-      <section class="totals-panel" aria-labelledby="totals-heading">
-        <h3 id="totals-heading">{{ 'subscriptions.totalsHeading' | t }}</h3>
+      <section class="my-4" aria-labelledby="totals-heading" data-totals-panel>
+        <h3 id="totals-heading" class="mt-0 mb-2 text-lg font-semibold">{{ 'subscriptions.totalsHeading' | t }}</h3>
         @if (data.totals.length === 0) {
-          <p class="muted">{{ 'subscriptions.totalsNone' | t }}</p>
+          <p class="m-0 text-base-content/70">{{ 'subscriptions.totalsNone' | t }}</p>
         } @else {
-          <ul class="totals">
+          <ul class="m-0 flex list-none flex-col gap-1 p-0" data-totals>
             @for (total of data.totals; track total.currency) {
-              <li>
+              <li class="wrap-anywhere">
                 {{ 'subscriptions.totalsLine' | t: {
                   monthly: money(total.monthly, total.currency, total.minorUnit),
                   yearly: money(total.yearly, total.currency, total.minorUnit)
                 } }}
-                <span class="muted">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
+                <span class="text-base-content/70">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
               </li>
             }
           </ul>
         }
       </section>
-      <p class="actions"><a class="button" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a></p>
-      <div class="category-toolbar">
-        <div class="field">
-          <label for="category-filter">{{ 'subscriptions.filter.label' | t }}</label>
-          <select id="category-filter" (change)="selectCategory($any($event.target).value)">
+      <p class="my-2"><a class="btn btn-primary" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a></p>
+      <div class="flex flex-wrap items-end gap-x-6 gap-y-2" data-category-toolbar>
+        <app-form-field [label]="'subscriptions.filter.label' | t" controlId="category-filter" class="min-w-0 max-w-full">
+          <select id="category-filter" class="select border-base-content/55 max-w-full" (change)="selectCategory($any($event.target).value)">
             <option value="all" [selected]="filterValue() === 'all'">{{ 'subscriptions.filter.all' | t }}</option>
             @for (option of categoryOptions(); track option.key) {
               <option [value]="'cat:' + option.key" [selected]="filterValue() === 'cat:' + option.key">{{ option.label }}</option>
@@ -56,13 +57,13 @@
               <option value="uncategorized" [selected]="filterValue() === 'uncategorized'">{{ 'subscriptions.filter.uncategorized' | t }}</option>
             }
           </select>
-        </div>
-        <div class="choice">
-          <input id="group-toggle" type="checkbox" [checked]="grouped()" (change)="setGrouped($any($event.target).checked)" />
-          <label for="group-toggle">{{ 'subscriptions.group.toggle' | t }}</label>
+        </app-form-field>
+        <div class="mb-4 flex items-center gap-2">
+          <input id="group-toggle" type="checkbox" class="checkbox border-base-content/55" [checked]="grouped()" (change)="setGrouped($any($event.target).checked)" />
+          <label for="group-toggle" class="font-medium">{{ 'subscriptions.group.toggle' | t }}</label>
         </div>
       </div>
-      <p class="muted" role="status">{{ 'subscriptions.filter.resultCount' | t: { count: '' + visibleRows().length } }}</p>
+      <p class="my-2 text-base-content/70" role="status">{{ 'subscriptions.filter.resultCount' | t: { count: '' + visibleRows().length } }}</p>
 
       <ng-template #columns>
         <thead>
@@ -80,27 +81,27 @@
       <ng-template #subscriptionRow let-row>
         <tr>
           <th scope="row">
-            <span class="name-cell">
+            <span class="flex items-center gap-2">
               <app-service-logo [name]="row.name" [logoUrl]="row.logoUrl" [size]="20" />
-              <a [routerLink]="['/subscriptions', row.id]">{{ row.name }}</a>
+              <a class="text-primary underline wrap-anywhere" [routerLink]="['/subscriptions', row.id]">{{ row.name }}</a>
             </span>
           </th>
           <td>{{ row.category ?? '—' }}</td>
-          <td><span class="badge" [class]="'badge status-' + row.status">{{ statusKey(row.status) | t }}</span></td>
+          <td><app-status-badge [status]="row.status">{{ statusKey(row.status) | t }}</app-status-badge></td>
           <td>
             {{ price(row) }} · {{ cadence(row.currentPrice) }}
             @if (row.upcomingPriceChange) {
-              <span class="badge upcoming">{{ 'subscriptions.priceChangeScheduled' | t }}</span>
+              <app-status-badge status="upcoming">{{ 'subscriptions.priceChangeScheduled' | t }}</app-status-badge>
             }
           </td>
           <td>{{ money(row.normalizedMonthly, row.currency, row.minorUnit) }}</td>
           <td>{{ money(row.normalizedYearly, row.currency, row.minorUnit) }}</td>
           <td>
             @if (row.paused) {
-              <button type="button" class="secondary" [id]="'action-' + row.id" [disabled]="acting() !== null"
+              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [disabled]="acting() !== null"
                 [attr.aria-label]="'subscriptions.resumeLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.resume' | t }}</button>
             } @else if (canPause(row)) {
-              <button type="button" class="secondary" [id]="'action-' + row.id" [disabled]="acting() !== null"
+              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [disabled]="acting() !== null"
                 [attr.aria-label]="'subscriptions.pauseLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.pause' | t }}</button>
             }
           </td>
@@ -109,27 +110,27 @@
 
       @if (visibleRows().length === 0) {
         <!-- Defensive guard (R3.4): effectiveFilter falls back to All, so no selectable filter can match nothing. -->
-        <p class="muted">{{ 'subscriptions.filter.emptyBody' | t }}</p>
+        <p class="m-0 text-base-content/70">{{ 'subscriptions.filter.emptyBody' | t }}</p>
       } @else if (grouped()) {
-        <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <div class="overflow-x-auto" role="region" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
           @for (group of groups(); track group.key; let index = $index) {
-            <section class="category-group" [attr.aria-labelledby]="'category-group-' + index">
-              <h3 [id]="'category-group-' + index">{{ groupLabel(group) }}</h3>
-              <p class="muted">{{ 'subscriptions.group.count' | t: { count: '' + group.count } }}</p>
+            <section class="my-4" data-category-group [attr.aria-labelledby]="'category-group-' + index">
+              <h3 class="mt-0 mb-1 text-lg font-semibold wrap-anywhere" [id]="'category-group-' + index">{{ groupLabel(group) }}</h3>
+              <p class="my-1 text-base-content/70">{{ 'subscriptions.group.count' | t: { count: '' + group.count } }}</p>
               @if (group.totals.length > 0) {
-                <ul class="totals">
+                <ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0" data-totals>
                   @for (total of group.totals; track total.currency) {
-                    <li>
+                    <li class="wrap-anywhere">
                       {{ 'subscriptions.totalsLine' | t: {
                         monthly: money(total.monthly, total.currency, total.minorUnit),
                         yearly: money(total.yearly, total.currency, total.minorUnit)
                       } }}
-                      <span class="muted">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
+                      <span class="text-base-content/70">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
                     </li>
                   }
                 </ul>
               }
-              <table class="data" [attr.aria-labelledby]="'category-group-' + index">
+              <table class="table" [attr.aria-labelledby]="'category-group-' + index">
                 <ng-container [ngTemplateOutlet]="columns" />
                 <tbody>
                   @for (row of group.rows; track row.id) {
@@ -141,9 +142,9 @@
           }
         </div>
       } @else {
-        <div class="table-scroll" role="region" tabindex="0" [attr.aria-label]="'subscriptions.scrollRegion' | t">
-          <table class="data">
-            <caption>{{ 'subscriptions.tableCaption' | t }}</caption>
+        <div class="overflow-x-auto" role="region" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+          <table class="table">
+            <caption class="py-2 text-start text-base-content/70">{{ 'subscriptions.tableCaption' | t }}</caption>
             <ng-container [ngTemplateOutlet]="columns" />
             <tbody>
               @for (row of visibleRows(); track row.id) {

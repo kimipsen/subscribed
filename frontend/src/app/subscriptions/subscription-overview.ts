@@ -4,6 +4,9 @@ import { Component, Injector, afterNextRender, computed, inject, signal } from '
 import { RouterLink } from '@angular/router';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
+import { FormField } from '../ui/form-field';
+import { Notice } from '../ui/notice';
+import { StatusBadge } from '../ui/status-badge';
 import {
   ALL_SELECTION,
   CategoryGroup,
@@ -45,7 +48,7 @@ const FAILURE_KEYS: Record<number, MessageKey> = {
 
 @Component({
   selector: 'app-subscription-overview',
-  imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo],
+  imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo, FormField, Notice, StatusBadge],
   templateUrl: './subscription-overview.html',
 })
 export class SubscriptionOverviewComponent {
