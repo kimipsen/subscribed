@@ -30,13 +30,27 @@
     }
   </div>
 </header>
-<div class="layout" [class.member]="session.current().state === 'member'">
+<div class="layout" [class.member]="session.current().state === 'member'" [class.collapsed]="sidebar.collapsed()">
   @if (session.current().state === 'member') {
     <nav id="primary-nav" [attr.aria-label]="'shell.primaryNav' | t" [class.open]="menuOpen()" tabindex="-1"
       (keydown.escape)="menuOpen.set(false)">
-      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}"
-        ariaCurrentWhenActive="page">{{ 'shell.nav.home' | t }}</a>
-      <a routerLink="/household" routerLinkActive="active" ariaCurrentWhenActive="page">{{ 'shell.nav.household' | t }}</a>
+      <button class="nav-toggle" type="button" aria-controls="primary-nav" [attr.aria-expanded]="!sidebar.collapsed()"
+        [attr.aria-label]="(sidebar.collapsed() ? 'shell.nav.expand' : 'shell.nav.collapse') | t" (click)="sidebar.toggle()">
+        <lucide-icon [img]="sidebar.collapsed() ? icons.PanelLeftOpen : icons.PanelLeftClose" [size]="20" [strokeWidth]="2" aria-hidden="true" />
+        <span class="nav-label">{{ (sidebar.collapsed() ? 'shell.nav.expand' : 'shell.nav.collapse') | t }}</span>
+      </button>
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}" ariaCurrentWhenActive="page">
+        <lucide-icon [img]="icons.House" [size]="20" [strokeWidth]="2" aria-hidden="true" />
+        <span class="nav-label">{{ 'shell.nav.home' | t }}</span>
+      </a>
+      <a routerLink="/household" routerLinkActive="active" ariaCurrentWhenActive="page">
+        <lucide-icon [img]="icons.Users" [size]="20" [strokeWidth]="2" aria-hidden="true" />
+        <span class="nav-label">{{ 'shell.nav.household' | t }}</span>
+      </a>
+      <a routerLink="/payment-options" routerLinkActive="active" ariaCurrentWhenActive="page">
+        <lucide-icon [img]="icons.Wallet" [size]="20" [strokeWidth]="2" aria-hidden="true" />
+        <span class="nav-label">{{ 'shell.nav.paymentOptions' | t }}</span>
+      </a>
     </nav>
   }
   <main id="main" tabindex="-1">
