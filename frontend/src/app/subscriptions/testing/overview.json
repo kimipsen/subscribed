@@ -24,7 +24,9 @@
       },
       "normalizedMonthly": "79.00",
       "normalizedYearly": "948.00",
-      "upcomingPriceChange": true
+      "upcomingPriceChange": true,
+      "cancelBy": null,
+      "cancelByInstant": null
     },
     {
       "id": "01a1d9eef53f74adb4fc16fad6ab5f57",
@@ -49,7 +51,9 @@
       },
       "normalizedMonthly": "60.00",
       "normalizedYearly": "720.00",
-      "upcomingPriceChange": false
+      "upcomingPriceChange": false,
+      "cancelBy": null,
+      "cancelByInstant": null
     },
     {
       "id": "01a1d9eef53f7ffd9b2445cc56e2b63f",
@@ -74,7 +78,9 @@
       },
       "normalizedMonthly": "149.00",
       "normalizedYearly": "1788.00",
-      "upcomingPriceChange": false
+      "upcomingPriceChange": false,
+      "cancelBy": null,
+      "cancelByInstant": null
     },
     {
       "id": "01a1d9eef53f73a48a2510448819ee33",
@@ -99,7 +105,9 @@
       },
       "normalizedMonthly": "129.00",
       "normalizedYearly": "1548.00",
-      "upcomingPriceChange": true
+      "upcomingPriceChange": true,
+      "cancelBy": null,
+      "cancelByInstant": null
     },
     {
       "id": "01a1d9eef53f776db3f7dd0f2bfccc6c",
@@ -124,7 +132,9 @@
       },
       "normalizedMonthly": "11.99",
       "normalizedYearly": "143.88",
-      "upcomingPriceChange": false
+      "upcomingPriceChange": false,
+      "cancelBy": null,
+      "cancelByInstant": null
     }
   ],
   "totals": [

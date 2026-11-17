@@ -16,6 +16,16 @@ public static partial class HouseholdLog
     [LoggerMessage(EventId = 3101, Level = LogLevel.Information, Message = "household.calendar_feed_revoked {HouseholdId}")]
     private static partial void FeedRevokedCore(ILogger logger, string householdId);
 
+    [LoggerMessage(EventId = 3102, Level = LogLevel.Warning, Message = "household.time_zone_unresolvable {HouseholdId}; answering in UTC")]
+    private static partial void TimeZoneUnresolvableCore(ILogger logger, string householdId);
+
+    /// <summary>The stored zone id cannot be resolved on this server, so the request answers in UTC. Carries the household id only.</summary>
+    public static void TimeZoneUnresolvable(ILogger logger, string householdId)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        TimeZoneUnresolvableCore(logger, householdId);
+    }
+
     public static void FeedRotated(ILogger logger, string householdId)
     {
         ArgumentNullException.ThrowIfNull(logger);

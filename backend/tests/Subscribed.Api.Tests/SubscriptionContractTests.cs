@@ -19,7 +19,7 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
     /// <summary>Properties the DTOs declare nullable: a null on either side matches any kind there.</summary>
     private static readonly HashSet<string> Nullable = new(StringComparer.Ordinal)
     {
-        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange", "paymentOptionId", "label", "brand", "unsubscribeUrl", "effectiveUnsubscribeUrl",
+        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange", "paymentOptionId", "label", "brand", "unsubscribeUrl", "effectiveUnsubscribeUrl", "cancelBy", "cancelByInstant",
     };
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };

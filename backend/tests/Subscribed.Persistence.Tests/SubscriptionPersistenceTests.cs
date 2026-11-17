@@ -608,4 +608,75 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
             return ex;
         }
     }
+
+    private static NewSubscription SubWithCancelBy(string? cancelBy) =>
+        SubscriptionDecisions.ParseAdd(new AddInput("StreamCo", null, null, "DKK", "2024-03-01", null, "129.00", "month", 1, CancelBy: cancelBy), TimeZoneInfo.Utc);
+
+    private static DetailsUpdate UpdateWithCancelBy(SubscriptionState s, string? cancelBy) =>
+        SubscriptionDecisions.ParseUpdate(new UpdateInput(s.Name, s.Category, s.Notes, s.Currency, "2024-03-01", null, null, null, cancelBy), TimeZoneInfo.Utc);
+
+    [Fact]
+    public async Task A_snapshot_written_before_cancel_by_existed_reads_null_and_accepts_a_deadline_through_the_inline_path()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var added = await service.AddAsync(SubWithCancelBy(null), Member, Ct);
+        var key = StreamKey(added);
+
+        await db.ExecuteAsMigratorAsync($"UPDATE subscribed.mt_doc_subscription_view SET data = data - 'cancelBy' WHERE id = '{key}'");
+        Assert.False(await db.ScalarAsMigratorAsync<bool>($"SELECT data ? 'cancelBy' FROM subscribed.mt_doc_subscription_view WHERE id = '{key}'"));
+        var old = await service.GetAsync(SubscriptionIds.Bare(added.Id), Ct);
+        Assert.Null(old!.CancelBy);
+
+        var saved = await service.UpdateAsync(SubscriptionIds.Bare(added.Id), old.Version, UpdateWithCancelBy(old, "2026-12-01T09:00"), Member, Ct);
+
+        Assert.Equal(DateTimeOffset.Parse("2026-12-01T09:00:00Z", System.Globalization.CultureInfo.InvariantCulture), saved.CancelBy);
+        Assert.Equal(2, saved.Version);
+        Assert.True(await db.ScalarAsMigratorAsync<bool>($"SELECT data ? 'cancelBy' FROM subscribed.mt_doc_subscription_view WHERE id = '{key}'"));
+    }
+
+    [Fact]
+    public async Task Cancel_by_changed_events_replay_into_the_snapshot_and_survive_a_projection_rebuild()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
+        var expected = DateTimeOffset.Parse("2026-12-01T09:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        var added = await service.AddAsync(SubWithCancelBy("2026-12-01T09:00"), Member, Ct);
+        var bare = SubscriptionIds.Bare(added.Id);
+        Assert.Equal(expected, added.CancelBy);
+
+        var moved = await service.UpdateAsync(bare, added.Version, UpdateWithCancelBy(added, "2026-12-02T10:30"), Member, Ct);
+        var moved2 = DateTimeOffset.Parse("2026-12-02T10:30:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(moved2, moved.CancelBy);
+
+        var history = await HistoryAsync(store, bare);
+        Assert.Equal([expected, moved2], history.OfType<SubscriptionCancelByChanged>().Select(e => e.CancelBy!.Value.ToUniversalTime()));
+        Assert.Equal(moved2, SubscriptionState.Rehydrate(history.Cast<object>()).CancelBy);
+
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
+        await using (var migrator = MigratorStore(db))
+        {
+            Assert.Equal(1, await SubscriptionProjectionRebuilder.RebuildAsync(migrator, Ct));
+        }
+
+        var rebuilt = await service.GetAsync(bare, Ct);
+        Assert.Equal(moved2, rebuilt!.CancelBy);
+        Assert.Equal(moved.Version, rebuilt.Version);
+
+        // Clearing is its own event with a null deadline, and it replays to null too.
+        var cleared = await service.UpdateAsync(bare, rebuilt.Version, UpdateWithCancelBy(rebuilt, null), Member, Ct);
+        Assert.Null(cleared.CancelBy);
+        var last = (await HistoryAsync(store, bare)).OfType<SubscriptionCancelByChanged>().Last();
+        Assert.Null(last.CancelBy);
+
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
+        await using (var migrator = MigratorStore(db))
+        {
+            Assert.Equal(1, await SubscriptionProjectionRebuilder.RebuildAsync(migrator, Ct));
+        }
+
+        Assert.Null((await service.GetAsync(bare, Ct))!.CancelBy);
+    }
 }

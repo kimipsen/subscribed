@@ -379,7 +379,7 @@ public sealed class UnsubscribeLinkResolutionTests
         var added = SubscriptionDecisionTests.Added(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = null });
         var state = SubscriptionState.Rehydrate(added);
         state.CatalogId = "streamco";
-        var dto = SubscriptionDetailDto.From(state, SubscriptionDecisionTests.Today, CatalogWith(CatalogUrl));
+        var dto = SubscriptionDetailDto.From(state, SubscriptionDecisionTests.Today, CatalogWith(CatalogUrl), TimeZoneInfo.Utc);
         Assert.Null(dto.UnsubscribeUrl);
         Assert.Equal(CatalogUrl, dto.EffectiveUnsubscribeUrl);
         Assert.Equal(CatalogUrl, CatalogDto.From(CatalogWith(CatalogUrl)).Services[0].UnsubscribeUrl);
