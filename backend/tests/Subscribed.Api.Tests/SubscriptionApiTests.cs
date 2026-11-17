@@ -16,6 +16,9 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
 
     internal static DateOnly Today(ApiTestHost host) => DateOnly.FromDateTime(host.Time.GetUtcNow().UtcDateTime);
 
+    /// <summary>January 1 of last year: a constant price then costs exactly its yearly amount over the current calendar year.</summary>
+    internal static string FullYearStart(ApiTestHost host) => $"{Today(host).Year - 1}-01-01";
+
     internal static string Day(ApiTestHost host, int offset) => Today(host).AddDays(offset).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     internal async Task<ApiTestHost> MemberHostAsync()
@@ -236,7 +239,7 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
             case JsonValueKind.Object:
                 foreach (var p in element.EnumerateObject())
                 {
-                    if (p.Name is "amount" or "monthly" or "yearly" or "normalizedMonthly" or "normalizedYearly" or "percent")
+                    if (p.Name is "amount" or "monthly" or "yearly" or "total" or "monthlyAverage" or "normalizedMonthly" or "normalizedYearly" or "percent")
                     {
                         Assert.True(p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Null, $"{p.Name} must be a string");
                     }
@@ -259,7 +262,7 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
     public async Task EX_001_to_EX_005_add_and_overview_with_string_amounts()
     {
         await using var host = await MemberHostAsync();
-        var streamCo = await AddAsync(host, NewBody(host, "StreamCo", start: Day(host, -300), category: "Streaming", notes: "Family plan"));
+        var streamCo = await AddAsync(host, NewBody(host, "StreamCo", start: FullYearStart(host), category: "Streaming", notes: "Family plan"));
         Assert.Equal("active", streamCo.GetProperty("status").GetString());
         Assert.Equal("129.00", streamCo.GetProperty("currentPrice").GetProperty("amount").GetString());
         Assert.Equal("129.00", streamCo.GetProperty("normalizedMonthly").GetString());
@@ -268,18 +271,18 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         Assert.Equal("Streaming", streamCo.GetProperty("category").GetString());
         Assert.Equal("Family plan", streamCo.GetProperty("notes").GetString());
 
-        var musicBox = await AddAsync(host, NewBody(host, "MusicBox Family", amount: "1490.00", unit: "year"));
+        var musicBox = await AddAsync(host, NewBody(host, "MusicBox Family", amount: "1490.00", unit: "year", start: FullYearStart(host)));
         Assert.Equal("124.17", musicBox.GetProperty("normalizedMonthly").GetString());
         Assert.Equal("1490.00", musicBox.GetProperty("normalizedYearly").GetString());
 
-        var news = await AddAsync(host, NewBody(host, "NewsDaily", amount: "45.00", unit: "week"));
+        var news = await AddAsync(host, NewBody(host, "NewsDaily", amount: "45.00", unit: "week", start: FullYearStart(host)));
         Assert.Equal("195.00", news.GetProperty("normalizedMonthly").GetString());
         Assert.Equal("2340.00", news.GetProperty("normalizedYearly").GetString());
 
-        var learn = await AddAsync(host, NewBody(host, "LearnPro", "EUR", "270.00", "month", 3));
+        var learn = await AddAsync(host, NewBody(host, "LearnPro", "EUR", "270.00", "month", 3, start: FullYearStart(host)));
         Assert.Equal("90.00", learn.GetProperty("normalizedMonthly").GetString());
         Assert.Equal("1080.00", learn.GetProperty("normalizedYearly").GetString());
-        var box = await AddAsync(host, NewBody(host, "BoxKit", "DKK", "30.00", "week", 2));
+        var box = await AddAsync(host, NewBody(host, "BoxKit", "DKK", "30.00", "week", 2, start: FullYearStart(host)));
         Assert.Equal("65.00", box.GetProperty("normalizedMonthly").GetString());
         Assert.Equal("780.00", box.GetProperty("normalizedYearly").GetString());
 
@@ -288,12 +291,13 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         Assert.Equal(Today(host).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), overview.GetProperty("asOf").GetString());
         var totals = overview.GetProperty("totals");
         Assert.Equal(["DKK", "EUR"], totals.EnumerateArray().Select(t => t.GetProperty("currency").GetString()));
-        // DKK: 129.00 + 124.1666… + 195.00 + 65.00 = 513.1666… → 513.17; yearly 1548 + 1490 + 2340 + 780 = 6158.00
-        Assert.Equal("513.17", totals[0].GetProperty("monthly").GetString());
-        Assert.Equal("6158.00", totals[0].GetProperty("yearly").GetString());
+        // The default period is the current calendar year, and every subscription started before it at a constant price:
+        // DKK total 1548 + 1490 + 2340 + 780 = 6158.00, average 6158 / 12 = 513.1666… → 513.17.
+        Assert.Equal("6158.00", totals[0].GetProperty("total").GetString());
+        Assert.Equal("513.17", totals[0].GetProperty("monthlyAverage").GetString());
         Assert.Equal(4, totals[0].GetProperty("activeCount").GetInt32());
-        Assert.Equal("90.00", totals[1].GetProperty("monthly").GetString());
-        Assert.Equal("1080.00", totals[1].GetProperty("yearly").GetString());
+        Assert.Equal("1080.00", totals[1].GetProperty("total").GetString());
+        Assert.Equal("90.00", totals[1].GetProperty("monthlyAverage").GetString());
         Assert.False(overview.GetRawText().Contains("combined", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -301,27 +305,27 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
     public async Task EX_005_three_currencies_give_three_separate_total_lines()
     {
         await using var host = await MemberHostAsync();
-        await AddAsync(host, NewBody(host, "StreamCo"));
-        await AddAsync(host, NewBody(host, "NewsDaily", amount: "45.00", unit: "week"));
-        await AddAsync(host, NewBody(host, "VideoTube", "EUR", "11.99"));
-        await AddAsync(host, NewBody(host, "AppSuite", "USD", "4.99"));
+        await AddAsync(host, NewBody(host, "StreamCo", start: FullYearStart(host)));
+        await AddAsync(host, NewBody(host, "NewsDaily", amount: "45.00", unit: "week", start: FullYearStart(host)));
+        await AddAsync(host, NewBody(host, "VideoTube", "EUR", "11.99", start: FullYearStart(host)));
+        await AddAsync(host, NewBody(host, "AppSuite", "USD", "4.99", start: FullYearStart(host)));
 
         var totals = (await OverviewAsync(host)).GetProperty("totals");
         Assert.Equal(["DKK", "EUR", "USD"], totals.EnumerateArray().Select(t => t.GetProperty("currency").GetString()));
-        Assert.Equal(("324.00", "3888.00"), (totals[0].GetProperty("monthly").GetString(), totals[0].GetProperty("yearly").GetString()));
-        Assert.Equal(("11.99", "143.88"), (totals[1].GetProperty("monthly").GetString(), totals[1].GetProperty("yearly").GetString()));
-        Assert.Equal(("4.99", "59.88"), (totals[2].GetProperty("monthly").GetString(), totals[2].GetProperty("yearly").GetString()));
+        Assert.Equal(("3888.00", "324.00"), (totals[0].GetProperty("total").GetString(), totals[0].GetProperty("monthlyAverage").GetString()));
+        Assert.Equal(("143.88", "11.99"), (totals[1].GetProperty("total").GetString(), totals[1].GetProperty("monthlyAverage").GetString()));
+        Assert.Equal(("59.88", "4.99"), (totals[2].GetProperty("total").GetString(), totals[2].GetProperty("monthlyAverage").GetString()));
     }
 
     [Fact]
     public async Task EX_006_two_yearly_subscriptions_total_248_33()
     {
         await using var host = await MemberHostAsync();
-        await AddAsync(host, NewBody(host, "A", amount: "1490.00", unit: "year"));
-        await AddAsync(host, NewBody(host, "B", amount: "1490.00", unit: "year"));
+        await AddAsync(host, NewBody(host, "A", amount: "1490.00", unit: "year", start: FullYearStart(host)));
+        await AddAsync(host, NewBody(host, "B", amount: "1490.00", unit: "year", start: FullYearStart(host)));
         var total = (await OverviewAsync(host)).GetProperty("totals")[0];
-        Assert.Equal("248.33", total.GetProperty("monthly").GetString());
-        Assert.Equal("2980.00", total.GetProperty("yearly").GetString());
+        Assert.Equal("2980.00", total.GetProperty("total").GetString());
+        Assert.Equal("248.33", total.GetProperty("monthlyAverage").GetString());
     }
 
     [Fact]
@@ -636,7 +640,6 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         Assert.True(detail.GetProperty("priceHistory")[1].GetProperty("upcoming").GetBoolean());
         var before = await OverviewAsync(host);
         Assert.True(before.GetProperty("subscriptions")[0].GetProperty("upcomingPriceChange").GetBoolean());
-        Assert.Equal("129.00", before.GetProperty("totals")[0].GetProperty("monthly").GetString());
 
         host.Time.Advance(TimeSpan.FromDays(50));
         (await host.LoginAsync("subject-owner")).Dispose();
@@ -644,7 +647,6 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         var after = await OverviewAsync(host);
         Assert.False(after.GetProperty("subscriptions")[0].GetProperty("upcomingPriceChange").GetBoolean());
         Assert.Equal("149.00", after.GetProperty("subscriptions")[0].GetProperty("currentPrice").GetProperty("amount").GetString());
-        Assert.Equal("149.00", after.GetProperty("totals")[0].GetProperty("monthly").GetString());
         Assert.False((await GetAsync(host, id)).GetProperty("priceHistory")[1].GetProperty("upcoming").GetBoolean());
     }
 
@@ -709,7 +711,7 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
 
         var overview = await OverviewAsync(host);
         Assert.Equal([keep.GetProperty("id").GetString()], overview.GetProperty("subscriptions").EnumerateArray().Select(r => r.GetProperty("id").GetString()));
-        Assert.Equal("129.00", overview.GetProperty("totals")[0].GetProperty("monthly").GetString());
+        Assert.Equal(1, overview.GetProperty("totals")[0].GetProperty("activeCount").GetInt32());
     }
 
     [Theory]

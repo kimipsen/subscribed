@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Subscribed.Subscriptions.Domain;
 
 public sealed class PriceEntryState
@@ -19,12 +21,40 @@ public sealed class PriceEntryState
 }
 
 /// <summary>
+/// One stored pause period. Explicit dates (new events) are kept as dates; a period rebuilt from the legacy
+/// <see cref="SubscriptionPaused"/> / <see cref="SubscriptionResumed"/> events keeps the instants and is turned into dates in the
+/// household zone by <see cref="SubscriptionState.ResolvePausePeriods"/>.
+/// </summary>
+public sealed class PausePeriodState
+{
+    public string PeriodId { get; set; } = "";
+
+    /// <summary>Null while the date is still the legacy instant.</summary>
+    public DateOnly? PauseDate { get; set; }
+
+    public DateOnly? ResumeDate { get; set; }
+
+    /// <summary>The legacy <see cref="SubscriptionPaused.RecordedAt"/>.</summary>
+    public DateTimeOffset? PausedInstant { get; set; }
+
+    /// <summary>The legacy <see cref="SubscriptionResumed.RecordedAt"/>.</summary>
+    public DateTimeOffset? ResumedInstant { get; set; }
+
+    internal bool IsOpenLegacy => PauseDate is null && PausedInstant is not null && ResumedInstant is null;
+}
+
+/// <summary>A resolved pause period: <c>[PauseDate, ResumeDate)</c>, open when <paramref name="ResumeDate"/> is null.</summary>
+public sealed record PausePeriod(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate);
+
+/// <summary>
 /// The domain state and the Marten document (<c>subscription_view</c>) in one: a self-aggregating inline snapshot (D-12). Marten
 /// finds <see cref="Create"/> and the <c>Apply</c> methods by convention; <see cref="Rehydrate"/> calls the same methods, so
 /// there is one evolution implementation. The <c>Apply</c> methods never touch <see cref="Version"/>.
 /// </summary>
 public sealed class SubscriptionState
 {
+    internal const string LegacyPeriodIdPrefix = "legacy-";
+
     public string Id { get; set; } = "";
 
     public string HouseholdId { get; set; } = "";
@@ -60,10 +90,14 @@ public sealed class SubscriptionState
 
     public DateTimeOffset? RemovedAt { get; set; }
 
-    /// <summary>Set by pause, cleared by resume. A flag, not a status: the Paused status is derived per request.</summary>
-    public bool Paused { get; set; }
+    /// <summary>
+    /// The stored pause periods. Snapshots written before pause periods existed read as an empty list until the projection is
+    /// rebuilt. The Paused status is derived per request from <see cref="ResolvePausePeriods"/>.
+    /// </summary>
+    public List<PausePeriodState> PausePeriods { get; set; } = [];
 
-    public DateTimeOffset? PausedAt { get; set; }
+    /// <summary>The number of legacy <see cref="SubscriptionPaused"/> events applied. Never decremented, so a legacy id is never reused.</summary>
+    public int LegacyPauseCount { get; set; }
 
     public long Version { get; set; }
 
@@ -183,18 +217,89 @@ public sealed class SubscriptionState
         RemovedAt = e.RecordedAt;
     }
 
+    /// <summary>Legacy event: appends a period whose id is <c>legacy-n</c>, n being the 1-based order of the legacy pause event.</summary>
     public void Apply(SubscriptionPaused e)
     {
         ArgumentNullException.ThrowIfNull(e);
-        Paused = true;
-        PausedAt = e.RecordedAt;
+        LegacyPauseCount++;
+        PausePeriods.Add(new PausePeriodState
+        {
+            PeriodId = LegacyPeriodIdPrefix + LegacyPauseCount.ToString(CultureInfo.InvariantCulture),
+            PausedInstant = e.RecordedAt,
+        });
     }
 
+    /// <summary>Legacy event: closes the last open legacy period. With none it is a no-op, so replay never throws.</summary>
     public void Apply(SubscriptionResumed e)
     {
         ArgumentNullException.ThrowIfNull(e);
-        Paused = false;
-        PausedAt = null;
+        var open = PausePeriods.LastOrDefault(p => p.IsOpenLegacy);
+        if (open is not null)
+        {
+            open.ResumedInstant = e.RecordedAt;
+        }
+    }
+
+    public void Apply(SubscriptionPausePeriodAdded e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        PausePeriods.Add(new PausePeriodState { PeriodId = e.PeriodId, PauseDate = e.PauseDate, ResumeDate = e.ResumeDate });
+    }
+
+    /// <summary>The explicit dates now win, so the legacy instants are cleared. An unknown id is a no-op.</summary>
+    public void Apply(SubscriptionPausePeriodChanged e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        var period = PausePeriods.FirstOrDefault(p => string.Equals(p.PeriodId, e.PeriodId, StringComparison.Ordinal));
+        if (period is not null)
+        {
+            period.PauseDate = e.PauseDate;
+            period.ResumeDate = e.ResumeDate;
+            period.PausedInstant = null;
+            period.ResumedInstant = null;
+        }
+    }
+
+    /// <summary>An unknown id is a no-op.</summary>
+    public void Apply(SubscriptionPausePeriodRemoved e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        PausePeriods.RemoveAll(p => string.Equals(p.PeriodId, e.PeriodId, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The pause periods as dates, ordered by pause date then id. A date derived from a legacy instant is the household-zone date
+    /// clamped to <paramref name="today"/> (D11: a date after today cannot have happened). Explicit dates are never clamped. A
+    /// period with <c>resume &lt;= pause</c> is a zero-day pause: it never affected a charge and is dropped (D7).
+    /// </summary>
+    public IReadOnlyList<PausePeriod> ResolvePausePeriods(TimeZoneInfo zone, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+        var resolved = new List<PausePeriod>(PausePeriods.Count);
+        foreach (var p in PausePeriods)
+        {
+            DateOnly? pause = p.PauseDate ?? (p.PausedInstant is { } paused ? Clamp(paused, zone, today) : null);
+            if (pause is null)
+            {
+                continue;
+            }
+
+            DateOnly? resume = p.ResumeDate ?? (p.ResumedInstant is { } resumed ? Clamp(resumed, zone, today) : null);
+            if (resume is { } r && r <= pause.Value)
+            {
+                continue;
+            }
+
+            resolved.Add(new PausePeriod(p.PeriodId, pause.Value, resume));
+        }
+
+        return [.. resolved.OrderBy(p => p.PauseDate).ThenBy(p => p.PeriodId, StringComparer.Ordinal)];
+    }
+
+    private static DateOnly Clamp(DateTimeOffset instant, TimeZoneInfo zone, DateOnly today)
+    {
+        var local = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime);
+        return local < today ? local : today;
     }
 
     /// <summary>
@@ -234,6 +339,9 @@ public sealed class SubscriptionState
                     case SubscriptionCatalogLinked x: target.Apply(x); break;
                     case SubscriptionPriceEntryPaymentChanged x: target.Apply(x); break;
                     case SubscriptionCancelByChanged x: target.Apply(x); break;
+                    case SubscriptionPausePeriodAdded x: target.Apply(x); break;
+                    case SubscriptionPausePeriodChanged x: target.Apply(x); break;
+                    case SubscriptionPausePeriodRemoved x: target.Apply(x); break;
                     default: throw new InvalidOperationException($"Unsupported subscription event {e.GetType().Name}.");
                 }
             }

@@ -135,8 +135,8 @@ public sealed record SubscriptionSummaryDto(
             state.Category,
             state.CatalogId,
             catalog.TryGet(state.CatalogId)?.Logo,
-            SubscriptionCalculator.StatusOn(state, today).ToWire(),
-            state.Paused,
+            SubscriptionCalculator.StatusOn(state, today, zone).ToWire(),
+            SubscriptionCalculator.IsPausedOn(state.ResolvePausePeriods(zone, today), today),
             state.StartDate,
             state.EndDate,
             state.Currency,
@@ -150,7 +150,7 @@ public sealed record SubscriptionSummaryDto(
     }
 }
 
-public sealed record CurrencyTotalDto(string Currency, int MinorUnit, string Monthly, string Yearly, int ActiveCount);
+public sealed record CurrencyTotalDto(string Currency, int MinorUnit, string Total, string MonthlyAverage, int ActiveCount);
 
 public sealed record SubscriptionOverviewDto(DateOnly AsOf, IReadOnlyList<SubscriptionSummaryDto> Subscriptions, IReadOnlyList<CurrencyTotalDto> Totals)
 {
@@ -158,8 +158,8 @@ public sealed record SubscriptionOverviewDto(DateOnly AsOf, IReadOnlyList<Subscr
         new(
             today,
             [.. SubscriptionCalculator.ListOrder(subscriptions).Select(s => SubscriptionSummaryDto.From(s, today, catalog, zone))],
-            [.. SubscriptionCalculator.Totals(subscriptions, today).Select(t =>
-                new CurrencyTotalDto(t.Currency, t.MinorUnit, Money.FormatAmount(t.Monthly, t.MinorUnit), Money.FormatAmount(t.Yearly, t.MinorUnit), t.ActiveCount))]);
+            [.. SubscriptionCalculator.Totals(subscriptions, ReportPeriod.CurrentYear(today), zone, today).Select(t =>
+                new CurrencyTotalDto(t.Currency, t.MinorUnit, Money.FormatAmount(t.Total, t.MinorUnit), Money.FormatAmount(t.MonthlyAverage, t.MinorUnit), t.ActiveCount))]);
 }
 
 public sealed record SubscriptionDetailDto(
@@ -201,8 +201,8 @@ public sealed record SubscriptionDetailDto(
             state.CatalogId,
             catalog.TryGet(state.CatalogId)?.Logo,
             state.Notes,
-            SubscriptionCalculator.StatusOn(state, today).ToWire(),
-            state.Paused,
+            SubscriptionCalculator.StatusOn(state, today, zone).ToWire(),
+            SubscriptionCalculator.IsPausedOn(state.ResolvePausePeriods(zone, today), today),
             state.StartDate,
             state.EndDate,
             state.Currency,

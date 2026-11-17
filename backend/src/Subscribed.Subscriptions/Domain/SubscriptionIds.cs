@@ -41,3 +41,35 @@ public static class SubscriptionIds
             && TryParse(streamKey[StreamPrefix.Length..], out id);
     }
 }
+
+/// <summary>
+/// Pause period ids: 32 lowercase hex characters for a period created by the API, or <c>legacy-n</c> (one to four digits) for a
+/// period rebuilt from the legacy pause events. <c>legacy-0</c> matches the shape but can never exist (ids start at 1).
+/// </summary>
+public static class PausePeriodIds
+{
+    public const string LegacyPrefix = "legacy-";
+    public const int MaxLegacyDigits = 4;
+
+    public static bool TryParse(string? value, out string id)
+    {
+        id = "";
+        if (SubscriptionIds.TryParse(value, out id))
+        {
+            return true;
+        }
+
+        if (value is not null && value.StartsWith(LegacyPrefix, StringComparison.Ordinal))
+        {
+            var digits = value.AsSpan(LegacyPrefix.Length);
+            if (digits.Length is >= 1 and <= MaxLegacyDigits && digits.IndexOfAnyExceptInRange('0', '9') < 0)
+            {
+                id = value;
+                return true;
+            }
+        }
+
+        id = "";
+        return false;
+    }
+}

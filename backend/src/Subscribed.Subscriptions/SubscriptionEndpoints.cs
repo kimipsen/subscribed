@@ -135,12 +135,12 @@ public static class SubscriptionEndpoints
 
     private static Task<IResult> PauseAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateNoBodyAsync(id, context, service, loggers,
-            (bare, version, write) => service.PauseAsync(bare, version, write, context.RequestAborted),
+            (bare, version, write) => service.PauseAsync(bare, version, HouseholdZone(context, loggers), write, context.RequestAborted),
             state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
     private static Task<IResult> ResumeAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateNoBodyAsync(id, context, service, loggers,
-            (bare, version, write) => service.ResumeAsync(bare, version, write, context.RequestAborted),
+            (bare, version, write) => service.ResumeAsync(bare, version, HouseholdZone(context, loggers), write, context.RequestAborted),
             state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
     private static Task<IResult> RemoveAsync(string id, HttpContext context, SubscriptionService service, ILoggerFactory loggers) =>

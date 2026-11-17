@@ -36,7 +36,14 @@ public sealed record HistoryRow(
     bool Current,
     bool Upcoming);
 
-public sealed record CurrencyTotal(string Currency, int MinorUnit, decimal Monthly, decimal Yearly, int ActiveCount);
+/// <param name="Total">The period total, rounded once.</param>
+/// <param name="MonthlyAverage">The unrounded period total divided by <see cref="ReportPeriod.Months"/>, rounded once.</param>
+/// <param name="ActiveCount">Non-removed subscriptions with at least one chargeable day in the period (D8).</param>
+public sealed record CurrencyTotal(string Currency, int MinorUnit, decimal Total, decimal MonthlyAverage, int ActiveCount);
+
+/// <param name="Cost">The exact, unrounded cost of the period.</param>
+/// <param name="ChargedDays">The number of chargeable days: inside start and end, outside every pause.</param>
+public sealed record PeriodCharge(Fraction Cost, int ChargedDays);
 
 /// <summary>Read-side calculations. Pure functions: nothing time-dependent is stored (BR-021).</summary>
 public static class SubscriptionCalculator
@@ -50,21 +57,45 @@ public static class SubscriptionCalculator
     /// <summary>
     /// The end date is inclusive (BR-006). Dates are authoritative: <see cref="SubscriptionStatus.NotStarted"/> and
     /// <see cref="SubscriptionStatus.Ended"/> win over a pause, which only shows when the subscription would otherwise be active.
+    /// <paramref name="day"/> is also the clamp date for pause periods derived from legacy events (D11), so callers pass today.
     /// </summary>
-    public static SubscriptionStatus StatusOn(SubscriptionState state, DateOnly day)
+    public static SubscriptionStatus StatusOn(SubscriptionState state, DateOnly day, TimeZoneInfo zone)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(zone);
         if (day < state.StartDate)
         {
             return SubscriptionStatus.NotStarted;
         }
 
-        if (state.EndDate is { } end && day > end)
+        if (IsEnded(state, day))
         {
             return SubscriptionStatus.Ended;
         }
 
-        return state.Paused ? SubscriptionStatus.Paused : SubscriptionStatus.Active;
+        return IsPausedOn(state.ResolvePausePeriods(zone, day), day) ? SubscriptionStatus.Paused : SubscriptionStatus.Active;
+    }
+
+    /// <summary>True when the end date is before <paramref name="day"/>: the same rule <see cref="StatusOn"/> uses, with no zone needed.</summary>
+    public static bool IsEnded(SubscriptionState state, DateOnly day)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return state.EndDate is { } end && day > end;
+    }
+
+    /// <summary>True when <paramref name="day"/> is inside <c>[pause, resume)</c> of any period; an open period has no end.</summary>
+    public static bool IsPausedOn(IReadOnlyList<PausePeriod> periods, DateOnly day)
+    {
+        ArgumentNullException.ThrowIfNull(periods);
+        foreach (var p in periods)
+        {
+            if (p.PauseDate <= day && (p.ResumeDate is not { } resume || day < resume))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The entry with the latest <c>effectiveFrom</c> on or before <paramref name="day"/>.</summary>
@@ -150,29 +181,103 @@ public static class SubscriptionCalculator
     }
 
     /// <summary>
-    /// Per currency, over non-removed subscriptions that are active today (paused subscriptions are excluded): the unrounded normalized monthly and yearly costs of
-    /// their current prices are summed and rounded once. Sorted by code. Currencies are never combined.
+    /// The exact cost of one subscription over the period, day by day without a per-day loop. The range is clamped to the start and
+    /// end dates (both inclusive) and split at every price change, pause boundary and Jan 1, so the price and the pause state are
+    /// constant inside a segment and a segment never spans two calendar years. A segment costs
+    /// <c>yearly * days / days-in-year</c> as one exact division; nothing is rounded here (R2.4).
     /// </summary>
-    public static IReadOnlyList<CurrencyTotal> Totals(IEnumerable<SubscriptionState> subscriptions, DateOnly today)
+    public static PeriodCharge PeriodCost(SubscriptionState state, ReportPeriod period, IReadOnlyList<PausePeriod> pauses)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(pauses);
+        var from = period.From > state.StartDate ? period.From : state.StartDate;
+        var to = state.EndDate is { } end && end < period.To ? end : period.To;
+        if (from > to)
+        {
+            return new PeriodCharge(Fraction.Zero, 0);
+        }
+
+        var starts = new SortedSet<DateOnly> { from };
+        foreach (var e in state.Entries)
+        {
+            AddBreakpoint(starts, e.EffectiveFrom, from, to);
+        }
+
+        foreach (var p in pauses)
+        {
+            AddBreakpoint(starts, p.PauseDate, from, to);
+            if (p.ResumeDate is { } resume)
+            {
+                AddBreakpoint(starts, resume, from, to);
+            }
+        }
+
+        for (var year = from.Year + 1; year <= to.Year; year++)
+        {
+            starts.Add(new DateOnly(year, 1, 1));
+        }
+
+        var ordered = starts.ToList();
+        var cost = Fraction.Zero;
+        var charged = 0;
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var a = ordered[i];
+            var b = i + 1 < ordered.Count ? ordered[i + 1].AddDays(-1) : to;
+            if (IsPausedOn(pauses, a))
+            {
+                continue;
+            }
+
+            var price = PriceInEffect(state, a) ?? state.Entries.MinBy(x => x.EffectiveFrom)!;
+            var days = b.DayNumber - a.DayNumber + 1;
+            cost += price.Cadence.Yearly(price.Amount) * days / (DateTime.IsLeapYear(a.Year) ? 366 : 365);
+            charged += days;
+        }
+
+        return new PeriodCharge(cost, charged);
+    }
+
+    private static void AddBreakpoint(SortedSet<DateOnly> starts, DateOnly day, DateOnly from, DateOnly to)
+    {
+        if (day > from && day <= to)
+        {
+            starts.Add(day);
+        }
+    }
+
+    /// <summary>
+    /// Per currency, over non-removed subscriptions (ended and not-yet-started ones included): the exact period costs are summed and
+    /// rounded once, and the monthly average is that unrounded sum divided by twelve, rounded once (not the rounded total divided).
+    /// A subscription is counted when it had at least one chargeable day in the period (D8). Sorted by code. Currencies are never
+    /// combined. <paramref name="today"/> is the clamp date for pause periods derived from legacy events (D11).
+    /// </summary>
+    public static IReadOnlyList<CurrencyTotal> Totals(IEnumerable<SubscriptionState> subscriptions, ReportPeriod period, TimeZoneInfo zone, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(subscriptions);
+        ArgumentNullException.ThrowIfNull(period);
+        ArgumentNullException.ThrowIfNull(zone);
         return subscriptions
-            .Where(s => !s.Removed && StatusOn(s, today) == SubscriptionStatus.Active)
+            .Where(s => !s.Removed)
             .GroupBy(s => s.Currency, StringComparer.Ordinal)
             .OrderBy(g => g.Key, StringComparer.Ordinal)
             .Select(g =>
             {
                 var minor = MinorUnitOf(g.First());
-                var monthly = Fraction.Zero;
-                var yearly = Fraction.Zero;
+                var sum = Fraction.Zero;
+                var active = 0;
                 foreach (var s in g)
                 {
-                    var price = CurrentPrice(s, today);
-                    monthly += price.Cadence.Monthly(price.Amount);
-                    yearly += price.Cadence.Yearly(price.Amount);
+                    var charge = PeriodCost(s, period, s.ResolvePausePeriods(zone, today));
+                    sum += charge.Cost;
+                    if (charge.ChargedDays > 0)
+                    {
+                        active++;
+                    }
                 }
 
-                return new CurrencyTotal(g.Key, minor, Money.RoundHalfAwayFromZero(monthly, minor), Money.RoundHalfAwayFromZero(yearly, minor), g.Count());
+                return new CurrencyTotal(g.Key, minor, Money.RoundHalfAwayFromZero(sum, minor), Money.RoundHalfAwayFromZero(sum / ReportPeriod.Months, minor), active);
             })
             .ToList();
     }

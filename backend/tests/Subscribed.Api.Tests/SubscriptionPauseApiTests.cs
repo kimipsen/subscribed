@@ -125,13 +125,14 @@ public sealed class SubscriptionPauseApiTests(PostgresFixture pg)
     }
 
     [Fact]
-    public async Task The_overview_reports_the_paused_row_with_its_version_and_leaves_it_out_of_totals()
+    public async Task The_overview_reports_the_paused_row_with_its_version_and_charges_a_paused_subscription_only_for_the_days_before_the_pause()
     {
+        // The real clock is used here, so the totals are asserted as a range: wi2 pins the clock and asserts exact period totals.
         await using var host = await MemberHostAsync();
         var keep = await AddAsync(host, NewBody(host, "Keep", amount: "100.00"));
         var pausable = await AddAsync(host, NewBody(host, "Pausable", amount: "50.00"));
         var before = await OverviewAsync(host);
-        Assert.Equal("150.00", before.GetProperty("totals")[0].GetProperty("monthly").GetString());
+        var beforeTotal = before.GetProperty("totals")[0].GetProperty("total").GetString()!;
         Assert.Equal(2, before.GetProperty("totals")[0].GetProperty("activeCount").GetInt32());
 
         var paused = await PauseAsync(host, pausable);
@@ -143,12 +144,12 @@ public sealed class SubscriptionPauseApiTests(PostgresFixture pg)
         Assert.False(rows["Keep"].GetProperty("paused").GetBoolean());
         Assert.Equal(keep.GetProperty("version").GetInt64(), rows["Keep"].GetProperty("version").GetInt64());
         var totals = overview.GetProperty("totals")[0];
-        Assert.Equal("100.00", totals.GetProperty("monthly").GetString());
-        Assert.Equal("1200.00", totals.GetProperty("yearly").GetString());
-        Assert.Equal(1, totals.GetProperty("activeCount").GetInt32());
+        var total = decimal.Parse(totals.GetProperty("total").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(total <= decimal.Parse(beforeTotal, System.Globalization.CultureInfo.InvariantCulture));
 
+        // Resume on the pause day removes the period, so the same days are charged again.
         await ResumeAsync(host, paused);
-        Assert.Equal("150.00", (await OverviewAsync(host)).GetProperty("totals")[0].GetProperty("monthly").GetString());
+        Assert.Equal(beforeTotal, (await OverviewAsync(host)).GetProperty("totals")[0].GetProperty("total").GetString());
     }
 
     [Fact]

@@ -368,7 +368,7 @@ public sealed class UnsubscribeLinkResolutionTests
     public void Paused_and_removed_style_states_still_resolve()
     {
         var paused = State(null);
-        paused.Paused = true;
+        paused.PausePeriods.Add(new PausePeriodState { PeriodId = "p1", PauseDate = new DateOnly(2019, 1, 1) });
         paused.EndDate = new DateOnly(2020, 1, 1);
         Assert.Equal(CatalogUrl, UnsubscribeLink.Effective(paused, CatalogWith(CatalogUrl)));
     }
