@@ -7,7 +7,7 @@ import { SessionService } from '../session';
   selector: 'app-session-unavailable',
   imports: [TranslatePipe],
   template: `
-    <section class="panel">
+    <section class="panel panel-narrow">
       <h1 tabindex="-1">{{ 'unavailable.heading' | t }}</h1>
       <p role="alert">{{ 'unavailable.message' | t }}</p>
       @if (session.unavailableReference()) {
