@@ -214,7 +214,7 @@ describe('SubscriptionFormPage', () => {
   it('requests the payment options in edit mode and shows the select prefilled with None', async () => {
     const detail = detailWith(null);
     const { root, component } = await openEdit(detail);
-    expect(component.paymentOptions().length).toBe(2);
+    expect(component.paymentOptions()).toHaveLength(2);
     expect(input(root, 'paymentOptionId').value).toBe('');
     expect(choices(root)).toEqual([
       { value: '', text: en['paymentOptions.select.none'] },
@@ -316,14 +316,19 @@ describe('SubscriptionFormPage', () => {
     await settle(harness);
   });
 
+  async function conflictAfterPickingVisa(detail: SubscriptionDetail) {
+    const opened = await openEdit(detail);
+    pick(opened.root, VISA);
+    await submit(opened.harness);
+    lastRequest(`/api/subscriptions/${detail.id}`).flush({ traceId: 't', currentVersion: detail.version + 1 }, { status: 412, statusText: 'Precondition Failed' });
+    await settle(opened.harness);
+    expect(opened.root.textContent).toContain(en['subscriptions.form.conflict']);
+    return opened;
+  }
+
   it('refreshes the baseline after a 412 reload, so a second save sends no stale paymentOption', async () => {
     const detail = detailWith(null);
-    const { harness, root } = await openEdit(detail);
-    pick(root, VISA);
-    await submit(harness);
-    lastRequest(`/api/subscriptions/${detail.id}`).flush({ traceId: 't', currentVersion: detail.version + 1 }, { status: 412, statusText: 'Precondition Failed' });
-    await settle(harness);
-    expect(root.textContent).toContain(en['subscriptions.form.conflict']);
+    const { harness, root } = await conflictAfterPickingVisa(detail);
     (Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === en['subscriptions.form.reloadLatest']) as HTMLButtonElement).click();
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detailWith(VISA, { version: detail.version + 1 }));
     http.expectNone('/api/payment-options');
@@ -337,13 +342,7 @@ describe('SubscriptionFormPage', () => {
   });
 
   it('keeps the form filled and shows the conflict banner on a 412 with a changed option', async () => {
-    const detail = detailWith(null);
-    const { harness, root } = await openEdit(detail);
-    pick(root, VISA);
-    await submit(harness);
-    lastRequest(`/api/subscriptions/${detail.id}`).flush({ traceId: 't', currentVersion: detail.version + 1 }, { status: 412, statusText: 'Precondition Failed' });
-    await settle(harness);
-    expect(root.textContent).toContain(en['subscriptions.form.conflict']);
+    const { root } = await conflictAfterPickingVisa(detailWith(null));
     expect(input(root, 'paymentOptionId').value).toBe(VISA);
   });
 

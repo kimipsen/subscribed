@@ -138,7 +138,11 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
                 await ApiTestHost.AssertProblemAsync(response, HttpStatusCode.Forbidden, "not-a-household-member");
                 var text = await response.Content.ReadAsStringAsync(Ct);
                 Assert.DoesNotContain("Secret", text, StringComparison.Ordinal);
-                Assert.DoesNotContain("129", text, StringComparison.Ordinal);
+
+                // The random hex traceId can contain "129" by chance, so leave it out of the amount check.
+                using var problem = JsonDocument.Parse(text);
+                var traceId = problem.RootElement.GetProperty("traceId").GetString()!;
+                Assert.DoesNotContain("129", text.Replace(traceId, "", StringComparison.Ordinal), StringComparison.Ordinal);
             }
         }
     }
