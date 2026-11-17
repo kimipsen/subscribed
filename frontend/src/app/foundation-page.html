@@ -82,6 +82,99 @@
             </form>
           </section>
           <section class="panel">
+            <h2>{{ 'household.timeZoneHeading' | t }}</h2>
+            <form (ngSubmit)="saveTimeZone()" novalidate>
+              <label for="household-time-zone">{{ 'household.timeZoneLabel' | t }}</label>
+              <select id="household-time-zone" name="householdTimeZone" [(ngModel)]="zoneDraft"
+                [disabled]="zoneSaving() || zoneOptions().length === 0"
+                [attr.aria-invalid]="zoneError()?.key === 'household.timeZoneInvalid' ? 'true' : null"
+                aria-describedby="time-zone-hint time-zone-error">
+                @for (zone of zoneOptions(); track zone) {
+                  <option [value]="zone">{{ zone }}</option>
+                }
+              </select>
+              <p id="time-zone-hint" class="muted">{{ 'household.timeZoneHint' | t }}</p>
+              @if (timeZonesLoading()) { <output class="status">{{ 'household.timeZoneLoading' | t }}</output> }
+              @if (timeZonesFailed()) {
+                <div class="error" role="alert">
+                  {{ 'household.timeZoneLoadFailed' | t }}
+                  <button type="button" (click)="loadTimeZones()">{{ 'household.timeZoneRetry' | t }}</button>
+                </div>
+              }
+              <div id="time-zone-error" class="error" role="alert">
+                @if (zoneError()) {
+                  <p>{{ i18n.message(zoneError()) }}</p>
+                  @if (zoneTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ zoneTraceId() }}</code></p> }
+                }
+              </div>
+              @if (zoneConflict()) {
+                <div class="notice" role="alert">
+                  {{ 'household.conflict' | t }}
+                  @if (zoneTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ zoneTraceId() }}</code></p> }
+                  <button type="button" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
+                </div>
+              }
+              <button type="submit" [disabled]="zoneSaving() || zoneUnchanged() || zoneOptions().length === 0">
+                {{ (zoneSaving() ? 'household.saving' : 'household.timeZoneSave') | t }}
+              </button>
+              @if (zoneSaved()) { <output class="status">{{ 'household.timeZoneSaved' | t }}</output> }
+            </form>
+          </section>
+          <section class="panel" aria-labelledby="feed-heading">
+            <h2 id="feed-heading">{{ 'household.feedHeading' | t }}</h2>
+            <p>{{ 'household.feedIntro' | t }}</p>
+            @if (household.calendarFeed.enabled) {
+              <p id="feed-state">{{ 'household.feedActive' | t: { date: (household.calendarFeed.rotatedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</p>
+            } @else {
+              <p id="feed-state">{{ 'household.feedNone' | t }}</p>
+            }
+            @if (feedError()) {
+              <div class="error" role="alert">
+                {{ i18n.message(feedError()) }}
+                @if (feedTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ feedTraceId() }}</code></p> }
+              </div>
+            }
+            @if (feedConflict()) {
+              <div class="notice" role="alert">
+                {{ 'household.conflict' | t }}
+                @if (feedTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ feedTraceId() }}</code></p> }
+                <button type="button" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
+              </div>
+            }
+            @if (feedUrl(); as url) {
+              <div id="feed-url-block">
+                <label for="feed-url">{{ 'household.feedUrlLabel' | t }}</label>
+                <input id="feed-url" #feedInput readonly [value]="url" aria-describedby="feed-url-once">
+                <output id="feed-url-once" class="notice status">{{ 'household.feedUrlOnce' | t }}</output>
+                <button type="button" (click)="copyFeedUrl(feedInput)">{{ 'household.feedCopy' | t }}</button>
+                @if (webcalUrl(); as webcal) {
+                  <a class="button" id="feed-subscribe" [href]="webcal">{{ 'household.feedSubscribe' | t }}</a>
+                }
+                <button type="button" class="secondary" (click)="hideFeedUrl()">{{ 'household.feedHide' | t }}</button>
+                <output class="status">{{ i18n.message(feedCopyMessage()) }}</output>
+              </div>
+            }
+            @if (feedRevoked() && !household.calendarFeed.enabled) {
+              <output class="status">{{ 'household.feedRevoked' | t }}</output>
+            }
+            @if (confirmingRotate()) {
+              <div class="notice" role="alertdialog" aria-labelledby="feed-rotate-confirm">
+                <p id="feed-rotate-confirm">{{ 'household.feedRotateConfirm' | t }}</p>
+                <button type="button" [disabled]="feedBusy()" (click)="createOrRotateFeed()">{{ 'household.feedRotateYes' | t }}</button>
+                <button type="button" class="secondary" (click)="cancelRotate()">{{ 'household.feedRotateNo' | t }}</button>
+              </div>
+            } @else {
+              <button type="button" id="feed-create" [disabled]="feedBusy()" (click)="createOrRotateFeed()">
+                {{ (feedBusy() ? 'household.feedWorking' : (household.calendarFeed.enabled ? 'household.feedRotate' : 'household.feedCreate')) | t }}
+              </button>
+              @if (household.calendarFeed.enabled) {
+                <button type="button" id="feed-revoke" class="secondary" [disabled]="feedBusy()" (click)="revokeFeed()">
+                  {{ 'household.feedRevoke' | t }}
+                </button>
+              }
+            }
+          </section>
+          <section class="panel">
             <h2>{{ 'household.membersHeading' | t }}</h2>
             @if (labelSaved()) { <output class="status">{{ 'household.memberSaved' | t }}</output> }
             <ul class="members">

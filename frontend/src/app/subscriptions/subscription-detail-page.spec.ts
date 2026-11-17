@@ -52,6 +52,7 @@ describe('SubscriptionDetailPage', () => {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush(options);
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement, detail };
@@ -416,6 +417,7 @@ describe('SubscriptionDetailPage', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     await settle(harness);
     const root = harness.routeNativeElement as HTMLElement;
@@ -527,7 +529,7 @@ describe('SubscriptionDetailPage', () => {
     buttonByText(root, en['detail.reinstate']).click();
     await settle(harness);
     const req = request(detail);
-    expect(Object.keys(req.request.body as object)).toEqual(['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId', 'unsubscribeUrl']);
+    expect(Object.keys(req.request.body as object)).toEqual(['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId', 'unsubscribeUrl', 'cancelBy']);
     req.flush(bump(detail, { endDate: null }));
   });
 
@@ -539,6 +541,63 @@ describe('SubscriptionDetailPage', () => {
     expect(root.textContent).toContain(da['detail.col.paymentOption']);
     expect(root.textContent).toContain(da['detail.paymentOption.removed']);
     expect(root.textContent).toContain(da['paymentOptions.select.label']);
+    expect(englishLeftovers(root)).toEqual([]);
+  });
+
+  // ---- cancel by -------------------------------------------------------------------------------------
+
+  const cancelByRow = (root: HTMLElement) =>
+    Array.from(root.querySelectorAll('dl.summary dt')).find((dt) => dt.textContent?.trim() === en['detail.cancelBy']) as HTMLElement | undefined;
+
+  it('shows the deadline as household wall time with the zone, next to the unsubscribe link', async () => {
+    const { root } = await open({ ...detailFixture(), cancelBy: '2026-12-01T09:30', cancelByInstant: '2026-12-01T08:30:00Z' });
+    const label = cancelByRow(root);
+    expect(label).toBeDefined();
+    const value = plain(label?.nextElementSibling?.textContent);
+    expect(value).toContain('Europe/Copenhagen');
+    expect(value).toMatch(/1 Dec 2026/);
+    expect(value).toMatch(/9:30/);
+    // Not shifted into the browser's own zone: 08:30Z would read 8:30 in UTC.
+    expect(value).not.toMatch(/8:30/);
+    const terms = Array.from(root.querySelectorAll('dl.summary dt')).map((dt) => dt.textContent?.trim());
+    expect(terms.indexOf(en['detail.cancelBy'])).toBe(terms.indexOf(en['detail.unsubscribe']) + 1);
+  });
+
+  it('shows the deadline without a zone when the household cannot be loaded', async () => {
+    const detail = { ...detailFixture(), cancelBy: '2026-12-01T09:30', cancelByInstant: '2026-12-01T08:30:00Z' };
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    await settle(harness);
+    const value = plain(cancelByRow(harness.routeNativeElement as HTMLElement)?.nextElementSibling?.textContent);
+    expect(value).toMatch(/9:30/);
+    expect(value).not.toContain('Europe');
+  });
+
+  it('shows no deadline row when none is set', async () => {
+    const { root } = await open();
+    expect(cancelByRow(root)).toBeUndefined();
+  });
+
+  it('keeps the deadline when ending the subscription: the PUT echoes detail.cancelBy', async () => {
+    const detail = { ...detailFixture(), cancelBy: '2026-12-01T09:30', cancelByInstant: '2026-12-01T08:30:00Z' };
+    const { harness, root } = await open(detail);
+    el<HTMLButtonElement>(root, '#end-open').click();
+    await settle(harness);
+    type(root, 'end-date', plusDays(detail.priceHistory[detail.priceHistory.length - 1].effectiveFrom, 10));
+    await submitForm(harness, 'form:not(.entry-form)');
+    const req = request(detail);
+    expect((req.request.body as { cancelBy: unknown }).cancelBy).toBe('2026-12-01T09:30');
+    req.flush({}, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+  });
+
+  it('shows the deadline row in Danish with no English application copy', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const { root } = await open({ ...detailFixture(), cancelBy: '2026-12-01T09:30', cancelByInstant: '2026-12-01T08:30:00Z' });
+    expect(root.textContent).toContain(da['detail.cancelBy']);
     expect(englishLeftovers(root)).toEqual([]);
   });
 
@@ -584,7 +643,7 @@ describe('SubscriptionDetailPage', () => {
 
   // ---- end, reinstate, remove ------------------------------------------------------------------------
 
-  it('ends with the exact eight-key PUT body copied from the loaded detail (D-10)', async () => {
+  it('ends with the exact nine-key PUT body copied from the loaded detail (D-10)', async () => {
     const { harness, root, detail } = await open();
     el<HTMLButtonElement>(root, '#end-open').click();
     await settle(harness);
@@ -596,13 +655,13 @@ describe('SubscriptionDetailPage', () => {
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     expect(req.request.body).toEqual({
       name: detail.name, category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate, catalogId: null,
-      unsubscribeUrl: 'https://example.com/cancel',
+      unsubscribeUrl: 'https://example.com/cancel', cancelBy: null,
     });
     await respond(harness, req, bump(detail, { endDate, status: 'ended' }));
     expect(root.textContent).toContain(en['subscriptions.status.ended']);
   });
 
-  it('reinstates with the same eight keys and endDate null', async () => {
+  it('reinstates with the same nine keys and endDate null', async () => {
     const detail = { ...detailFixture(), endDate: '2099-01-01', status: 'active' as const };
     const { harness, root } = await open(detail);
     buttonByText(root, en['detail.reinstate']).click();
@@ -610,7 +669,7 @@ describe('SubscriptionDetailPage', () => {
     const req = request(detail);
     expect(req.request.body).toEqual({
       name: detail.name, category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null, catalogId: null,
-      unsubscribeUrl: 'https://example.com/cancel',
+      unsubscribeUrl: 'https://example.com/cancel', cancelBy: null,
     });
     await respond(harness, req, bump(detail, { endDate: null }));
     expect(buttonByText(root, en['detail.reinstate'])).toBeUndefined();
@@ -642,6 +701,7 @@ describe('SubscriptionDetailPage', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl(`/subscriptions/${'b'.repeat(32)}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     http.expectOne(`/api/subscriptions/${'b'.repeat(32)}`).flush({ traceId: 't' }, { status: 404, statusText: 'Not Found' });
     await settle(harness);
     const root = harness.routeNativeElement as HTMLElement;

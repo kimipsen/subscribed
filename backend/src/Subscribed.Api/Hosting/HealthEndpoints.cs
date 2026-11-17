@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Extensions.Options;
 using Subscribed.Api.Bff;
 using Subscribed.Api.Configuration;
+using Subscribed.Household;
 using Subscribed.Platform.Database;
 using Subscribed.Platform.Identity;
 
@@ -17,11 +18,13 @@ public static class HealthEndpoints
     }
 
     /// <summary>Per-check status only. The identity provider may be Degraded without failing readiness.</summary>
-    private static async Task<IResult> ReadyAsync(HttpContext context, SubscribedSettings settings, IOptionsMonitor<OpenIdConnectOptions> oidc, ILoggerFactory loggers)
+    private static async Task<IResult> ReadyAsync(HttpContext context, SubscribedSettings settings, IOptionsMonitor<OpenIdConnectOptions> oidc, ITimeZoneSource zones, ILoggerFactory loggers)
     {
         var db = await ReadinessProbe.CheckAsync(settings.AppConnectionString, settings.Schema, context.RequestAborted);
         var logger = loggers.CreateLogger(SecurityEvents.Category);
         var idp = await IdentityProviderStatusAsync(oidc.Get(OidcSetup.Scheme), logger, context.RequestAborted);
+        // Process-wide and anonymous: no household context. Degraded, never Unhealthy, because UTC households still work.
+        var tz = zones.IsMissingTzData() ? "Degraded" : "Healthy";
         var ready = db.Database && db.Schema && db.Privileges;
         if (!ready)
         {
@@ -34,13 +37,14 @@ public static class HealthEndpoints
         static string S(bool ok) => ok ? "Healthy" : "Unhealthy";
         var body = new
         {
-            status = ready ? (idp == "Healthy" ? "Healthy" : "Degraded") : "Unhealthy",
+            status = ready ? (idp == "Healthy" && tz == "Healthy" ? "Healthy" : "Degraded") : "Unhealthy",
             checks = new Dictionary<string, string>
             {
                 ["database"] = S(db.Database),
                 ["schema"] = S(db.Schema),
                 ["privileges"] = S(db.Privileges),
                 ["identityProvider"] = idp,
+                ["timeZones"] = tz,
             },
         };
         context.Response.Headers.CacheControl = "no-store";

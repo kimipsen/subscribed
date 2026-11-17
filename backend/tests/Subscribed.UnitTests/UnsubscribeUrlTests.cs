@@ -102,17 +102,17 @@ public sealed class UnsubscribeUrlRuleTests
     [MemberData(nameof(UnsubscribeUrlCases.Valid), MemberType = typeof(UnsubscribeUrlCases))]
     public void Domain_accepts_what_the_rule_accepts(string raw)
     {
-        var parsed = SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = raw });
+        var parsed = SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = raw }, TestZones.Utc);
         Assert.Equal(raw, parsed.UnsubscribeUrl);
-        Assert.Equal(raw, SubscriptionDecisions.ParseUpdate(Update(raw)).UnsubscribeUrl);
+        Assert.Equal(raw, SubscriptionDecisions.ParseUpdate(Update(raw), TestZones.Utc).UnsubscribeUrl);
     }
 
     [Theory]
     [MemberData(nameof(UnsubscribeUrlCases.Invalid), MemberType = typeof(UnsubscribeUrlCases))]
     public void Domain_rejects_with_the_field_key_and_never_echoes_the_value(string raw)
     {
-        var add = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = raw }));
-        var update = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseUpdate(Update(raw)));
+        var add = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = raw }, TestZones.Utc));
+        var update = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseUpdate(Update(raw), TestZones.Utc));
         foreach (var ex in new[] { add, update })
         {
             var error = Assert.Single(ex.Errors);
@@ -285,8 +285,8 @@ public sealed class UnsubscribeUrlDecisionTests
     [InlineData("   ")]
     public void Whitespace_only_becomes_null_on_add_and_update(string raw)
     {
-        Assert.Null(SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = raw }).UnsubscribeUrl);
-        Assert.Null(SubscriptionDecisions.ParseUpdate(new UpdateInput("StreamCo", null, null, "DKK", "2024-03-01", null, null, raw)).UnsubscribeUrl);
+        Assert.Null(SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = raw }, TestZones.Utc).UnsubscribeUrl);
+        Assert.Null(SubscriptionDecisions.ParseUpdate(new UpdateInput("StreamCo", null, null, "DKK", "2024-03-01", null, null, raw), TestZones.Utc).UnsubscribeUrl);
     }
 
     [Fact]
@@ -328,7 +328,7 @@ public sealed class UnsubscribeUrlDecisionTests
     [Fact]
     public void Non_https_is_rejected_with_the_unsubscribe_url_key()
     {
-        var ex = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = "http://example.com" }));
+        var ex = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = "http://example.com" }, TestZones.Utc));
         Assert.Equal("unsubscribeUrl", Assert.Single(ex.Errors).Key);
     }
 }
@@ -379,7 +379,7 @@ public sealed class UnsubscribeLinkResolutionTests
         var added = SubscriptionDecisionTests.Added(SubscriptionDecisionTests.Input() with { UnsubscribeUrl = null });
         var state = SubscriptionState.Rehydrate(added);
         state.CatalogId = "streamco";
-        var dto = SubscriptionDetailDto.From(state, SubscriptionDecisionTests.Today, CatalogWith(CatalogUrl));
+        var dto = SubscriptionDetailDto.From(state, SubscriptionDecisionTests.Today, CatalogWith(CatalogUrl), TimeZoneInfo.Utc);
         Assert.Null(dto.UnsubscribeUrl);
         Assert.Equal(CatalogUrl, dto.EffectiveUnsubscribeUrl);
         Assert.Equal(CatalogUrl, CatalogDto.From(CatalogWith(CatalogUrl)).Services[0].UnsubscribeUrl);

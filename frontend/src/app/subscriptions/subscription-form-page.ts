@@ -11,6 +11,7 @@ import { optionText } from './payment-option-text';
 import { PaymentOptionsService } from './payment-options.service';
 import { parseAmountInput, toAmountInput, decimalSeparator, formatMoney } from './money';
 import { ServiceLogo } from './service-logo';
+import { wallTimeDate } from './time-zone';
 import { SessionUnavailable } from './session-unavailable';
 import {
   AddSubscriptionBody,
@@ -44,6 +45,7 @@ const FIELD_MESSAGES: Readonly<Record<string, MessageKey>> = {
   paymentOptionId: 'subscriptions.error.paymentOptionId',
   paymentOption: 'subscriptions.error.paymentOptionEnded',
   unsubscribeUrl: 'subscriptions.error.unsubscribeUrl',
+  cancelBy: 'subscriptions.error.cancelBy',
 };
 
 const MAX_PICKER_RESULTS = 8;
@@ -105,6 +107,8 @@ export class SubscriptionFormPage {
   readonly catalogFailed = signal(false);
   /** The household's payment options: for the initial price when adding, for the current price when editing. A failed load leaves just "None". */
   readonly paymentOptions = signal<PaymentOption[]>([]);
+  /** The household's IANA zone, named in the cancel-by hint. null until loaded and after a failed load (the hint then names no zone). */
+  readonly householdZone = signal<string | null>(null);
   /** True after a failed options load. The edit form then hides the select and never sends `paymentOption`, so a current option is never cleared by accident. */
   readonly paymentOptionsFailed = signal(false);
   /** The option the loaded subscription's current price had when the form was filled; the baseline the edit form diffs against. */
@@ -145,6 +149,8 @@ export class SubscriptionFormPage {
   currency = '';
   startDate = '';
   endDate = '';
+  /** Local wall time in the household zone (`yyyy-MM-ddTHH:mm`, the `datetime-local` value shape), or ''. */
+  cancelBy = '';
   amountText = '';
   cadencePreset: CadencePreset = 'month';
   customCount = '2';
@@ -233,8 +239,11 @@ export class SubscriptionFormPage {
       overview: this.overview() ? of(this.overview()) : this.service.overview().pipe(catchError(() => of(null))),
       // Never a blocker: a failed load leaves the add form with just "None" and hides the edit form's select. Reused after a success.
       paymentOptions: this.paymentOptionsLoaded ? of(null) : this.paymentOptionsService.list().pipe(catchError(() => of(null))),
+      // The zone only labels the cancel-by field: the server does the conversion, so a failed load is not a blocker.
+      zone: this.householdZone() ? of(this.householdZone()) : this.service.householdZone().pipe(catchError(() => of(null))),
     }).subscribe({
-      next: ({ options, catalog, detail, overview, paymentOptions }) => {
+      next: ({ options, catalog, detail, overview, paymentOptions, zone }) => {
+        if (zone) this.householdZone.set(zone);
         this.options.set(options);
         if (overview) this.overview.set(overview);
         if (paymentOptions) {
@@ -428,6 +437,7 @@ export class SubscriptionFormPage {
     this.currency = detail.currency;
     this.startDate = detail.startDate;
     this.endDate = detail.endDate ?? '';
+    this.cancelBy = detail.cancelBy ?? '';
     this.catalogId = detail.catalogId;
     this.paymentOptionId = detail.currentPrice.paymentOptionId ?? '';
     this.initialPaymentOptionId.set(this.paymentOptionId);
@@ -449,6 +459,11 @@ export class SubscriptionFormPage {
     if (!validDate(this.startDate)) fail('startDate', 'subscriptions.error.startDate');
     if (this.endDate && (!validDate(this.endDate) || (validDate(this.startDate) && this.endDate < this.startDate))) {
       fail('endDate', 'subscriptions.error.endDate');
+    }
+    if (this.cancelBy) {
+      // Early feedback only; the server is the authority (it compares the local date in the household zone with the start date).
+      const day = wallTimeDate(this.cancelBy);
+      if (day === null || (validDate(this.startDate) && day < this.startDate)) fail('cancelBy', 'subscriptions.error.cancelBy');
     }
     const entries = this.detail()?.priceHistory ?? [];
     if (this.editing && validDate(this.startDate) && !errors['startDate'] &&
@@ -485,10 +500,11 @@ export class SubscriptionFormPage {
       endDate: this.endDate || null,
       catalogId: this.catalogId,
       unsubscribeUrl: normalizeUnsubscribeUrl(this.unsubscribeUrl) ?? null,
+      cancelBy: this.cancelBy || null,
     };
   }
 
-  /** Edit sends all eight keys, with explicit nulls (D-10), plus `paymentOption` only when the member changed it. */
+  /** Edit sends all nine keys, with explicit nulls (D-10), plus `paymentOption` only when the member changed it. */
   private updateBody(): UpdateSubscriptionBody {
     const changed = this.showPaymentOption() && this.paymentOptionId !== this.initialPaymentOptionId();
     return changed ? { ...this.details(), paymentOption: { id: this.paymentOptionId || null } } : this.details();

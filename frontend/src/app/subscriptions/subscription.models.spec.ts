@@ -21,4 +21,18 @@ describe('request body contracts', () => {
     };
     expect(withoutLink).toBeDefined();
   });
+
+  it('requires cancelBy on the update body, so an edit can never silently clear the deadline', () => {
+    // @ts-expect-error cancelBy is required: omitting it must not compile.
+    const withoutDeadline: UpdateSubscriptionBody = { name: 'x', category: null, notes: null, currency: 'DKK', startDate: '2026-01-01', endDate: null, catalogId: null, unsubscribeUrl: null };
+    expect(withoutDeadline).toBeDefined();
+  });
+
+  it('requires an explicit cancelBy on the add body', () => {
+    // @ts-expect-error cancelBy is required: an add without a deadline sends an explicit null.
+    const withoutDeadline: AddSubscriptionBody = {
+      name: 'x', category: null, notes: null, currency: 'DKK', startDate: '2026-01-01', endDate: null, amount: '1.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null, paymentOptionId: null, unsubscribeUrl: null,
+    };
+    expect(withoutDeadline).toBeDefined();
+  });
 });

@@ -25,6 +25,7 @@ import {
   UpdateSubscriptionBody,
 } from './subscription.models';
 import { SubscriptionsService } from './subscriptions.service';
+import { formatWallTime } from './time-zone';
 import { isHttpsUrl } from './unsubscribe-url';
 
 type EntryForm = { mode: 'add' } | { mode: 'correct'; entry: HistoryEntry };
@@ -76,6 +77,8 @@ export class SubscriptionDetailPage {
   /** Every option of the household, removed ones included: a history row resolves its option by id, whatever its state. A failed load leaves it empty. */
   readonly paymentOptions = signal<PaymentOption[]>([]);
   readonly optionText = optionText;
+  /** The household's IANA zone, named next to the cancel-by deadline. null until loaded and after a failed load. */
+  readonly householdZone = signal<string | null>(null);
 
   // Price-entry form.
   readonly entryForm = signal<EntryForm | null>(null);
@@ -141,6 +144,7 @@ export class SubscriptionDetailPage {
     this.notFound.set(false);
     this.clearProblems();
     if (!this.optionsLoaded) this.loadOptions();
+    if (!this.householdZone()) this.service.householdZone().subscribe({ next: (zone) => this.householdZone.set(zone || null), error: () => undefined });
     this.service.detail(this.id).subscribe({
       next: (detail) => {
         this.detail.set(detail);
@@ -194,6 +198,11 @@ export class SubscriptionDetailPage {
 
   date(value: string): string {
     return new Intl.DateTimeFormat(this.i18n.dateLocale(), { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+  }
+
+  /** The cancel-by deadline as it reads on the household's clock (the server sends it as local wall time in that zone). */
+  cancelByText(value: string): string {
+    return formatWallTime(value, this.i18n.dateLocale());
   }
 
   /** The option a price entry points at, removed or not; null for none, or when the list could not be loaded. */
@@ -428,7 +437,7 @@ export class SubscriptionDetailPage {
     });
   }
 
-  /** All eight PUT keys come from the loaded detail, never from what the page shows: an omitted category or notes would be erased (D-10). */
+  /** All nine PUT keys come from the loaded detail, never from what the page shows: an omitted category or notes would be erased (D-10). */
   private details(detail: SubscriptionDetail, endDate: string | null): UpdateSubscriptionBody {
     return {
       name: detail.name,
@@ -439,6 +448,7 @@ export class SubscriptionDetailPage {
       endDate,
       catalogId: detail.catalogId,
       unsubscribeUrl: detail.unsubscribeUrl,
+      cancelBy: detail.cancelBy,
     };
   }
 

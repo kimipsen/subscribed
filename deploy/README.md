@@ -81,6 +81,8 @@ The source address of a host-side proxy may be a Docker bridge gateway, not `127
 
 The reverse proxy must preserve the public host, send `X-Forwarded-Proto: https` and
 `X-Forwarded-For`, and **not log query strings**: the sign-in callback contains a single-use code.
+It must also **not log the path of `/calendar/`**: the private calendar feed URL carries its secret in the path
+(see [Calendar reminders](../backend/README.md#calendar-reminders)).
 Do not use plain HTTP as the public origin with the production Compose configuration.
 
 Every command below supplies `--env-file deploy/.env` explicitly. Do not rely on Compose

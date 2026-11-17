@@ -49,7 +49,7 @@ public static class SubscriptionEndpoints
     {
         var subscriptions = await service.ListAsync(context.RequestAborted).ConfigureAwait(false);
         CatalogLog.WarnIfAnyDangling(loggers.CreateLogger(CatalogLog.Category), subscriptions, catalog);
-        return Json(context, SubscriptionOverviewDto.From(subscriptions, SubscriptionCalculator.Today(time), catalog));
+        return Json(context, SubscriptionOverviewDto.From(subscriptions, SubscriptionCalculator.Today(time), catalog, HouseholdZone(context, loggers)));
     }
 
     private static async Task<IResult> OptionsAsync(HttpContext context, SubscriptionService service)
@@ -82,7 +82,7 @@ public static class SubscriptionEndpoints
         NewSubscription command;
         try
         {
-            command = SubscriptionDecisions.ParseAdd(body.Value!.ToInput());
+            command = SubscriptionDecisions.ParseAdd(body.Value!.ToInput(), HouseholdZone(context, loggers));
         }
         catch (SubscriptionValidationException ex)
         {
@@ -108,7 +108,7 @@ public static class SubscriptionEndpoints
     /// </summary>
     private static Task<IResult> UpdateAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateAsync<UpdateSubscriptionRequest, DetailsUpdate>(id, context, service, loggers,
-            request => SubscriptionDecisions.ParseUpdate(request.ToInput()),
+            request => SubscriptionDecisions.ParseUpdate(request.ToInput(), HouseholdZone(context, loggers)),
             (bare, version, command, write) => service.UpdateAsync(bare, version, command, write, context.RequestAborted),
             state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
@@ -261,13 +261,37 @@ public static class SubscriptionEndpoints
         CatalogLog.WarnIfDangling(loggers.CreateLogger(CatalogLog.Category), state, catalog);
         context.Response.Headers.ETag = EntityTags.Format(state.Version);
         context.Response.Headers.CacheControl = "no-store";
-        return Results.Json(SubscriptionDetailDto.From(state, SubscriptionCalculator.Today(time), catalog), statusCode: status);
+        return Results.Json(SubscriptionDetailDto.From(state, SubscriptionCalculator.Today(time), catalog, HouseholdZone(context, loggers)), statusCode: status);
     }
 
     private static IResult Json<T>(HttpContext context, T value)
     {
         context.Response.Headers.CacheControl = "no-store";
         return Results.Json(value);
+    }
+
+    private const string ZoneKey = "subscribed.subscriptions.zone";
+
+    /// <summary>
+    /// The household zone for this request, resolved once and cached on the request, so the parsed instant, the compared date and
+    /// the DTO rendering all use the same instance. A stored id this server cannot resolve falls back to UTC with a warning that
+    /// carries only the household id, never the zone id string or any request input.
+    /// </summary>
+    private static TimeZoneInfo HouseholdZone(HttpContext context, ILoggerFactory loggers)
+    {
+        if (context.Items[ZoneKey] is TimeZoneInfo cached)
+        {
+            return cached;
+        }
+
+        var resolved = Subscribed.Household.Domain.TimeZoneIds.TryResolve(HouseholdMembership.ViewFor(context).TimeZoneId, out var zone) ? zone : null;
+        if (resolved is null)
+        {
+            HouseholdLog.TimeZoneUnresolvable(loggers.CreateLogger(HouseholdLog.Category), HouseholdService.StreamId);
+        }
+
+        context.Items[ZoneKey] = resolved ?? TimeZoneInfo.Utc;
+        return (TimeZoneInfo)context.Items[ZoneKey]!;
     }
 
     private static IResult NotFound() => Problem.Result(404, ProblemCodes.NotFound, "Subscription not found.");

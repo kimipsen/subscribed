@@ -1,4 +1,5 @@
 using Marten;
+using Microsoft.Extensions.Logging;
 using Subscribed.Household.Domain;
 using Subscribed.Platform.EventStore;
 
@@ -13,7 +14,7 @@ public sealed record WriteContext(string Actor, string? CorrelationId)
 }
 
 /// <summary>Household commands and queries (the module's only public surface besides endpoints).</summary>
-public sealed class HouseholdService(IDocumentStore store, TimeProvider time)
+public sealed class HouseholdService(IDocumentStore store, TimeProvider time, ILogger<HouseholdService>? logger = null)
 {
     public const string StreamId = Domain.Household.DefaultStreamId;
 
@@ -53,6 +54,39 @@ public sealed class HouseholdService(IDocumentStore store, TimeProvider time)
     /// <summary>Null expected version means "latest" (admin CLI); the endpoint passes the If-Match version.</summary>
     public Task<HouseholdView> ChangeMemberLabelAsync(long? expectedVersion, string memberId, string label, WriteContext context, CancellationToken ct = default) =>
         WriteAsync(expectedVersion, h => h.ChangeMemberLabel(memberId, label, time.GetUtcNow()), context, ct);
+
+    /// <summary>Sets the household time zone. An unchanged zone writes nothing. An invalid id throws <c>invalid-time-zone</c>.</summary>
+    public Task<HouseholdView> ChangeTimeZoneAsync(long expectedVersion, string? timeZoneId, WriteContext context, CancellationToken ct = default) =>
+        WriteAsync(expectedVersion, h => h.ChangeTimeZone(timeZoneId, time.GetUtcNow()), context, ct);
+
+    /// <summary>
+    /// Creates or rotates the calendar feed link. The raw secret exists only in this method and the returned tuple: only its SHA-256
+    /// is appended to the stream, and it is never logged.
+    /// </summary>
+    public async Task<(HouseholdView View, string Secret)> RotateCalendarFeedAsync(long expectedVersion, WriteContext context, CancellationToken ct = default)
+    {
+        var secret = CalendarFeedSecrets.Create();
+        var hash = CalendarFeedSecrets.Hash(secret);
+        var view = await WriteAsync(expectedVersion, h => h.RotateCalendarFeed(hash, time.GetUtcNow()), context, ct).ConfigureAwait(false);
+        if (logger is not null)
+        {
+            HouseholdLog.FeedRotated(logger, StreamId);
+        }
+
+        return (view, secret);
+    }
+
+    /// <summary>Revokes the calendar feed link. Revoking when no feed is active writes nothing.</summary>
+    public async Task<HouseholdView> RevokeCalendarFeedAsync(long expectedVersion, WriteContext context, CancellationToken ct = default)
+    {
+        var view = await WriteAsync(expectedVersion, h => h.RevokeCalendarFeed(time.GetUtcNow()), context, ct).ConfigureAwait(false);
+        if (logger is not null && view.Version > expectedVersion)
+        {
+            HouseholdLog.FeedRevoked(logger, StreamId);
+        }
+
+        return view;
+    }
 
     /// <summary>
     /// Load (optimistic, no lock) → decide → append at the loaded version → commit. The events, the

@@ -1,8 +1,9 @@
-import { DatePipe } from '@angular/common';
+import { DOCUMENT, DatePipe } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Household, Problem, SessionService, validHouseholdName, validMemberLabel } from './session';
 import { LanguageService, Message, MessageKey } from './i18n/i18n';
@@ -46,6 +47,8 @@ export class FoundationPage {
   readonly conflict = signal(false);
   readonly saved = signal(false);
   readonly copyMessage = signal<Message | null>(null);
+  private readonly document = inject(DOCUMENT);
+  private readonly sanitizer = inject(DomSanitizer);
   name = '';
   readonly validName = validHouseholdName;
 
@@ -58,6 +61,52 @@ export class FoundationPage {
   readonly labelTraceId = signal<string | undefined>(undefined);
   labelDraft = '';
   readonly validLabel = validMemberLabel;
+
+  // Time zone selector: its own state, like the member label editor.
+  readonly timeZones = signal<string[]>([]);
+  readonly timeZonesLoading = signal(false);
+  readonly timeZonesFailed = signal(false);
+  readonly zoneSaving = signal(false);
+  readonly zoneSaved = signal(false);
+  readonly zoneError = signal<Message | null>(null);
+  readonly zoneConflict = signal(false);
+  readonly zoneTraceId = signal<string | undefined>(undefined);
+  zoneDraft = '';
+  /** The server's list, plus the household's current zone when the list does not carry it (so the select never shows a blank). */
+  readonly zoneOptions = computed(() => {
+    const current = this.household()?.timeZoneId;
+    const zones = this.timeZones();
+    return current && !zones.includes(current) ? [current, ...zones] : zones;
+  });
+
+  // Calendar feed panel. The URL exists only here: it is never stored and is dropped with the component.
+  readonly feedBusy = signal(false);
+  readonly feedError = signal<Message | null>(null);
+  readonly feedConflict = signal(false);
+  readonly feedTraceId = signal<string | undefined>(undefined);
+  readonly feedRevoked = signal(false);
+  readonly confirmingRotate = signal(false);
+  readonly feedUrl = signal<string | null>(null);
+  readonly feedCopyMessage = signal<Message | null>(null);
+  /**
+   * The same link with the `webcal` scheme, which opens the calendar app's subscribe dialog. Angular's sanitizer
+   * rejects that scheme, so the value is marked as trusted. That is safe only because the URL is parsed first and must
+   * be an http(s) URL on this page's own origin: a server path such as `@evil.example/x` cannot move the host, and no
+   * other scheme can get through. Anything else gets no subscribe link.
+   */
+  readonly webcalUrl = computed(() => {
+    const url = this.feedUrl();
+    if (url === null) return null;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    const origin = this.document.defaultView?.location.origin;
+    if (!/^https?:$/u.test(parsed.protocol) || parsed.origin !== origin) return null;
+    return this.sanitizer.bypassSecurityTrustUrl(`webcal://${parsed.host}${parsed.pathname}${parsed.search}`);
+  });
 
   constructor() {
     effect(() => {
@@ -72,9 +121,13 @@ export class FoundationPage {
       next: (household) => {
         this.household.set(household);
         this.name = household.name;
+        this.zoneDraft = household.timeZoneId;
         this.conflict.set(false);
+        this.resetZoneFeedback();
+        this.resetFeedFeedback();
         this.syncLabelEditor(household, true);
         this.loading.set(false);
+        if (this.timeZones().length === 0) this.loadTimeZones();
       },
       error: (error: HttpErrorResponse) => {
         this.loading.set(false);
@@ -82,6 +135,152 @@ export class FoundationPage {
         this.traceId.set(this.errorDetail(error)?.traceId);
       },
     });
+  }
+
+  loadTimeZones(): void {
+    if (this.timeZonesLoading()) return;
+    this.timeZonesLoading.set(true);
+    this.timeZonesFailed.set(false);
+    this.http.get<{ timeZones: string[] }>('/api/household/time-zones').subscribe({
+      next: ({ timeZones }) => {
+        this.timeZones.set(Array.isArray(timeZones) ? timeZones : []);
+        this.timeZonesFailed.set(!Array.isArray(timeZones));
+        this.timeZonesLoading.set(false);
+      },
+      error: () => {
+        this.timeZonesFailed.set(true);
+        this.timeZonesLoading.set(false);
+      },
+    });
+  }
+
+  zoneUnchanged(): boolean {
+    return this.zoneDraft === this.household()?.timeZoneId;
+  }
+
+  saveTimeZone(): void {
+    this.resetZoneFeedback();
+    this.zoneSaved.set(false);
+    const household = this.household();
+    if (!household || this.zoneSaving()) return;
+    if (!this.zoneOptions().includes(this.zoneDraft)) {
+      this.zoneError.set({ key: 'household.timeZoneInvalid' });
+      return;
+    }
+    this.zoneSaving.set(true);
+    this.http.put<Household>('/api/household/time-zone', { timeZoneId: this.zoneDraft }, {
+      headers: { 'If-Match': `"${household.version}"` },
+    }).subscribe({
+      next: (updated) => {
+        this.household.set(updated);
+        this.zoneDraft = updated.timeZoneId;
+        this.zoneSaving.set(false);
+        this.zoneSaved.set(true);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.zoneSaving.set(false);
+        const detail = this.errorDetail(error);
+        if (error.status === 412) this.zoneConflict.set(true);
+        else if (error.status === 400 && detail?.type === 'urn:subscribed:problem:validation-failed' &&
+          detail.errors && Object.hasOwn(detail.errors, 'timeZoneId')) {
+          this.zoneError.set({ key: 'household.timeZoneInvalid' });
+        } else this.zoneError.set({ key: 'household.saveFailed' });
+        this.zoneTraceId.set(detail?.traceId);
+      },
+    });
+  }
+
+  /** Creates the link, or (when one is active) asks first, because rotating breaks every calendar using the old link. */
+  createOrRotateFeed(): void {
+    if (this.feedBusy()) return;
+    if (this.household()?.calendarFeed.enabled && !this.confirmingRotate()) {
+      this.resetFeedFeedback();
+      this.feedRevoked.set(false);
+      this.confirmingRotate.set(true);
+      return;
+    }
+    this.rotateFeed();
+  }
+
+  cancelRotate(): void {
+    this.confirmingRotate.set(false);
+  }
+
+  private rotateFeed(): void {
+    const household = this.household();
+    if (!household || this.feedBusy()) return;
+    this.confirmingRotate.set(false);
+    this.resetFeedFeedback();
+    this.feedRevoked.set(false);
+    this.feedBusy.set(true);
+    this.http.post<{ household: Household; feedPath: string }>('/api/household/calendar-feed', null, {
+      headers: { 'If-Match': `"${household.version}"` },
+    }).subscribe({
+      next: ({ household: updated, feedPath }) => {
+        this.household.set(updated);
+        // The language at the time of the rotate decides the feed text language.
+        const origin = this.document.defaultView?.location.origin ?? '';
+        this.feedUrl.set(`${origin}${feedPath}?lang=${this.i18n.language()}`);
+        this.feedBusy.set(false);
+      },
+      error: (error: HttpErrorResponse) => this.feedFailed(error),
+    });
+  }
+
+  revokeFeed(): void {
+    const household = this.household();
+    if (!household || this.feedBusy()) return;
+    this.confirmingRotate.set(false);
+    this.resetFeedFeedback();
+    this.feedBusy.set(true);
+    this.http.delete<Household>('/api/household/calendar-feed', {
+      headers: { 'If-Match': `"${household.version}"` },
+    }).subscribe({
+      next: (updated) => {
+        this.household.set(updated);
+        this.feedUrl.set(null);
+        this.feedRevoked.set(true);
+        this.feedBusy.set(false);
+      },
+      error: (error: HttpErrorResponse) => this.feedFailed(error),
+    });
+  }
+
+  hideFeedUrl(): void {
+    this.feedUrl.set(null);
+    this.feedCopyMessage.set(null);
+  }
+
+  async copyFeedUrl(input: HTMLInputElement): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(input.value);
+      this.feedCopyMessage.set({ key: 'household.feedCopied' });
+    } catch {
+      input.focus();
+      input.select();
+      this.feedCopyMessage.set({ key: 'household.feedCopyUnavailable' });
+    }
+  }
+
+  private feedFailed(error: HttpErrorResponse): void {
+    this.feedBusy.set(false);
+    const detail = this.errorDetail(error);
+    if (error.status === 412) this.feedConflict.set(true);
+    else this.feedError.set({ key: 'household.saveFailed' });
+    this.feedTraceId.set(detail?.traceId);
+  }
+
+  private resetZoneFeedback(): void {
+    this.zoneError.set(null);
+    this.zoneConflict.set(false);
+    this.zoneTraceId.set(undefined);
+  }
+
+  private resetFeedFeedback(): void {
+    this.feedError.set(null);
+    this.feedConflict.set(false);
+    this.feedTraceId.set(undefined);
+    this.feedCopyMessage.set(null);
   }
 
   save(): void {
@@ -224,6 +423,7 @@ export class FoundationPage {
     const errors: NonNullable<Problem['errors']> = {};
     if (Object.hasOwn(body.errors, 'name')) errors.name = [];
     if (Object.hasOwn(body.errors, 'displayLabel')) errors.displayLabel = [];
+    if (Object.hasOwn(body.errors, 'timeZoneId')) errors.timeZoneId = [];
     return Object.keys(errors).length > 0 ? errors : undefined;
   }
 }

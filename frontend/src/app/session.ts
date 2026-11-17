@@ -17,7 +17,7 @@ export type Session =
 export interface Problem {
   type?: string;
   traceId?: string;
-  errors?: { name?: string[]; displayLabel?: string[] };
+  errors?: { name?: string[]; displayLabel?: string[]; timeZoneId?: string[] };
   currentVersion?: number;
 }
 
@@ -25,6 +25,9 @@ export interface Household {
   id: string;
   name: string;
   version: number;
+  /** The IANA zone cancel-by deadlines are read and shown in. */
+  timeZoneId: string;
+  calendarFeed: { enabled: boolean; rotatedAt: string | null };
   members: { memberId: string; displayLabel: string; grantedAt: string }[];
 }
 

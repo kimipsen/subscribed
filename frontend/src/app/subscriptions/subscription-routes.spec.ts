@@ -43,6 +43,7 @@ describe('Subscription routes', () => {
     http.expectOne('/api/subscriptions').flush(overviewFixture());
     http.expectOne('/api/subscriptions/catalog').flush(catalogFixture());
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     http.expectNone('/api/subscriptions/new');
     expect(component.editing).toBe(false);
     expect(component.id).toBeNull();
@@ -58,6 +59,7 @@ describe('Subscription routes', () => {
     http.expectOne('/api/subscriptions/catalog').flush(catalogFixture());
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     expect(component.editing).toBe(true);
     expect(component.id).toBe(detail.id);
   });
@@ -68,6 +70,7 @@ describe('Subscription routes', () => {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
     expect(component.id).toBe(detail.id);
   });
@@ -80,6 +83,7 @@ describe('Subscription routes', () => {
     http.expectOne('/api/subscriptions').flush(overviewFixture());
     http.expectOne('/api/subscriptions/catalog').flush(catalogFixture());
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     http.expectNone('/api/subscriptions/new');
   });
 

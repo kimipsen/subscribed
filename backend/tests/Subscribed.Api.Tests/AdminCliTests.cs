@@ -159,7 +159,7 @@ public sealed class AdminCliTests(PostgresFixture pg)
         {
             var service = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
             var context = new WriteContext(WriteContext.AdminCli, null);
-            NewSubscription Sub(string name) => SubscriptionDecisions.ParseAdd(new AddInput(name, "Streaming", "Notes", "DKK", "2024-03-01", null, "129.00", "month", 1));
+            NewSubscription Sub(string name) => SubscriptionDecisions.ParseAdd(new AddInput(name, "Streaming", "Notes", "DKK", "2024-03-01", null, "129.00", "month", 1), TimeZoneInfo.Utc);
             var active = await service.AddAsync(Sub("Active"), context, TestContext.Current.CancellationToken);
             await service.AddPriceEntryAsync(SubscriptionIds.Bare(active.Id), active.Version, SubscriptionDecisions.ParsePriceEntry(new PriceInput("2025-01-01", "139.00", "month", 1)), context, TestContext.Current.CancellationToken);
             var removed = await service.AddAsync(Sub("Removed"), context, TestContext.Current.CancellationToken);
@@ -170,7 +170,7 @@ public sealed class AdminCliTests(PostgresFixture pg)
             var gone = await options.CreateAsync(PaymentOptionDecisions.ParseCreate(new PaymentOptionInput("Gone", null)), context, TestContext.Current.CancellationToken);
             await options.RemoveAsync(PaymentOptionIds.Bare(gone.Id), gone.Version, context, TestContext.Current.CancellationToken);
             await service.AddAsync(
-                SubscriptionDecisions.ParseAdd(new AddInput("Paid", null, null, "DKK", "2024-03-01", null, "5.00", "month", 1, PaymentOptionId: PaymentOptionIds.Bare(visa.Id))),
+                SubscriptionDecisions.ParseAdd(new AddInput("Paid", null, null, "DKK", "2024-03-01", null, "5.00", "month", 1, PaymentOptionId: PaymentOptionIds.Bare(visa.Id)), TimeZoneInfo.Utc),
                 context,
                 TestContext.Current.CancellationToken);
         }

@@ -73,6 +73,7 @@ describe('SubscriptionFormPage', () => {
     const paymentRequest = http.expectOne('/api/payment-options');
     if (paymentOptions === 'fail') paymentRequest.flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
     else paymentRequest.flush(paymentOptions);
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement };
   }
@@ -90,6 +91,7 @@ describe('SubscriptionFormPage', () => {
     flushCatalog(catalog);
     flushPaymentOptions(paymentOptions);
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     await settle(harness);
     return { harness, component, root: harness.routeNativeElement as HTMLElement };
   }
@@ -126,6 +128,7 @@ describe('SubscriptionFormPage', () => {
     req.flush(saved, status === 201 ? { status, statusText: 'Created' } : {});
     await settle(harness);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     http.expectOne(`/api/subscriptions/${saved.id}`).flush(saved);
     await settle(harness);
   }
@@ -139,7 +142,7 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.headers.get('X-CSRF')).toBe('1');
     expect(req.request.body).toEqual({
       name: 'StreamCo', category: null, notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
-      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null, paymentOptionId: null, unsubscribeUrl: null,
+      amount: '129.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: null, paymentOptionId: null, unsubscribeUrl: null, cancelBy: null,
     });
     const created = detailFixture();
     await finishSave(harness, req, created, 201);
@@ -197,7 +200,7 @@ describe('SubscriptionFormPage', () => {
 
   const VISA = '0192f3c1a1b27c4e8d2e5f60718293b5';
   const REMOVED = '0192f3c1a1b27c4e8d2e5f60718293c6';
-  const EDIT_KEYS = ['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId', 'unsubscribeUrl'];
+  const EDIT_KEYS = ['name', 'category', 'notes', 'currency', 'startDate', 'endDate', 'catalogId', 'unsubscribeUrl', 'cancelBy'];
 
   function detailWith(optionId: string | null, over: Partial<SubscriptionDetail> = {}): SubscriptionDetail {
     const detail = detailFixture();
@@ -486,7 +489,7 @@ describe('SubscriptionFormPage', () => {
     expect(root.textContent).toContain(en['subscriptions.form.forbidden']);
   });
 
-  it('edits with If-Match and exactly seven keys: non-null category and notes are echoed, endDate is an explicit null (D-10)', async () => {
+  it('edits with If-Match and exactly nine keys: non-null category and notes are echoed, endDate is an explicit null (D-10)', async () => {
     const detail = detailFixture();
     const { harness, root } = await openEdit(detail);
     expect(input(root, 'name').value).toBe(detail.name);
@@ -499,7 +502,7 @@ describe('SubscriptionFormPage', () => {
     expect(req.request.headers.get('If-Match')).toBe(`"${detail.version}"`);
     expect(req.request.body).toEqual({
       name: 'FilmPlus HD', category: 'Streaming', notes: 'Family plan', currency: detail.currency, startDate: detail.startDate, endDate: null, catalogId: null,
-      unsubscribeUrl: 'https://example.com/cancel',
+      unsubscribeUrl: 'https://example.com/cancel', cancelBy: null,
     });
     await finishSave(harness, req, { ...detail, name: 'FilmPlus HD', version: detail.version + 1 });
     expect(TestBed.inject(Router).url).toBe(`/subscriptions/${detail.id}`);
@@ -635,6 +638,8 @@ describe('SubscriptionFormPage', () => {
       flushCatalog(catalogFixture());
       flushPaymentOptions(paymentOptionListFixture());
       http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+      // The failed first load left its (cancelled) zone request behind: only the retry's request can be answered.
+      http.match('/api/household').filter((r) => !r.cancelled).forEach((r) => r.flush({ timeZoneId: 'Europe/Copenhagen' }));
       await settle(harness);
       expect(datalistValues(harness.routeNativeElement as HTMLElement)).toContain('Streaming');
 
@@ -643,6 +648,113 @@ describe('SubscriptionFormPage', () => {
       http.expectNone('/api/subscriptions');
       await settle(harness);
     });
+  });
+
+  // ---- cancel by -------------------------------------------------------------------------------------
+
+  const cancelBody = (req: TestRequest) => req.request.body as { cancelBy: unknown };
+
+  it('renders an optional datetime-local cancel-by field whose hint names the household zone', async () => {
+    const { root } = await openAdd();
+    const field = input(root, 'cancelBy');
+    expect(field.type).toBe('datetime-local');
+    expect(field.required).toBe(false);
+    expect(field.value).toBe('');
+    expect(root.querySelector('label[for="cancelBy"]')?.textContent).toContain(en['subscriptions.field.cancelBy']);
+    expect(root.querySelector('#cancelBy-hint')?.textContent).toContain('Europe/Copenhagen');
+    expect(field.getAttribute('aria-describedby')).toBe('cancelBy-hint');
+  });
+
+  it('shows a hint without a zone when the household cannot be loaded, and still saves', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/subscriptions/new', SubscriptionFormPage);
+    http.expectOne('/api/subscriptions/options').flush(options());
+    flushOverview(overviewFixture());
+    flushCatalog(catalogFixture());
+    http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ traceId: 't' }, { status: 500, statusText: 'Server Error' });
+    await settle(harness);
+    const root = harness.routeNativeElement as HTMLElement;
+    expect(root.querySelector('#cancelBy-hint')?.textContent).toContain(en['subscriptions.field.cancelByHintNoZone']);
+    await fillValidAdd(root);
+    await submit(harness);
+    expect(cancelBody(http.expectOne('/api/subscriptions')).cancelBy).toBeNull();
+  });
+
+  it('sends the typed wall time as cancelBy on add', async () => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    type(root, 'cancelBy', '2024-04-01T09:30');
+    await submit(harness);
+    expect(cancelBody(http.expectOne('/api/subscriptions')).cancelBy).toBe('2024-04-01T09:30');
+  });
+
+  it('sends an explicit null when the field is empty', async () => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    await submit(harness);
+    expect(cancelBody(http.expectOne('/api/subscriptions')).cancelBy).toBeNull();
+  });
+
+  it('accepts a deadline on the start date and rejects one before it, without sending anything', async () => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    type(root, 'cancelBy', '2024-02-29T23:59');
+    await submit(harness);
+    http.expectNone('/api/subscriptions');
+    expect(root.querySelector('#cancelBy-error')?.textContent).toContain(en['subscriptions.error.cancelBy']);
+    expect(input(root, 'cancelBy').getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement?.id).toBe('cancelBy');
+
+    type(root, 'cancelBy', '2024-03-01T00:00');
+    await submit(harness);
+    expect(cancelBody(http.expectOne('/api/subscriptions')).cancelBy).toBe('2024-03-01T00:00');
+  });
+
+  it('rejects a cancel-by value that is not a complete date and time', async () => {
+    const { harness, root, component } = await openAdd();
+    await fillValidAdd(root);
+    // A datetime-local control never yields a partial value, so set the model the way a pasted or scripted value would.
+    component.cancelBy = '2024-04-01';
+    await submit(harness);
+    http.expectNone('/api/subscriptions');
+    expect(root.querySelector('#cancelBy-error')).not.toBeNull();
+  });
+
+  it('maps a server cancelBy error to a localized message beside the field', async () => {
+    const { harness, root } = await openAdd();
+    await fillValidAdd(root);
+    type(root, 'cancelBy', '2024-04-01T09:30');
+    await submit(harness);
+    http.expectOne('/api/subscriptions').flush({ traceId: 't', errors: { cancelBy: ['English from the server'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(root.querySelector('#cancelBy-error')?.textContent).toContain(en['subscriptions.error.cancelBy']);
+    expect(root.textContent).not.toContain('English from the server');
+    expect(input(root, 'cancelBy').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('pre-fills the edit field from detail.cancelBy and sends it back unchanged', async () => {
+    const detail = { ...detailFixture(), cancelBy: '2026-12-01T09:00', cancelByInstant: '2026-12-01T08:00:00Z' };
+    const { harness, root } = await openEdit(detail);
+    expect(input(root, 'cancelBy').value).toBe('2026-12-01T09:00');
+    type(root, 'name', 'FilmPlus HD');
+    await submit(harness);
+    expect(cancelBody(lastRequest(`/api/subscriptions/${detail.id}`)).cancelBy).toBe('2026-12-01T09:00');
+  });
+
+  it('clears the deadline: an emptied field sends an explicit null on edit', async () => {
+    const detail = { ...detailFixture(), cancelBy: '2026-12-01T09:00', cancelByInstant: '2026-12-01T08:00:00Z' };
+    const { harness, root } = await openEdit(detail);
+    type(root, 'cancelBy', '');
+    await submit(harness);
+    expect(cancelBody(lastRequest(`/api/subscriptions/${detail.id}`)).cancelBy).toBeNull();
+  });
+
+  it('shows the cancel-by field in Danish with no English application copy', async () => {
+    TestBed.inject(LanguageService).setLanguage('da');
+    const { root } = await openAdd();
+    expect(root.querySelector('label[for="cancelBy"]')?.textContent).toContain(da['subscriptions.field.cancelBy']);
+    expect(englishLeftovers(root)).toEqual([]);
   });
 
   // ---- unsubscribe link ------------------------------------------------------------------------------
@@ -764,6 +876,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     if (catalog === 'fail') req.flush({}, { status: 500, statusText: 'Server Error' });
     else req.flush(catalog);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     await settle(harness);
     return { harness, root: harness.routeNativeElement as HTMLElement };
   }
@@ -776,6 +889,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     http.expectOne('/api/subscriptions/catalog').flush(catalog);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
     await settle(harness);
     return { harness, root: harness.routeNativeElement as HTMLElement };
   }
@@ -817,7 +931,7 @@ describe('SubscriptionFormPage catalog picker', () => {
     const req = http.expectOne('/api/subscriptions');
     expect(req.request.body).toEqual({
       name: 'Our StreamCo', category: 'Streaming', notes: null, currency: 'DKK', startDate: '2024-03-01', endDate: null,
-      amount: '139.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: 'streamco', paymentOptionId: null, unsubscribeUrl: null,
+      amount: '139.00', cadenceUnit: 'month', cadenceCount: 1, catalogId: 'streamco', paymentOptionId: null, unsubscribeUrl: null, cancelBy: null,
     });
     req.flush({}, { status: 400, statusText: 'Bad Request' });
     await settle(harness);

@@ -32,6 +32,10 @@ export interface SubscriptionSummary {
   normalizedMonthly: string;
   normalizedYearly: string;
   upcomingPriceChange: boolean;
+  /** The cancel-by deadline as local wall time in the household zone (`yyyy-MM-ddTHH:mm`), or null. */
+  cancelBy: string | null;
+  /** The same deadline as a UTC instant (ISO, ends in `Z`), or null. */
+  cancelByInstant: string | null;
 }
 
 export interface CurrencyTotal {
@@ -92,6 +96,10 @@ export interface SubscriptionDetail {
   unsubscribeUrl: string | null;
   /** The link the view shows: the user's URL, else the linked catalog service's, else null. Resolved by the server. */
   effectiveUnsubscribeUrl: string | null;
+  /** The cancel-by deadline as local wall time in the household zone (`yyyy-MM-ddTHH:mm`), or null: pre-fills the edit form. */
+  cancelBy: string | null;
+  /** The same deadline as a UTC instant (ISO, ends in `Z`), or null. */
+  cancelByInstant: string | null;
 }
 
 export interface CurrencyOption {
@@ -121,11 +129,13 @@ export interface AddSubscriptionBody {
   paymentOptionId: string | null;
   /** The user-specified unsubscribe link (https only), or an explicit null for none. */
   unsubscribeUrl: string | null;
+  /** The cancel-by deadline as local wall time in the household zone (`yyyy-MM-ddTHH:mm`), or an explicit null for none. */
+  cancelBy: string | null;
 }
 
 /**
- * Body of PUT /api/subscriptions/{id}: always the eight detail keys, with explicit nulls (D-10). An omitted or null catalogId unlinks,
- * and an omitted or null unsubscribeUrl clears the link. `paymentOption` is the exception and is opt-in: it is sent only when the
+ * Body of PUT /api/subscriptions/{id}: always the nine detail keys, with explicit nulls (D-10). An omitted or null catalogId unlinks,
+ * and an omitted or null unsubscribeUrl or cancelBy clears it. `paymentOption` is the exception and is opt-in: it is sent only when the
  * member changed the option, `{ id: null }` meaning None. Omitted or null leaves the price entries alone.
  */
 export interface UpdateSubscriptionBody {
@@ -137,6 +147,7 @@ export interface UpdateSubscriptionBody {
   endDate: string | null;
   catalogId: string | null;
   unsubscribeUrl: string | null;
+  cancelBy: string | null;
   paymentOption?: { id: string | null };
 }
 

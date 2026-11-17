@@ -16,6 +16,13 @@ public sealed record HouseholdMemberRevoked(string MemberId, DateTimeOffset Revo
 
 public sealed record HouseholdMemberLabelChanged(string MemberId, string DisplayLabel, DateTimeOffset ChangedAt);
 
+public sealed record HouseholdTimeZoneChanged(string TimeZoneId, DateTimeOffset ChangedAt);
+
+/// <summary>Only the lower-case hex SHA-256 of the feed secret is stored, never the secret itself.</summary>
+public sealed record HouseholdCalendarFeedRotated(string SecretHash, DateTimeOffset RotatedAt);
+
+public sealed record HouseholdCalendarFeedRevoked(DateTimeOffset RevokedAt);
+
 public sealed class UnknownEventAliasException(string alias)
     : Exception($"Unknown household event alias '{alias}'. Stored events are never skipped.")
 {
@@ -30,6 +37,9 @@ public static class HouseholdEventTypes
     public const string MemberGranted = "household.member_granted.v1";
     public const string MemberRevoked = "household.member_revoked.v1";
     public const string MemberLabelChanged = "household.member_label_changed.v1";
+    public const string TimeZoneChanged = "household.time_zone_changed.v1";
+    public const string CalendarFeedRotated = "household.calendar_feed_rotated.v1";
+    public const string CalendarFeedRevoked = "household.calendar_feed_revoked.v1";
 
     public static readonly IReadOnlyDictionary<string, Type> ByAlias = new Dictionary<string, Type>(StringComparer.Ordinal)
     {
@@ -38,6 +48,9 @@ public static class HouseholdEventTypes
         [MemberGranted] = typeof(HouseholdMemberGranted),
         [MemberRevoked] = typeof(HouseholdMemberRevoked),
         [MemberLabelChanged] = typeof(HouseholdMemberLabelChanged),
+        [TimeZoneChanged] = typeof(HouseholdTimeZoneChanged),
+        [CalendarFeedRotated] = typeof(HouseholdCalendarFeedRotated),
+        [CalendarFeedRevoked] = typeof(HouseholdCalendarFeedRevoked),
     };
 
     /// <summary>The same JSON shape Marten is configured with (System.Text.Json, camelCase).</summary>

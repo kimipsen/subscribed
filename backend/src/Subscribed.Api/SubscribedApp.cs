@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.HttpOverrides;
 using Subscribed.Api.Bff;
+using Subscribed.Api.Calendar;
 using Subscribed.Api.Configuration;
 using Subscribed.Api.Hosting;
 using Subscribed.Household;
@@ -84,6 +85,7 @@ public static class SubscribedApp
         services.TryAddSingletonTimeProvider();
         services.AddSingleton<IDocumentStore>(_ => SubscribedStore.Create(settings.AppConnectionString, settings.Schema, StoreRole.App, Modules));
         services.AddSingleton<HouseholdService>();
+        services.TryAddSingleton<ITimeZoneSource, SystemTimeZoneSource>();
         services.TryAddSingleton(sp => CatalogLoader.LoadEmbedded(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<SubscriptionService>();
         services.AddSingleton<PaymentOptionService>();
@@ -122,6 +124,11 @@ public static class SubscribedApp
         // Eager validation: a bad catalog fails the process at startup, not the first request.
         var catalog = app.Services.GetRequiredService<Catalog>();
         CatalogLog.LogLoaded(app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(CatalogLog.Category), catalog);
+        if (app.Services.GetRequiredService<ITimeZoneSource>().IsMissingTzData())
+        {
+            HouseholdLog.TimeZoneDataMissing(app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(HouseholdLog.Category));
+        }
+
         ConfigurePipeline(app, settings);
         return app;
     }
@@ -166,6 +173,7 @@ public static class SubscribedApp
         app.MapHouseholdEndpoints();
         app.MapSubscriptionEndpoints();
         app.MapPaymentOptionEndpoints();
+        app.MapCalendarEndpoints();
         app.Map("/api/{**rest}", (HttpContext ctx) => Problem.Result(404, ProblemCodes.NotFound, "Not found."))
             .AllowAnonymous().WithMetadata(new ApiNotFoundMarker()).WithOrder(int.MaxValue);
         app.Map("/api", (HttpContext ctx) => Problem.Result(404, ProblemCodes.NotFound, "Not found."))

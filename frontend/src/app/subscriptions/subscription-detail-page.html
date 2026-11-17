@@ -59,6 +59,13 @@
             <dt>{{ 'detail.unsubscribe' | t }}</dt>
             <dd><a [href]="d.effectiveUnsubscribeUrl" target="_blank" rel="noopener noreferrer">{{ 'detail.unsubscribeLink' | t }}</a></dd>
           }
+          @if (d.cancelBy) {
+            <dt>{{ 'detail.cancelBy' | t }}</dt>
+            <dd>
+              @if (householdZone(); as zone) { {{ 'detail.cancelByZone' | t: { when: cancelByText(d.cancelBy), zone } }} }
+              @else { {{ cancelByText(d.cancelBy) }} }
+            </dd>
+          }
           @if (d.notes) {
             <dt>{{ 'detail.notes' | t }}</dt>
             <dd class="notes">{{ d.notes }}</dd>

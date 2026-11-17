@@ -14,15 +14,31 @@ namespace Subscribed.Household;
 
 public sealed record HouseholdMemberDto(string MemberId, string DisplayLabel, DateTimeOffset GrantedAt);
 
+/// <summary>The calendar feed state. Never carries the secret or its hash.</summary>
+public sealed record CalendarFeedDto(bool Enabled, DateTimeOffset? RotatedAt);
+
 /// <summary>Never exposes other members' issuer/subject.</summary>
-public sealed record HouseholdDto(string Id, string Name, long Version, IReadOnlyList<HouseholdMemberDto> Members)
+public sealed record HouseholdDto(string Id, string Name, long Version, IReadOnlyList<HouseholdMemberDto> Members, string TimeZoneId, CalendarFeedDto CalendarFeed)
 {
     public static HouseholdDto From(HouseholdView view)
     {
         ArgumentNullException.ThrowIfNull(view);
-        return new(view.Id, view.Name, view.Version, view.Members.Select(m => new HouseholdMemberDto(m.MemberId, m.DisplayLabel, m.GrantedAt)).ToList());
+        return new(
+            view.Id,
+            view.Name,
+            view.Version,
+            view.Members.Select(m => new HouseholdMemberDto(m.MemberId, m.DisplayLabel, m.GrantedAt)).ToList(),
+            view.TimeZoneId,
+            new CalendarFeedDto(view.CalendarFeedEnabled, view.CalendarFeedRotatedAt));
     }
 }
+
+/// <summary>The rotate response: the household plus the one-time feed path that carries the raw secret.</summary>
+public sealed record CalendarFeedCreatedDto(HouseholdDto Household, string FeedPath);
+
+public sealed record TimeZonesDto(IReadOnlyList<string> TimeZones);
+
+public sealed record ChangeTimeZoneRequest(string? TimeZoneId);
 
 public sealed record RenameRequest(string? Name);
 
@@ -37,6 +53,10 @@ public static class HouseholdEndpoints
         var group = endpoints.MapGroup("/api/household").RequireAuthorization(HouseholdMembership.PolicyName);
         group.MapGet("", GetAsync);
         group.MapPut("/name", RenameAsync);
+        group.MapGet("/time-zones", TimeZonesAsync);
+        group.MapPut("/time-zone", ChangeTimeZoneAsync);
+        group.MapPost("/calendar-feed", RotateCalendarFeedAsync);
+        group.MapDelete("/calendar-feed", RevokeCalendarFeedAsync);
         group.MapPut("/members/{memberId}/label", ChangeMemberLabelAsync);
         return endpoints;
     }
@@ -146,6 +166,107 @@ public static class HouseholdEndpoints
             var current = await service.GetViewAsync(context.RequestAborted).ConfigureAwait(false);
             return Problem.Result(412, ProblemCodes.ConcurrencyConflict, "The household was changed by someone else.",
                 new Dictionary<string, object?> { ["currentVersion"] = current?.Version ?? view.Version });
+        }
+    }
+
+    private static IResult TimeZonesAsync(HttpContext context, ITimeZoneSource zones)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        return Results.Json(new TimeZonesDto(zones.Ids));
+    }
+
+    private static async Task<IResult> ChangeTimeZoneAsync(HttpContext context, HouseholdService service, ILoggerFactory loggers)
+    {
+        var memberId = HouseholdMembership.MemberIdFor(context);
+        if (IfMatchVersion(context, out var expectedVersion) is { } ifMatchError)
+        {
+            return ifMatchError;
+        }
+
+        var body = await ReadBodyAsync<ChangeTimeZoneRequest>(context, "timeZoneId", "Unknown time zone.").ConfigureAwait(false);
+        if (body.Error is { } error)
+        {
+            return error;
+        }
+
+        return await WriteAsync(context, service, loggers, memberId, async () =>
+        {
+            var updated = await service.ChangeTimeZoneAsync(expectedVersion, body.Request!.TimeZoneId, WriteContext.Member(memberId, Problem.TraceId(context)), context.RequestAborted).ConfigureAwait(false);
+            return Ok(context, updated);
+        }).ConfigureAwait(false);
+    }
+
+    private static async Task<IResult> RotateCalendarFeedAsync(HttpContext context, HouseholdService service, ILoggerFactory loggers)
+    {
+        var memberId = HouseholdMembership.MemberIdFor(context);
+        if (IfMatchVersion(context, out var expectedVersion) is { } ifMatchError)
+        {
+            return ifMatchError;
+        }
+
+        return await WriteAsync(context, service, loggers, memberId, async () =>
+        {
+            var (updated, secret) = await service.RotateCalendarFeedAsync(expectedVersion, WriteContext.Member(memberId, Problem.TraceId(context)), context.RequestAborted).ConfigureAwait(false);
+            context.Response.Headers.ETag = ETag(updated.Version);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Json(new CalendarFeedCreatedDto(HouseholdDto.From(updated), $"/calendar/{secret}/subscribed.ics"));
+        }).ConfigureAwait(false);
+    }
+
+    private static async Task<IResult> RevokeCalendarFeedAsync(HttpContext context, HouseholdService service, ILoggerFactory loggers)
+    {
+        var memberId = HouseholdMembership.MemberIdFor(context);
+        if (IfMatchVersion(context, out var expectedVersion) is { } ifMatchError)
+        {
+            return ifMatchError;
+        }
+
+        return await WriteAsync(context, service, loggers, memberId, async () =>
+        {
+            var updated = await service.RevokeCalendarFeedAsync(expectedVersion, WriteContext.Member(memberId, Problem.TraceId(context)), context.RequestAborted).ConfigureAwait(false);
+            return Ok(context, updated);
+        }).ConfigureAwait(false);
+    }
+
+    private static IResult Ok(HttpContext context, HouseholdView updated)
+    {
+        context.Response.Headers.ETag = ETag(updated.Version);
+        context.Response.Headers.CacheControl = "no-store";
+        return Results.Json(HouseholdDto.From(updated));
+    }
+
+    /// <summary>Returns the error result for a missing or malformed If-Match header, otherwise null with the parsed version.</summary>
+    private static IResult? IfMatchVersion(HttpContext context, out long expectedVersion)
+    {
+        expectedVersion = 0;
+        var ifMatch = context.Request.Headers.IfMatch.ToString();
+        if (string.IsNullOrWhiteSpace(ifMatch))
+        {
+            return Problem.Result(428, ProblemCodes.IfMatchRequired, "An If-Match header with the current version is required.");
+        }
+
+        return TryParseETag(ifMatch, out expectedVersion)
+            ? null
+            : ValidationProblem("If-Match", "If-Match must be a quoted version, for example \"3\".");
+    }
+
+    /// <summary>Maps the household write failures shared by every If-Match endpoint: validation to 400 and a stale version to 412.</summary>
+    private static async Task<IResult> WriteAsync(HttpContext context, HouseholdService service, ILoggerFactory loggers, string memberId, Func<Task<IResult>> write)
+    {
+        try
+        {
+            return await write().ConfigureAwait(false);
+        }
+        catch (HouseholdDomainException ex)
+        {
+            return ValidationProblem(ex.Field, ex.Message);
+        }
+        catch (EventStoreException ex) when (ex.Failure.Kind == EventStoreFailureKind.ConcurrencyConflict)
+        {
+            SecurityLog.Info(loggers.CreateLogger(SecurityEvents.Category), SecurityEvents.ConcurrencyConflict, memberId);
+            var current = await service.GetViewAsync(context.RequestAborted).ConfigureAwait(false);
+            return Problem.Result(412, ProblemCodes.ConcurrencyConflict, "The household was changed by someone else.",
+                new Dictionary<string, object?> { ["currentVersion"] = current?.Version ?? HouseholdMembership.ViewFor(context).Version });
         }
     }
 

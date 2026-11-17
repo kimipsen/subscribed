@@ -19,22 +19,25 @@ public sealed record AddSubscriptionRequest(
     int? CadenceCount,
     string? CatalogId,
     string? UnsubscribeUrl = null,
-    string? PaymentOptionId = null)
+    string? PaymentOptionId = null,
+    string? CancelBy = null)
 {
-    public AddInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, Amount, CadenceUnit, CadenceCount, CatalogId, UnsubscribeUrl, PaymentOptionId);
+    public AddInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, Amount, CadenceUnit, CadenceCount, CatalogId, UnsubscribeUrl, PaymentOptionId, CancelBy);
 }
 
 /// <summary>
 /// Fully replaces the editable details: a null <c>endDate</c> reinstates the subscription and a null or omitted <c>catalogId</c> unlinks it (P7).
 /// The same full-replace rule applies to <c>unsubscribeUrl</c>: a null or omitted value clears the user-specified link, so a stale
 /// cached SPA bundle that does not send the key will clear it on save.
+/// The same rule applies to <c>cancelBy</c> (a local wall time in the household zone, <c>yyyy-MM-ddTHH:mm</c>): a null or omitted value
+/// clears the deadline, and a stale cached SPA bundle that does not send the key will clear it on save, exactly like <c>unsubscribeUrl</c>.
 /// <c>paymentOption</c> is the exception and is opt-in: omitted or null leaves the price entries alone, so a stale client cannot clear
 /// every payment option by not knowing the field. See <see cref="PaymentOptionRequest"/>.
 /// </summary>
-public sealed record UpdateSubscriptionRequest(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId, string? UnsubscribeUrl = null, PaymentOptionRequest? PaymentOption = null)
+public sealed record UpdateSubscriptionRequest(string? Name, string? Category, string? Notes, string? Currency, string? StartDate, string? EndDate, string? CatalogId, string? UnsubscribeUrl = null, PaymentOptionRequest? PaymentOption = null, string? CancelBy = null)
 {
     public UpdateInput ToInput() => new(Name, Category, Notes, Currency, StartDate, EndDate, CatalogId, UnsubscribeUrl,
-        PaymentOption is not null, PaymentOption?.IdSpecified ?? false, PaymentOption?.Id);
+        PaymentOption is not null, PaymentOption?.IdSpecified ?? false, PaymentOption?.Id, CancelBy);
 }
 
 /// <summary>
@@ -115,10 +118,14 @@ public sealed record SubscriptionSummaryDto(
     PriceDto CurrentPrice,
     string NormalizedMonthly,
     string NormalizedYearly,
-    bool UpcomingPriceChange)
+    bool UpcomingPriceChange,
+    string? CancelBy = null,
+    DateTimeOffset? CancelByInstant = null)
 {
-    public static SubscriptionSummaryDto From(SubscriptionState state, DateOnly today, Catalog catalog)
+    /// <summary><paramref name="zone"/> is the household zone: <c>cancelBy</c> is the stored instant as local wall time in it, <c>cancelByInstant</c> the same instant in UTC.</summary>
+    public static SubscriptionSummaryDto From(SubscriptionState state, DateOnly today, Catalog catalog, TimeZoneInfo zone)
     {
+        ArgumentNullException.ThrowIfNull(zone);
         var minor = SubscriptionCalculator.MinorUnitOf(state);
         var current = SubscriptionCalculator.CurrentPrice(state, today);
         return new SubscriptionSummaryDto(
@@ -137,7 +144,9 @@ public sealed record SubscriptionSummaryDto(
             PriceDto.From(current, minor),
             Money.FormatAmount(SubscriptionCalculator.NormalizedMonthly(current, minor), minor),
             Money.FormatAmount(SubscriptionCalculator.NormalizedYearly(current, minor), minor),
-            SubscriptionCalculator.UpcomingPriceChange(state, today));
+            SubscriptionCalculator.UpcomingPriceChange(state, today),
+            SubscriptionDecisions.RenderCancelBy(state.CancelBy, zone),
+            state.CancelBy?.ToUniversalTime());
     }
 }
 
@@ -145,10 +154,10 @@ public sealed record CurrencyTotalDto(string Currency, int MinorUnit, string Mon
 
 public sealed record SubscriptionOverviewDto(DateOnly AsOf, IReadOnlyList<SubscriptionSummaryDto> Subscriptions, IReadOnlyList<CurrencyTotalDto> Totals)
 {
-    public static SubscriptionOverviewDto From(IReadOnlyList<SubscriptionState> subscriptions, DateOnly today, Catalog catalog) =>
+    public static SubscriptionOverviewDto From(IReadOnlyList<SubscriptionState> subscriptions, DateOnly today, Catalog catalog, TimeZoneInfo zone) =>
         new(
             today,
-            [.. SubscriptionCalculator.ListOrder(subscriptions).Select(s => SubscriptionSummaryDto.From(s, today, catalog))],
+            [.. SubscriptionCalculator.ListOrder(subscriptions).Select(s => SubscriptionSummaryDto.From(s, today, catalog, zone))],
             [.. SubscriptionCalculator.Totals(subscriptions, today).Select(t =>
                 new CurrencyTotalDto(t.Currency, t.MinorUnit, Money.FormatAmount(t.Monthly, t.MinorUnit), Money.FormatAmount(t.Yearly, t.MinorUnit), t.ActiveCount))]);
 }
@@ -173,10 +182,14 @@ public sealed record SubscriptionDetailDto(
     string NormalizedYearly,
     IReadOnlyList<HistoryEntryDto> PriceHistory,
     string? UnsubscribeUrl,
-    string? EffectiveUnsubscribeUrl)
+    string? EffectiveUnsubscribeUrl,
+    string? CancelBy = null,
+    DateTimeOffset? CancelByInstant = null)
 {
-    public static SubscriptionDetailDto From(SubscriptionState state, DateOnly today, Catalog catalog)
+    /// <summary><paramref name="zone"/> is the household zone: <c>cancelBy</c> is the stored instant as local wall time in it, <c>cancelByInstant</c> the same instant in UTC.</summary>
+    public static SubscriptionDetailDto From(SubscriptionState state, DateOnly today, Catalog catalog, TimeZoneInfo zone)
     {
+        ArgumentNullException.ThrowIfNull(zone);
         var minor = SubscriptionCalculator.MinorUnitOf(state);
         var current = SubscriptionCalculator.CurrentPrice(state, today);
         return new SubscriptionDetailDto(
@@ -212,7 +225,9 @@ public sealed record SubscriptionDetailDto(
                 r.Upcoming,
                 r.Entry.PaymentOptionId))],
             state.UnsubscribeUrl,
-            UnsubscribeLink.Effective(state, catalog));
+            UnsubscribeLink.Effective(state, catalog),
+            SubscriptionDecisions.RenderCancelBy(state.CancelBy, zone),
+            state.CancelBy?.ToUniversalTime());
     }
 }
 

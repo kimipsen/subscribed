@@ -95,5 +95,7 @@
     }
   ],
   "unsubscribeUrl": "https://example.com/cancel",
-  "effectiveUnsubscribeUrl": "https://example.com/cancel"
+  "effectiveUnsubscribeUrl": "https://example.com/cancel",
+  "cancelBy": null,
+  "cancelByInstant": null
 }

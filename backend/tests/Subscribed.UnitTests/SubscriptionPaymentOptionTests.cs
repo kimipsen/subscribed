@@ -58,7 +58,7 @@ public sealed class SubscriptionPaymentOptionTests
     [InlineData("   ")]
     public void Blank_option_id_becomes_null(string blank)
     {
-        Assert.Null(SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { PaymentOptionId = blank }).PaymentOptionId);
+        Assert.Null(SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { PaymentOptionId = blank }, TestZones.Utc).PaymentOptionId);
         Assert.Null(Entry("2025-01-01", "1.00", blank).PaymentOptionId);
     }
 
@@ -77,7 +77,7 @@ public sealed class SubscriptionPaymentOptionTests
     {
         var ex = Assert.Throws<SubscriptionValidationException>(() => Entry("2025-01-01", "1.00", id));
         Assert.Equal("paymentOptionId", Assert.Single(ex.Errors).Key);
-        Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { PaymentOptionId = id }));
+        Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(SubscriptionDecisionTests.Input() with { PaymentOptionId = id }, TestZones.Utc));
     }
 
     // ---- add and correct price entries -------------------------------------------------------------
@@ -497,26 +497,26 @@ public sealed class SubscriptionPaymentOptionTests
     [Fact]
     public void Parse_update_without_a_payment_option_object_carries_no_change()
     {
-        Assert.Null(SubscriptionDecisions.ParseUpdate(UpdateInputWith(false, false, null)).PaymentOption);
+        Assert.Null(SubscriptionDecisions.ParseUpdate(UpdateInputWith(false, false, null), TestZones.Utc).PaymentOption);
     }
 
     [Fact]
     public void Parse_update_with_an_id_or_an_explicit_null_id_carries_the_change()
     {
-        Assert.Equal(OptionA, SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, true, "  " + OptionA + " ")).PaymentOption!.PaymentOptionId);
-        Assert.Null(SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, true, null)).PaymentOption!.PaymentOptionId);
-        Assert.Null(SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, true, "  ")).PaymentOption!.PaymentOptionId);
+        Assert.Equal(OptionA, SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, true, "  " + OptionA + " "), TestZones.Utc).PaymentOption!.PaymentOptionId);
+        Assert.Null(SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, true, null), TestZones.Utc).PaymentOption!.PaymentOptionId);
+        Assert.Null(SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, true, "  "), TestZones.Utc).PaymentOption!.PaymentOptionId);
     }
 
     [Fact]
     public void Parse_update_with_an_object_but_no_id_is_a_payment_option_error()
     {
-        Assert.Equal("paymentOption", Field(() => SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, false, null))));
+        Assert.Equal("paymentOption", Field(() => SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, false, null), TestZones.Utc)));
     }
 
     [Fact]
     public void Parse_update_with_a_malformed_id_is_a_payment_option_id_error()
     {
-        Assert.Equal("paymentOptionId", Field(() => SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, true, "nope"))));
+        Assert.Equal("paymentOptionId", Field(() => SubscriptionDecisions.ParseUpdate(UpdateInputWith(true, true, "nope"), TestZones.Utc)));
     }
 }

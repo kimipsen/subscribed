@@ -50,6 +50,13 @@ public sealed record SubscriptionCatalogLinked(string? CatalogId, DateTimeOffset
 /// <summary>Assigns a payment option to one price entry, or clears it when <paramref name="PaymentOptionId"/> is null.</summary>
 public sealed record SubscriptionPriceEntryPaymentChanged(string EntryId, string? PaymentOptionId, DateTimeOffset RecordedAt);
 
+/// <summary>
+/// Sets the cancel-by deadline, or clears it when <paramref name="CancelBy"/> is null. The value is a UTC instant (offset 0).
+/// It is its own event, not a field of <see cref="SubscriptionDetailsChanged"/>, so replaying an old details change can never
+/// clear a deadline.
+/// </summary>
+public sealed record SubscriptionCancelByChanged(DateTimeOffset? CancelBy, DateTimeOffset RecordedAt);
+
 public sealed class UnknownSubscriptionEventAliasException(string alias)
     : Exception($"Unknown subscription event alias '{alias}'. Stored events are never skipped.")
 {
@@ -71,6 +78,7 @@ public static class SubscriptionEventTypes
     public const string Resumed = "subscription.resumed.v1";
     public const string CatalogLinked = "subscription.catalog_linked.v1";
     public const string PriceEntryPaymentChanged = "subscription.price_entry_payment_changed.v1";
+    public const string CancelByChanged = "subscription.cancel_by_changed.v1";
 
     public static readonly IReadOnlyDictionary<string, Type> ByAlias = new Dictionary<string, Type>(StringComparer.Ordinal)
     {
@@ -86,6 +94,7 @@ public static class SubscriptionEventTypes
         [Resumed] = typeof(SubscriptionResumed),
         [CatalogLinked] = typeof(SubscriptionCatalogLinked),
         [PriceEntryPaymentChanged] = typeof(SubscriptionPriceEntryPaymentChanged),
+        [CancelByChanged] = typeof(SubscriptionCancelByChanged),
     };
 
     /// <summary>

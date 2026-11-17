@@ -18,6 +18,7 @@ public static class HouseholdErrorCodes
     public const string NotCreated = "not-created";
     public const string NotAMember = "not-a-member";
     public const string LastMember = "last-member";
+    public const string InvalidTimeZone = "invalid-time-zone";
 }
 
 public sealed record ActiveMember(string MemberId, string Issuer, string Subject, string DisplayLabel, DateTimeOffset GrantedAt);
@@ -36,6 +37,14 @@ public sealed class Household
     public string Name { get; private set; } = "";
 
     public long Version { get; private set; }
+
+    /// <summary>IANA time zone id. Existing households read as UTC.</summary>
+    public string TimeZoneId { get; private set; } = TimeZoneIds.Utc;
+
+    /// <summary>Lower-case hex SHA-256 of the active calendar feed secret, or null when no feed is active.</summary>
+    public string? CalendarFeedSecretHash { get; private set; }
+
+    public DateTimeOffset? CalendarFeedRotatedAt { get; private set; }
 
     public IReadOnlyCollection<ActiveMember> Members => _members.Values;
 
@@ -75,6 +84,17 @@ public sealed class Household
                 }
 
                 _members[e.MemberId] = existing with { DisplayLabel = e.DisplayLabel };
+                break;
+            case HouseholdTimeZoneChanged e:
+                TimeZoneId = e.TimeZoneId;
+                break;
+            case HouseholdCalendarFeedRotated e:
+                CalendarFeedSecretHash = e.SecretHash;
+                CalendarFeedRotatedAt = e.RotatedAt;
+                break;
+            case HouseholdCalendarFeedRevoked:
+                CalendarFeedSecretHash = null;
+                CalendarFeedRotatedAt = null;
                 break;
             default:
                 throw new InvalidOperationException($"Event type {@event?.GetType().Name ?? "null"} is not a household event.");
@@ -150,6 +170,39 @@ public sealed class Household
             ? []
             : [new HouseholdMemberLabelChanged(memberId, normalized, now.ToUniversalTime())];
     }
+
+    /// <summary>Changing to the current zone is a no-op (no event). An invalid id throws <c>invalid-time-zone</c>.</summary>
+    public IReadOnlyList<object> ChangeTimeZone(string? id, DateTimeOffset now)
+    {
+        RequireExists();
+        var normalized = TimeZoneIds.Normalize(id);
+        return string.Equals(normalized, TimeZoneId, StringComparison.Ordinal)
+            ? []
+            : [new HouseholdTimeZoneChanged(normalized, now.ToUniversalTime())];
+    }
+
+    /// <summary>A rotation is an explicit act, so it always emits, even when the hash is unchanged.</summary>
+    public IReadOnlyList<object> RotateCalendarFeed(string secretHash, DateTimeOffset now)
+    {
+        RequireExists();
+        if (!IsSecretHash(secretHash))
+        {
+            // The service computes the hash, so a malformed one is a programming error, not user input.
+            throw new ArgumentException("The calendar feed secret hash must be 64 lower-case hex characters.", nameof(secretHash));
+        }
+
+        return [new HouseholdCalendarFeedRotated(secretHash, now.ToUniversalTime())];
+    }
+
+    /// <summary>Revoking when no feed is active is a no-op (no event).</summary>
+    public IReadOnlyList<object> RevokeCalendarFeed(DateTimeOffset now)
+    {
+        RequireExists();
+        return CalendarFeedSecretHash is null ? [] : [new HouseholdCalendarFeedRevoked(now.ToUniversalTime())];
+    }
+
+    public static bool IsSecretHash(string? value) =>
+        value is { Length: 64 } && value.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
 
     public static string NormalizeName(string? name)
     {

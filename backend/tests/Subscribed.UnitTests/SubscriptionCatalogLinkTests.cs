@@ -43,14 +43,14 @@ public sealed class SubscriptionCatalogLinkTests
     [InlineData("   ")]
     public void Blank_catalog_id_becomes_null(string blank)
     {
-        Assert.Null(SubscriptionDecisions.ParseAdd(Input(blank)).CatalogId);
+        Assert.Null(SubscriptionDecisions.ParseAdd(Input(blank), TestZones.Utc).CatalogId);
         Assert.Single(SubscriptionDecisionTests.Added(Input(blank)));
     }
 
     [Fact]
     public void Catalog_id_is_trimmed()
     {
-        Assert.Equal("streamco", SubscriptionDecisions.ParseAdd(Input("  streamco ")).CatalogId);
+        Assert.Equal("streamco", SubscriptionDecisions.ParseAdd(Input("  streamco "), TestZones.Utc).CatalogId);
     }
 
     [Theory]
@@ -61,16 +61,16 @@ public sealed class SubscriptionCatalogLinkTests
     [InlineData("has space")]
     public void Bad_catalog_id_shape_is_rejected_under_catalogId(string id)
     {
-        var ex = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(Input(id)));
+        var ex = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(Input(id), TestZones.Utc));
         Assert.Equal("catalogId", Assert.Single(ex.Errors).Key);
     }
 
     [Fact]
     public void Catalog_id_over_64_characters_is_rejected()
     {
-        var ex = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(Input(new string('a', 65))));
+        var ex = Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseAdd(Input(new string('a', 65)), TestZones.Utc));
         Assert.Equal("catalogId", Assert.Single(ex.Errors).Key);
-        Assert.Equal(new string('a', 64), SubscriptionDecisions.ParseAdd(Input(new string('a', 64))).CatalogId);
+        Assert.Equal(new string('a', 64), SubscriptionDecisions.ParseAdd(Input(new string('a', 64)), TestZones.Utc).CatalogId);
     }
 
     [Fact]
@@ -114,10 +114,10 @@ public sealed class SubscriptionCatalogLinkTests
     [Fact]
     public void Update_parse_normalizes_the_catalog_id()
     {
-        var parsed = SubscriptionDecisions.ParseUpdate(new UpdateInput("StreamCo", null, null, "DKK", "2024-03-01", null, " streamco "));
+        var parsed = SubscriptionDecisions.ParseUpdate(new UpdateInput("StreamCo", null, null, "DKK", "2024-03-01", null, " streamco "), TestZones.Utc);
         Assert.Equal("streamco", parsed.CatalogId);
-        Assert.Null(SubscriptionDecisions.ParseUpdate(new UpdateInput("StreamCo", null, null, "DKK", "2024-03-01", null, null)).CatalogId);
-        Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseUpdate(new UpdateInput("StreamCo", null, null, "DKK", "2024-03-01", null, "Bad Id")));
+        Assert.Null(SubscriptionDecisions.ParseUpdate(new UpdateInput("StreamCo", null, null, "DKK", "2024-03-01", null, null), TestZones.Utc).CatalogId);
+        Assert.Throws<SubscriptionValidationException>(() => SubscriptionDecisions.ParseUpdate(new UpdateInput("StreamCo", null, null, "DKK", "2024-03-01", null, "Bad Id"), TestZones.Utc));
     }
 
     [Fact]
