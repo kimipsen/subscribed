@@ -102,6 +102,10 @@ public static class SubscriptionEndpoints
         }
     }
 
+    /// <summary>
+    /// Details plus the optional <c>paymentOption</c> in one request: the generic <see cref="MutateAsync{TRequest, TCommand}"/> carries the
+    /// whole body, and the service turns it into one decision and one append.
+    /// </summary>
     private static Task<IResult> UpdateAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateAsync<UpdateSubscriptionRequest, DetailsUpdate>(id, context, service, loggers,
             request => SubscriptionDecisions.ParseUpdate(request.ToInput()),
