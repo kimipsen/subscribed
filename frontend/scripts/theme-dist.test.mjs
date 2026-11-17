@@ -204,8 +204,11 @@ for (const { name, files, check } of PROOFS) {
 // Include-side check (guards the opposite direction of the sentinels): a typo in an @source path or a dropped
 // directory must fail instead of shipping an unstyled page. Entries are structural utilities that are used by
 // exactly one template; each records the file and line so a later edit that removes it points here.
-// Filled by the WP4 / WP5 commits (one entry for src/app/app.html, one for a single page template).
-export const INCLUDE_SIDE = [];
+// One entry for src/app/app.html and one for a single page template; keep the line numbers in step when the line moves.
+export const INCLUDE_SIDE = [
+  { file: 'src/app/app.html', line: 32, utility: 'nav:grid-cols-[auto_1fr]' },
+  { file: 'src/app/foundation-page.html', line: 25, utility: 'tracking-wide' },
+];
 
 test('T-D include-side utilities are in the built CSS', (t) => {
   if (!templateChecksEnabled) {

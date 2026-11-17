@@ -7,7 +7,7 @@
 
     @if (loading()) {
       <p class="my-2"><output>{{ 'paymentOptions.loading' | t }}</output></p>
-      <div class="skeleton h-24 w-full" aria-hidden="true"></div>
+      <app-skeleton-block />
     } @else if (loadFailed()) {
       <app-notice>
         <p class="m-0">{{ 'paymentOptions.loadFailed' | t }}</p>

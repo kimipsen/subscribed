@@ -10,10 +10,13 @@ import { LanguageService, Message, MessageKey } from './i18n/i18n';
 import { TranslatePipe } from './i18n/translate.pipe';
 import { SessionUnavailable } from './subscriptions/session-unavailable';
 import { SubscriptionOverviewComponent } from './subscriptions/subscription-overview';
+import { Notice } from './ui/notice';
+import { Panel } from './ui/panel';
+import { SkeletonBlock } from './ui/skeleton-block';
 
 @Component({
   selector: 'app-foundation-page',
-  imports: [FormsModule, DatePipe, RouterLink, TranslatePipe, SessionUnavailable, SubscriptionOverviewComponent],
+  imports: [FormsModule, DatePipe, RouterLink, TranslatePipe, SessionUnavailable, SubscriptionOverviewComponent, Notice, Panel, SkeletonBlock],
   templateUrl: './foundation-page.html',
 })
 export class FoundationPage {

@@ -9,6 +9,7 @@ import { SessionService } from '../session';
 import { FormField } from '../ui/form-field';
 import { Notice } from '../ui/notice';
 import { Panel } from '../ui/panel';
+import { SkeletonBlock } from '../ui/skeleton-block';
 import { PAYMENT_OPTION_BRANDS, brandOf } from './payment-option-brands';
 import { PaymentOptionLogo } from './payment-option-logo';
 import { OptionField, OptionProblem, checkOptionFields, optionText } from './payment-option-text';
@@ -33,7 +34,7 @@ const SERVER_KEYS: Readonly<Record<OptionField, MessageKey>> = {
 
 @Component({
   selector: 'app-payment-options-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, PaymentOptionLogo, FormField, Notice, Panel],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, PaymentOptionLogo, FormField, Notice, Panel, SkeletonBlock],
   templateUrl: './payment-options-page.html',
 })
 export class PaymentOptionsPage {

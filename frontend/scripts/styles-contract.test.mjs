@@ -13,10 +13,10 @@
 //  9 class names are complete literals          10 sidebar contract (nav: guard, group, no data-tip)
 // 11 control borders and placeholders per element
 //
-// Checks 1, 4 to 11 need migrated templates, so they are gated by ENABLE_TEMPLATE_CHECKS and a ratchet:
-// while the flag is false they run for exactly the files in MIGRATED_FILES; a page commit adds its files in the
-// same commit that migrates them. The flag flips to true (and MIGRATED_FILES goes away in favour of the candidate
-// set) in the commit that migrates the last token-bearing file.
+// Checks 1, 4 to 11 now run over the whole candidate set (ENABLE_TEMPLATE_CHECKS is true). While the migration was
+// under way they were gated by a flag and a ratchet: they ran for exactly the files in a hand-kept MIGRATED_FILES list,
+// and each page commit added its files. The commit that migrated the last token-bearing file flipped the flag and
+// replaced that list with the candidate set (MIGRATED_FILES below is now derived from it).
 //
 // Removed-selector fixture: scripts/fixtures/removed-scss-selectors.json is the sorted set of class names the old
 // SCSS defined. It was generated once from the pre-change sources on master (src/styles.scss, src/app/app.scss and
@@ -33,31 +33,8 @@ import { parseTemplate } from '@angular/compiler';
 import ts from 'typescript';
 import { ALPHA_TABLE, read } from './theme-palette.mjs';
 
-// The one switch. See the header: false while some page still uses removed class tokens.
-const ENABLE_TEMPLATE_CHECKS = false;
-
-// Files (relative to frontend/) whose templates already satisfy every template check. Token-free templates that
-// exist before restyling are listed now; each restyled page adds its files in its own commit.
-const MIGRATED_FILES = [
-  'src/app/app.html',
-  'src/app/app.ts',
-  'src/app/foundation-page.ts',
-  'src/app/subscriptions/payment-option-logo.ts',
-  'src/app/subscriptions/payment-options-page.html',
-  'src/app/subscriptions/payment-options-page.ts',
-  'src/app/subscriptions/service-logo.ts',
-  'src/app/subscriptions/subscription-detail-page.html',
-  'src/app/subscriptions/subscription-detail-page.ts',
-  'src/app/subscriptions/subscription-form-page.html',
-  'src/app/subscriptions/subscription-form-page.ts',
-  'src/app/subscriptions/subscription-overview.html',
-  'src/app/subscriptions/subscription-overview.ts',
-  'src/app/ui/form-field.ts',
-  'src/app/ui/notice.ts',
-  'src/app/ui/panel.ts',
-  'src/app/ui/status-badge.ts',
-  'src/index.html',
-];
+// The one switch. See the header: true now that no file uses a removed class token, style declaration or inline style.
+const ENABLE_TEMPLATE_CHECKS = true;
 
 const frontend = new URL('../', import.meta.url);
 
@@ -452,6 +429,9 @@ export const runChecks = (unit, numbers = TEMPLATE_CHECKS) => numbers.flatMap((n
 
 const units = candidateUnits();
 const unitByFile = new Map(units.map((unit) => [unit.file, unit]));
+
+// Every template check now covers the whole candidate set: the ratchet's file list is gone and this is its replacement.
+const MIGRATED_FILES = units.map((unit) => unit.file).sort();
 const checkedUnits = () => (ENABLE_TEMPLATE_CHECKS ? units : MIGRATED_FILES.map((file) => {
   assert.ok(unitByFile.has(file), `MIGRATED_FILES lists ${file}, which is not in the candidate set`);
   return unitByFile.get(file);

@@ -9,6 +9,7 @@ import { SessionService } from '../session';
 import { FormField } from '../ui/form-field';
 import { Notice } from '../ui/notice';
 import { Panel } from '../ui/panel';
+import { SkeletonBlock } from '../ui/skeleton-block';
 import { buildCategories } from './categories';
 import { optionText } from './payment-option-text';
 import { PaymentOptionsService } from './payment-options.service';
@@ -85,7 +86,7 @@ export function normalizeNotes(value: string): string {
 
 @Component({
   selector: 'app-subscription-form-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, FormField, Notice, Panel],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, FormField, Notice, Panel, SkeletonBlock],
   templateUrl: './subscription-form-page.html',
 })
 export class SubscriptionFormPage {

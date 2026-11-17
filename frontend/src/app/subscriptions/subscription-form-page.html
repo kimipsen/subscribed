@@ -4,7 +4,7 @@
     <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ (editing ? 'subscriptions.form.editHeading' : 'subscriptions.form.addHeading') | t }}</h1>
     @if (loading()) {
       <p class="my-2" role="status">{{ 'subscriptions.form.loading' | t }}</p>
-      <div class="skeleton h-24 w-full" aria-hidden="true"></div>
+      <app-skeleton-block />
     } @else if (notFound()) {
       <p class="my-2" role="alert">{{ 'subscriptions.notFound' | t }}</p>
       <a class="text-primary underline" routerLink="/">{{ 'subscriptions.backHome' | t }}</a>

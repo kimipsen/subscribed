@@ -12,7 +12,7 @@
   }
   @if (loading()) {
     <p class="my-2" role="status">{{ 'subscriptions.loading' | t }}</p>
-    <div class="skeleton h-24 w-full" aria-hidden="true"></div>
+    <app-skeleton-block />
   } @else if (failed()) {
     <app-notice>
       <p class="m-0">{{ 'subscriptions.loadFailed' | t }}</p>

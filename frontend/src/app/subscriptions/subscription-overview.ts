@@ -7,6 +7,7 @@ import { TranslatePipe } from '../i18n/translate.pipe';
 import { FormField } from '../ui/form-field';
 import { Notice } from '../ui/notice';
 import { StatusBadge } from '../ui/status-badge';
+import { SkeletonBlock } from '../ui/skeleton-block';
 import {
   ALL_SELECTION,
   CategoryGroup,
@@ -48,7 +49,7 @@ const FAILURE_KEYS: Record<number, MessageKey> = {
 
 @Component({
   selector: 'app-subscription-overview',
-  imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo, FormField, Notice, StatusBadge],
+  imports: [NgTemplateOutlet, RouterLink, TranslatePipe, ServiceLogo, FormField, Notice, SkeletonBlock, StatusBadge],
   templateUrl: './subscription-overview.html',
 })
 export class SubscriptionOverviewComponent {

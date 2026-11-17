@@ -4,7 +4,7 @@
     @if (loading()) {
       <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'subscriptions.heading' | t }}</h1>
       <p class="my-2" role="status">{{ 'detail.loading' | t }}</p>
-      <div class="skeleton h-24 w-full" aria-hidden="true"></div>
+      <app-skeleton-block />
     } @else if (notFound()) {
       <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'subscriptions.notFound' | t }}</h1>
       <a class="text-primary underline" routerLink="/">{{ 'subscriptions.backHome' | t }}</a>

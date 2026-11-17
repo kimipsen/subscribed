@@ -10,6 +10,7 @@ import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from './i18n/i18
 import { en } from './i18n/catalog.en';
 import { da } from './i18n/catalog.da';
 import { vi } from 'vitest';
+import { query, queryAll } from './testing/query';
 import './app.config';
 
 const ZONES = ['Europe/Copenhagen', 'Europe/London', 'UTC'];
@@ -158,13 +159,13 @@ describe('Foundation UI', () => {
     input.dispatchEvent(new Event('input'));
     await harness.fixture.whenStable();
     expect(page.name).toBe('Unsaved Øst');
-    expect(harness.routeNativeElement?.querySelector('.members')?.textContent).toContain('Joined 5 Mar 2026');
+    expect(query(harness.fixture, '[data-member-list]').textContent).toContain('Joined 5 Mar 2026');
     page.saved.set(true);
     TestBed.inject(LanguageService).setLanguage('da');
     await harness.fixture.whenStable();
     expect(input.value).toBe('Unsaved Øst');
     expect(page.name).toBe('Unsaved Øst');
-    expect(harness.routeNativeElement?.querySelector('.members')?.textContent).toContain('Medlem siden 5. mar. 2026');
+    expect(query(harness.fixture, '[data-member-list]').textContent).toContain('Medlem siden 5. mar. 2026');
     expect(harness.routeNativeElement?.textContent).toContain('Husstandens navn er gemt.');
     expect(harness.routeNativeElement?.textContent).toContain('Åse Ørnsø');
     http.expectNone('/api/household');
@@ -174,10 +175,10 @@ describe('Foundation UI', () => {
   for (const { status, body, block, key } of [
     { status: 400, body: { type: 'urn:subscribed:problem:validation-failed', errors: { name: ['Backend English'] } },
       block: '#name-error', key: 'household.nameInvalid' },
-    { status: 412, body: {}, block: '.notice', key: 'household.conflict' },
-    { status: 500, body: {}, block: '.error', key: 'household.saveFailed' },
+    { status: 412, body: {}, block: '[data-conflict]', key: 'household.conflict' },
+    { status: 500, body: {}, block: '[data-problem]', key: 'household.saveFailed' },
     { status: 400, body: { errors: { name: ['Backend English'] } },
-      block: '.error', key: 'household.saveFailed' },
+      block: '[data-problem]', key: 'household.saveFailed' },
   ] as const) {
     it(`localizes ${status} ${key} and preserves/clears references`, async () => {
       const { harness, page } = await openHousehold();
@@ -186,15 +187,15 @@ describe('Foundation UI', () => {
       http.expectOne('/api/household/name').flush({ ...body, traceId: '00-abc-01' },
         { status, statusText: 'Failure' });
       harness.detectChanges();
-      const error = harness.routeNativeElement?.querySelector(block);
-      expect(error?.textContent).toContain(en[key]);
-      expect(error?.querySelector('code')?.textContent).toBe('00-abc-01');
-      expect(error?.textContent).not.toContain('Backend English');
+      const error = query(harness.fixture, block);
+      expect(error.textContent).toContain(en[key]);
+      expect(query(error, 'code').textContent).toBe('00-abc-01');
+      expect(error.textContent).not.toContain('Backend English');
       TestBed.inject(LanguageService).setLanguage('da');
       await harness.fixture.whenStable();
-      expect(error?.textContent).toContain(da[key]);
-      expect(error?.textContent).toContain('Fejlreference:');
-      expect(error?.querySelector('code')?.textContent).toBe('00-abc-01');
+      expect(error.textContent).toContain(da[key]);
+      expect(error.textContent).toContain('Fejlreference:');
+      expect(query(error, 'code').textContent).toBe('00-abc-01');
       page.name = '';
       page.save();
       harness.detectChanges();
@@ -228,14 +229,14 @@ describe('Foundation UI', () => {
     const household = (version: number, list: Household['members'] = members, name = 'Before') =>
       ({ id: 'household-default', name, version, ...zoneFields, members: list });
 
-    function text(harness: { routeNativeElement: HTMLElement | null }, selector: string): string {
-      return harness.routeNativeElement?.querySelector(selector)?.textContent ?? '';
+    function text(harness: RouterTestingHarness, selector: string): string {
+      return query(harness.fixture, selector).textContent ?? '';
     }
 
     it('opens with the current label, saves with URL, body and If-Match and shows the new label', async () => {
       const { harness, page } = await openHousehold(members);
       harness.detectChanges();
-      const edit = harness.routeNativeElement?.querySelector('.members li button') as HTMLButtonElement;
+      const edit = queryAll<HTMLButtonElement>(harness.fixture, '[data-member-list] li button')[0];
       expect(edit.textContent).toContain(en['household.memberEdit']);
       edit.click();
       harness.detectChanges();
@@ -257,8 +258,8 @@ describe('Foundation UI', () => {
       harness.detectChanges();
       expect(page.editingMemberId()).toBeNull();
       expect(page.household()?.version).toBe(2);
-      expect(text(harness, '.members')).toContain('Kim Ipsen');
-      expect(text(harness, '.members')).toContain('Sam');
+      expect(text(harness, '[data-member-list]')).toContain('Kim Ipsen');
+      expect(text(harness, '[data-member-list]')).toContain('Sam');
       expect(harness.routeNativeElement?.textContent).toContain(en['household.memberSaved']);
       expect(page.name).toBe('Before');
     });
@@ -279,7 +280,7 @@ describe('Foundation UI', () => {
       harness.detectChanges();
       expect(page.editingMemberId()).toBeNull();
       expect(harness.routeNativeElement?.querySelector('input[name=memberLabel]')).toBeNull();
-      expect(text(harness, '.members')).toContain('Kim');
+      expect(text(harness, '[data-member-list]')).toContain('Kim');
       http.expectNone('/api/household/members/aa11/label');
     });
 
@@ -289,7 +290,7 @@ describe('Foundation UI', () => {
       for (const bad of ['', '   ', 'x'.repeat(65), 'bad\u0007label']) {
         page.labelDraft = bad;
         harness.detectChanges();
-        const save = harness.routeNativeElement?.querySelector('form.member-edit button[type=submit]') as HTMLButtonElement;
+        const save = query<HTMLButtonElement>(harness.fixture, 'form[data-member-edit] button[type=submit]');
         expect(save.disabled).toBe(true);
         page.saveLabel(members[0]);
         expect(page.labelError()).toEqual({ key: 'household.memberLabelInvalid' });
@@ -323,7 +324,7 @@ describe('Foundation UI', () => {
       harness.detectChanges();
       expect(page.labelConflict()).toBe(true);
       expect(page.labelDraft).toBe('My edit');
-      expect(text(harness, '.members .notice')).toContain(en['household.conflict']);
+      expect(text(harness, '[data-member-list] [data-conflict]')).toContain(en['household.conflict']);
       expect(page.conflict()).toBe(false);
       page.load();
       http.expectOne('/api/household').flush(household(2, [{ ...members[0], displayLabel: 'Kim (server)' }, members[1]]));
@@ -569,10 +570,10 @@ describe('Foundation UI', () => {
         harness.detectChanges();
         expect(page.zoneConflict()).toBe(true);
         expect(page.zoneDraft).toBe('UTC');
-        const notice = q(harness, '.notice[role=alert]');
+        const notice = q(harness, '[data-conflict]');
         expect(notice?.textContent).toContain(en['household.conflict']);
         expect(notice?.querySelector('code')?.textContent).toBe('zone-412');
-        click(harness, '.notice button');
+        click(harness, '[data-conflict] button');
         http.expectOne('/api/household').flush(household({ version: 2, timeZoneId: 'Europe/London' }));
         expect(page.zoneDraft).toBe('Europe/London');
         expect(page.zoneConflict()).toBe(false);
@@ -706,13 +707,13 @@ describe('Foundation UI', () => {
         const { harness, page } = await open();
         const issue = (path: string) => {
           click(harness, '#feed-create');
-          if (q(harness, '#feed-rotate-confirm')) click(harness, '.notice button:not(.secondary)');
+          if (q(harness, '#feed-rotate-confirm')) click(harness, '[data-rotate-yes]');
           http.expectOne('/api/household/calendar-feed').flush({ household: household({ calendarFeed: FEED_ON }), feedPath: path });
           harness.detectChanges();
           expect(q(harness, '#feed-url')).toBeTruthy();
         };
         issue('/calendar/ONE/subscribed.ics');
-        click(harness, '#feed-url-block .secondary');
+        click(harness, '#feed-hide');
         expect(q(harness, '#feed-url')).toBeNull();
         expect(page.feedUrl()).toBeNull();
 
@@ -784,13 +785,13 @@ describe('Foundation UI', () => {
         expect(en['household.feedRotateConfirm']).toContain('old link stops working');
         expect(q(harness, '#feed-create')).toBeNull();
         // Cancel keeps the current link and sends nothing.
-        click(harness, '.notice button.secondary');
+        click(harness, '[data-rotate-no]');
         expect(page.confirmingRotate()).toBe(false);
         expect(q(harness, '#feed-rotate-confirm')).toBeNull();
         http.expectNone('/api/household/calendar-feed');
         // Confirm rotates.
         click(harness, '#feed-create');
-        click(harness, '.notice button:not(.secondary)');
+        click(harness, '[data-rotate-yes]');
         const request = http.expectOne('/api/household/calendar-feed');
         expect(request.request.method).toBe('POST');
         request.flush({ household: household({ calendarFeed: { enabled: true, rotatedAt: '2026-11-17T08:00:00Z' } }), feedPath: '/calendar/NEW/subscribed.ics' });
@@ -823,17 +824,17 @@ describe('Foundation UI', () => {
           { currentVersion: 2, traceId: 'feed-412' }, { status: 412, statusText: 'Precondition failed' });
         harness.detectChanges();
         expect(page.feedConflict()).toBe(true);
-        expect(q(harness, '.notice[role=alert]')?.textContent).toContain(en['household.conflict']);
-        expect(q(harness, '.notice[role=alert] code')?.textContent).toBe('feed-412');
+        expect(q(harness, '[data-conflict]')?.textContent).toContain(en['household.conflict']);
+        expect(q(harness, '[data-conflict] code')?.textContent).toBe('feed-412');
         expect(page.household()?.calendarFeed.enabled).toBe(true);
-        click(harness, '.notice[role=alert] button');
+        click(harness, '[data-conflict] button');
         http.expectOne('/api/household').flush(household({ version: 2, calendarFeed: FEED_ON }));
         harness.detectChanges();
         expect(page.feedConflict()).toBe(false);
         expect(page.feedTraceId()).toBeUndefined();
 
         click(harness, '#feed-create');
-        click(harness, '.notice button:not(.secondary)');
+        click(harness, '[data-rotate-yes]');
         http.expectOne('/api/household/calendar-feed').flush({}, { status: 500, statusText: 'Failure' });
         harness.detectChanges();
         expect(page.feedError()).toEqual({ key: 'household.saveFailed' });
