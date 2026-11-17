@@ -28,7 +28,7 @@ public sealed class PaymentOptionPersistenceTests(PostgresFixture pg)
     private static PriceEntryChange Entry(string from, string amount, string? optionId) =>
         SubscriptionDecisions.ParsePriceEntry(new PriceInput(from, amount, "month", 1, optionId));
 
-    private static PaymentOptionFields Fields(string name, string? label = null) => PaymentOptionDecisions.ParseCreate(new PaymentOptionInput(name, label));
+    private static PaymentOptionFields Fields(string name, string? label = null, string? brand = null) => PaymentOptionDecisions.ParseCreate(new PaymentOptionInput(name, label, brand));
 
     [Fact]
     public async Task Create_change_and_remove_store_v1_aliases_headers_and_follow_the_inline_snapshot()
@@ -61,6 +61,86 @@ public sealed class PaymentOptionPersistenceTests(PostgresFixture pg)
         Assert.NotNull(await service.GetAsync(id, Ct));
         await Assert.ThrowsAsync<PaymentOptionNotFoundException>(() => service.UpdateAsync(id, removed.Version, Fields("Again"), Member, Ct));
         await Assert.ThrowsAsync<PaymentOptionNotFoundException>(() => service.RemoveAsync(id, removed.Version, Member, Ct));
+    }
+
+    [Fact]
+    public async Task The_brand_survives_create_change_and_remove_and_is_stored_in_the_event_data()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new PaymentOptionService(store, TimeProvider.System);
+
+        var created = await service.CreateAsync(Fields("Joint card", null, "visa"), Member, Ct);
+        var id = PaymentOptionIds.Bare(created.Id);
+        Assert.Equal("visa", created.Brand);
+        Assert.Equal("visa", (await service.GetAsync(id, Ct))!.Brand);
+
+        var renamed = await service.UpdateAsync(id, created.Version, Fields("Family card", null, "visa"), Member, Ct);
+        Assert.Equal("visa", renamed.Brand);
+        var rebranded = await service.UpdateAsync(id, renamed.Version, Fields("Family card", null, "mastercard"), Member, Ct);
+        Assert.Equal("mastercard", rebranded.Brand);
+        Assert.Equal("Family card", rebranded.Name);
+        var cleared = await service.UpdateAsync(id, rebranded.Version, Fields("Family card"), Member, Ct);
+        Assert.Null(cleared.Brand);
+        var relinked = await service.UpdateAsync(id, cleared.Version, Fields("Family card", null, "dankort"), Member, Ct);
+        var removed = await service.RemoveAsync(id, relinked.Version, Member, Ct);
+        Assert.True(removed.Removed);
+        Assert.Equal("dankort", removed.Brand);
+        Assert.Equal("dankort", Assert.Single(await service.ListAsync(Ct)).Brand);
+
+        var key = PaymentOptionIds.StreamKey(id);
+        var createdData = JsonElement.Parse((await db.ScalarAsMigratorAsync<string>($"SELECT data::text FROM subscribed.mt_events WHERE stream_id = '{key}' AND version = 1"))!);
+        Assert.Equal("visa", createdData.GetProperty("brand").GetString());
+        var clearedData = JsonElement.Parse((await db.ScalarAsMigratorAsync<string>($"SELECT data::text FROM subscribed.mt_events WHERE stream_id = '{key}' AND version = 4"))!);
+        Assert.Equal(JsonValueKind.Null, clearedData.GetProperty("brand").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_brand_only_change_appends_an_event_and_an_unchanged_update_appends_none()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new PaymentOptionService(store, TimeProvider.System);
+        var created = await service.CreateAsync(Fields("Joint card"), Member, Ct);
+        var id = PaymentOptionIds.Bare(created.Id);
+
+        var linked = await service.UpdateAsync(id, created.Version, Fields("Joint card", null, "visa"), Member, Ct);
+        Assert.Equal(created.Version + 1, linked.Version);
+        var same = await service.UpdateAsync(id, linked.Version, Fields("Joint card", null, "visa"), Member, Ct);
+        Assert.Equal(linked.Version, same.Version);
+    }
+
+    [Fact]
+    public async Task Events_and_snapshots_stored_before_the_feature_load_and_project_unlinked()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        var service = new PaymentOptionService(store, TimeProvider.System);
+        var created = await service.CreateAsync(Fields("Visa", "Joint", "visa"), Member, Ct);
+        var id = PaymentOptionIds.Bare(created.Id);
+        var key = PaymentOptionIds.StreamKey(id);
+
+        // Pre-feature rows have no brand key, neither in the event data nor in the snapshot.
+        await db.ExecuteAsMigratorAsync($"UPDATE subscribed.mt_events SET data = data - 'brand' WHERE stream_id = '{key}'");
+        await db.ExecuteAsMigratorAsync("UPDATE subscribed.mt_doc_payment_option_view SET data = data - 'brand'");
+        Assert.Equal(0, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM subscribed.mt_doc_payment_option_view WHERE data ? 'brand'"));
+
+        var loaded = (await service.GetAsync(id, Ct))!;
+        Assert.Null(loaded.Brand);
+        Assert.Null(Assert.Single(await service.ListAsync(Ct)).Brand);
+
+        // Replaying the stored events (rebuild) projects the same unlinked option.
+        await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_payment_option_view");
+        await using (var migrator = MigratorStore(db))
+        {
+            Assert.Equal(1, await PaymentOptionProjectionRebuilder.RebuildAsync(migrator, Ct));
+        }
+
+        Assert.Null((await service.GetAsync(id, Ct))!.Brand);
+
+        // The option can then be linked, and the legacy create event keeps replaying next to the new change.
+        var linked = await service.UpdateAsync(id, loaded.Version, Fields("Visa", "Joint", "visa"), Member, Ct);
+        Assert.Equal("visa", linked.Brand);
     }
 
     [Fact]
@@ -170,9 +250,9 @@ public sealed class PaymentOptionPersistenceTests(PostgresFixture pg)
         await using var store = AppStore(db);
         var options = new PaymentOptionService(store, TimeProvider.System);
         var subs = new SubscriptionService(store, TimeProvider.System, TestCatalog.Standard());
-        var a = await options.CreateAsync(Fields("Visa", "Joint"), Member, Ct);
-        var b = await options.CreateAsync(Fields("PayPal"), Member, Ct);
-        await options.UpdateAsync(PaymentOptionIds.Bare(a.Id), a.Version, Fields("Visa Gold", "Joint"), Member, Ct);
+        var a = await options.CreateAsync(Fields("Visa", "Joint", "visa"), Member, Ct);
+        var b = await options.CreateAsync(Fields("PayPal", null, "paypal"), Member, Ct);
+        await options.UpdateAsync(PaymentOptionIds.Bare(a.Id), a.Version, Fields("Visa Gold", "Joint", "visa"), Member, Ct);
         await options.RemoveAsync(PaymentOptionIds.Bare(b.Id), b.Version, Member, Ct);
         var withOption = await subs.AddAsync(Sub(PaymentOptionIds.Bare(a.Id)), Member, Ct);
         await subs.AddPriceEntryAsync(SubscriptionIds.Bare(withOption.Id), withOption.Version, Entry("2025-01-01", "149.00", PaymentOptionIds.Bare(a.Id)), Member, Ct);
@@ -193,6 +273,12 @@ public sealed class PaymentOptionPersistenceTests(PostgresFixture pg)
 
         Assert.Equal(subBefore, await db.ScalarAsMigratorAsync<string>(subSql));
         Assert.Equal(optBefore, await db.ScalarAsMigratorAsync<string>(optSql));
+
+        // Parity holds for the linked and for the removed (still linked) option.
+        Assert.Equal("visa", (await options.GetAsync(PaymentOptionIds.Bare(a.Id), Ct))!.Brand);
+        var removedOption = (await options.GetAsync(PaymentOptionIds.Bare(b.Id), Ct))!;
+        Assert.True(removedOption.Removed);
+        Assert.Equal("paypal", removedOption.Brand);
     }
 
     [Fact]

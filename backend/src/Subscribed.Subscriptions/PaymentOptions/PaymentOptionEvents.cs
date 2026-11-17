@@ -4,11 +4,14 @@ using System.Text.Json.Serialization;
 namespace Subscribed.Subscriptions.PaymentOptions;
 
 // v1 events are immutable (see SubscriptionEvents). Payment option events carry no card data: only a name and an optional
-// label that passed the card-number rule (D7). The actor and the correlation id travel in Marten headers.
+// label that passed the card-number rule (D7), and an optional brand id. The actor and the correlation id travel in Marten headers.
+//
+// The brand is an additive change to v1 (no schema bump, no new alias, no upcaster), like SubscriptionAdded.UnsubscribeUrl: a
+// trailing optional property. Stored events without the key read as null, so options saved before it load unlinked.
 
-public sealed record PaymentOptionCreated(string HouseholdId, string Name, string? Label, DateTimeOffset RecordedAt);
+public sealed record PaymentOptionCreated(string HouseholdId, string Name, string? Label, DateTimeOffset RecordedAt, string? Brand = null);
 
-public sealed record PaymentOptionChanged(string Name, string? Label, DateTimeOffset RecordedAt);
+public sealed record PaymentOptionChanged(string Name, string? Label, DateTimeOffset RecordedAt, string? Brand = null);
 
 public sealed record PaymentOptionRemoved(DateTimeOffset RecordedAt);
 

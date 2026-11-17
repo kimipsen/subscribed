@@ -1,16 +1,16 @@
 namespace Subscribed.Subscriptions.PaymentOptions;
 
 /// <summary>Raw request fields. Omitted means null.</summary>
-public sealed record PaymentOptionInput(string? Name, string? Label);
+public sealed record PaymentOptionInput(string? Name, string? Label, string? Brand = null);
 
 /// <summary>Fields that passed the shape rules.</summary>
-public sealed record PaymentOptionFields(string Name, string? Label);
+public sealed record PaymentOptionFields(string Name, string? Label, string? Brand);
 
 /// <summary>Unknown, malformed, removed or other-household payment options. Maps to HTTP 404.</summary>
 public sealed class PaymentOptionNotFoundException() : Exception("Payment option not found.");
 
 /// <summary>
-/// A rejected name or label. <see cref="Errors"/> are fixed strings and <see cref="Reasons"/> are fixed reason codes: neither
+/// A rejected name, label or brand. <see cref="Errors"/> are fixed strings and <see cref="Reasons"/> are fixed reason codes: neither
 /// ever contains the input (NFR-2).
 /// </summary>
 public sealed class PaymentOptionRejectedException(IReadOnlyDictionary<string, string[]> errors, IReadOnlyList<string> reasons) : Exception("Validation failed")
@@ -30,20 +30,22 @@ public static class PaymentOptionDecisions
     public static IReadOnlyList<object> Create(PaymentOptionFields command, string householdId, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return [new PaymentOptionCreated(householdId, command.Name, command.Label, now.ToUniversalTime())];
+        return [new PaymentOptionCreated(householdId, command.Name, command.Label, now.ToUniversalTime(), command.Brand)];
     }
 
-    /// <summary>No event when nothing changed. A removed option is not found (404), matching <see cref="Remove"/>.</summary>
+    /// <summary>No event when name, label and brand are all unchanged. A removed option is not found (404), matching <see cref="Remove"/>.</summary>
     public static IReadOnlyList<object> Change(IReadOnlyList<object> history, PaymentOptionFields command, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(command);
         var current = Load(history);
-        if (string.Equals(command.Name, current.Name, StringComparison.Ordinal) && string.Equals(command.Label, current.Label, StringComparison.Ordinal))
+        if (string.Equals(command.Name, current.Name, StringComparison.Ordinal)
+            && string.Equals(command.Label, current.Label, StringComparison.Ordinal)
+            && string.Equals(command.Brand, current.Brand, StringComparison.Ordinal))
         {
             return [];
         }
 
-        return [new PaymentOptionChanged(command.Name, command.Label, now.ToUniversalTime())];
+        return [new PaymentOptionChanged(command.Name, command.Label, now.ToUniversalTime(), command.Brand)];
     }
 
     /// <summary>Soft remove. An already-removed option is not found, so a double remove is a 404.</summary>
@@ -72,7 +74,13 @@ public static class PaymentOptionDecisions
             reasons.Add(labelReason);
         }
 
-        return errors.Count > 0 ? throw new PaymentOptionRejectedException(errors, reasons) : new PaymentOptionFields(name, label);
+        if (!PaymentOptionText.TryValidateBrand(input.Brand, out var brandReason))
+        {
+            errors["brand"] = [PaymentOptionText.MessageFor("brand", brandReason)];
+            reasons.Add(brandReason);
+        }
+
+        return errors.Count > 0 ? throw new PaymentOptionRejectedException(errors, reasons) : new PaymentOptionFields(name, label, input.Brand);
     }
 
     private static PaymentOptionState Load(IReadOnlyList<object> history)

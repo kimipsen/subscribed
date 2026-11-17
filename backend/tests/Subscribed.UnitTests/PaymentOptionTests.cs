@@ -42,6 +42,45 @@ public sealed class PaymentOptionEventTests
         }
     }
 
+    [Theory]
+    [InlineData(PaymentOptionEventTypes.Created)]
+    [InlineData(PaymentOptionEventTypes.Changed)]
+    public void Legacy_fixtures_without_a_brand_deserialize_unlinked_and_rehydrate_unlinked(string alias)
+    {
+        var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "events", "legacy", alias + ".json")).Trim();
+        Assert.DoesNotContain("brand", json, StringComparison.OrdinalIgnoreCase);
+        var e = PaymentOptionEventTypes.Deserialize(alias, json);
+        Assert.Null(e is PaymentOptionCreated created ? created.Brand : ((PaymentOptionChanged)e).Brand);
+
+        var history = new List<object>();
+        history.Add(e is PaymentOptionCreated ? e : PaymentOptionEventTypes.Deserialize(PaymentOptionEventTypes.Created, File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "events", "legacy", PaymentOptionEventTypes.Created + ".json"))));
+        if (e is PaymentOptionChanged)
+        {
+            history.Add(e);
+        }
+
+        Assert.Null(PaymentOptionState.Rehydrate(history).Brand);
+    }
+
+    // Rollback (a binary from before this change reads newer events): a payload carrying brand deserializes into a record shape
+    // without it, because the shared options skip unmapped members.
+    private sealed record OldPaymentOptionCreated(string HouseholdId, string Name, string? Label, DateTimeOffset RecordedAt);
+
+    private sealed record OldPaymentOptionChanged(string Name, string? Label, DateTimeOffset RecordedAt);
+
+    [Fact]
+    public void A_payload_with_a_brand_deserializes_into_the_pre_brand_record_shape()
+    {
+        var created = PaymentOptionEventTypes.Serialize(new PaymentOptionCreated("household-1", "Visa", "Joint", new DateTimeOffset(2026, 1, 10, 8, 0, 0, TimeSpan.Zero), "visa"));
+        var changed = PaymentOptionEventTypes.Serialize(new PaymentOptionChanged("Visa Gold", null, new DateTimeOffset(2026, 1, 11, 8, 0, 0, TimeSpan.Zero), "mastercard"));
+        Assert.Contains("\"brand\":\"visa\"", created, StringComparison.Ordinal);
+
+        var oldCreated = JsonSerializer.Deserialize<OldPaymentOptionCreated>(created, PaymentOptionEventTypes.Json);
+        var oldChanged = JsonSerializer.Deserialize<OldPaymentOptionChanged>(changed, PaymentOptionEventTypes.Json);
+        Assert.Equal(new OldPaymentOptionCreated("household-1", "Visa", "Joint", new DateTimeOffset(2026, 1, 10, 8, 0, 0, TimeSpan.Zero)), oldCreated);
+        Assert.Equal(new OldPaymentOptionChanged("Visa Gold", null, new DateTimeOffset(2026, 1, 11, 8, 0, 0, TimeSpan.Zero)), oldChanged);
+    }
+
     [Fact]
     public void Unknown_alias_fails_loudly()
     {
@@ -148,6 +187,84 @@ public sealed class PaymentOptionTextTests
     }
 }
 
+public sealed class PaymentOptionBrandTests
+{
+    private static readonly string[] KnownIds = ["paypal", "visa", "mastercard", "dankort", "mobilepay-vipps"];
+
+    [Fact]
+    public void Brands_are_the_five_known_ids_in_suggestion_order()
+    {
+        Assert.Equal(KnownIds, PaymentOptionBrands.Ids);
+        Assert.Equal(KnownIds, PaymentOptionBrands.All.Select(b => b.Id));
+        Assert.Equal(PaymentOptionBrands.All.Select(b => (b.Id, b.Name)), PaymentOptionSuggestions.All.Select(s => (s.Id, s.Name)));
+    }
+
+    [Theory]
+    [InlineData("paypal", true)]
+    [InlineData("visa", true)]
+    [InlineData("mastercard", true)]
+    [InlineData("dankort", true)]
+    [InlineData("mobilepay-vipps", true)]
+    [InlineData("Visa", false)]
+    [InlineData(" visa", false)]
+    [InlineData("visa ", false)]
+    [InlineData("", false)]
+    [InlineData("unknown", false)]
+    [InlineData(null, false)]
+    public void IsKnown_is_an_exact_ordinal_match(string? id, bool expected) => Assert.Equal(expected, PaymentOptionBrands.IsKnown(id));
+
+    [Fact]
+    public void Parse_accepts_no_brand_and_each_known_id()
+    {
+        Assert.Null(PaymentOptionDecisions.ParseCreate(new PaymentOptionInput("Visa", null)).Brand);
+        Assert.Null(PaymentOptionDecisions.ParseCreate(new PaymentOptionInput("Visa", null, null)).Brand);
+        foreach (var id in KnownIds)
+        {
+            Assert.Equal(id, PaymentOptionDecisions.ParseCreate(new PaymentOptionInput("Custom", null, id)).Brand);
+            Assert.Equal(id, PaymentOptionDecisions.ParseUpdate(new PaymentOptionInput("Custom", null, id)).Brand);
+        }
+    }
+
+    [Theory]
+    [InlineData("Visa")]
+    [InlineData(" visa")]
+    [InlineData("")]
+    [InlineData("unknown")]
+    public void Parse_rejects_an_unknown_brand_with_a_fixed_message_and_no_echo(string brand)
+    {
+        foreach (var parse in new Func<PaymentOptionInput, PaymentOptionFields>[] { PaymentOptionDecisions.ParseCreate, PaymentOptionDecisions.ParseUpdate })
+        {
+            var ex = Assert.Throws<PaymentOptionRejectedException>(() => parse(new PaymentOptionInput("Visa", null, brand)));
+            Assert.Equal(["brand"], ex.Errors.Keys);
+            Assert.Equal(["The brand is not a known payment option brand."], ex.Errors["brand"]);
+            Assert.Equal([PaymentOptionText.ReasonUnknownBrand], ex.Reasons);
+            Assert.Equal("unknown_brand", PaymentOptionText.ReasonUnknownBrand);
+            if (brand.Length > 0)
+            {
+                Assert.DoesNotContain(brand, ex.Errors["brand"][0], StringComparison.Ordinal);
+                Assert.DoesNotContain(brand, ex.Message, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    [Fact]
+    public void An_unknown_brand_is_reported_next_to_other_field_errors()
+    {
+        var ex = Assert.Throws<PaymentOptionRejectedException>(() => PaymentOptionDecisions.ParseCreate(new PaymentOptionInput("", null, "nope")));
+        Assert.Equal(["name", "brand"], ex.Errors.Keys.Order(StringComparer.Ordinal).Reverse());
+        Assert.Equal([PaymentOptionText.ReasonInvalidLength, PaymentOptionText.ReasonUnknownBrand], ex.Reasons);
+    }
+
+    [Fact]
+    public void The_brand_message_is_explicit_and_never_the_label_message()
+    {
+        Assert.Equal(PaymentOptionText.BrandMessage, PaymentOptionText.MessageFor("brand", PaymentOptionText.ReasonUnknownBrand));
+        Assert.Equal(PaymentOptionText.BrandMessage, PaymentOptionText.MessageFor("brand", PaymentOptionText.ReasonInvalidLength));
+        Assert.Equal("The brand is not a known payment option brand.", PaymentOptionText.BrandMessage);
+        Assert.NotEqual(PaymentOptionText.MessageFor("label", PaymentOptionText.ReasonInvalidLength), PaymentOptionText.MessageFor("brand", ""));
+    }
+}
+
 public sealed class PaymentOptionDecisionTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 2, 1, 10, 0, 0, TimeSpan.Zero);
@@ -173,10 +290,10 @@ public sealed class PaymentOptionDecisionTests
     public void Change_renames_relabels_and_clears_the_label()
     {
         var history = Created("Visa", "Joint");
-        var renamed = PaymentOptionDecisions.Change(history, new PaymentOptionFields("Visa Gold", "Joint"), T0.AddDays(1));
+        var renamed = PaymentOptionDecisions.Change(history, new PaymentOptionFields("Visa Gold", "Joint", null), T0.AddDays(1));
         Assert.IsType<PaymentOptionChanged>(Assert.Single(renamed));
         history.AddRange(renamed);
-        var cleared = PaymentOptionDecisions.Change(history, new PaymentOptionFields("Visa Gold", null), T0.AddDays(2));
+        var cleared = PaymentOptionDecisions.Change(history, new PaymentOptionFields("Visa Gold", null, null), T0.AddDays(2));
         history.AddRange(cleared);
         var state = PaymentOptionState.Rehydrate(history);
         Assert.Equal("Visa Gold", state.Name);
@@ -187,7 +304,70 @@ public sealed class PaymentOptionDecisionTests
     [Fact]
     public void Change_with_nothing_changed_emits_no_event()
     {
-        Assert.Empty(PaymentOptionDecisions.Change(Created("Visa", "Joint"), new PaymentOptionFields("Visa", "Joint"), T0));
+        Assert.Empty(PaymentOptionDecisions.Change(Created("Visa", "Joint"), new PaymentOptionFields("Visa", "Joint", null), T0));
+    }
+
+    private static List<object> CreatedWithBrand(string name, string? brand) =>
+        [.. PaymentOptionDecisions.Create(PaymentOptionDecisions.ParseCreate(new PaymentOptionInput(name, null, brand)), "household-1", T0)];
+
+    [Fact]
+    public void Create_carries_the_brand_into_the_event_and_the_state()
+    {
+        var events = CreatedWithBrand("Joint card", "visa");
+        Assert.Equal("visa", Assert.IsType<PaymentOptionCreated>(Assert.Single(events)).Brand);
+        Assert.Equal("visa", PaymentOptionState.Rehydrate(events).Brand);
+        Assert.Null(PaymentOptionState.Rehydrate(Created()).Brand);
+    }
+
+    [Fact]
+    public void Change_with_name_label_and_brand_all_unchanged_emits_no_event()
+    {
+        Assert.Empty(PaymentOptionDecisions.Change(CreatedWithBrand("Visa", "visa"), new PaymentOptionFields("Visa", null, "visa"), T0));
+    }
+
+    [Fact]
+    public void A_brand_only_change_keeps_the_name_and_emits_one_event()
+    {
+        var history = CreatedWithBrand("Joint card", null);
+        var changed = PaymentOptionDecisions.Change(history, new PaymentOptionFields("Joint card", null, "visa"), T0.AddDays(1));
+        Assert.Equal("visa", Assert.IsType<PaymentOptionChanged>(Assert.Single(changed)).Brand);
+        history.AddRange(changed);
+        var state = PaymentOptionState.Rehydrate(history);
+        Assert.Equal("Joint card", state.Name);
+        Assert.Equal("visa", state.Brand);
+
+        history.AddRange(PaymentOptionDecisions.Change(history, new PaymentOptionFields("Joint card", null, "mastercard"), T0.AddDays(2)));
+        Assert.Equal("mastercard", PaymentOptionState.Rehydrate(history).Brand);
+    }
+
+    [Fact]
+    public void A_name_only_change_with_the_brand_sent_unchanged_keeps_the_brand()
+    {
+        var history = CreatedWithBrand("Visa", "visa");
+        history.AddRange(PaymentOptionDecisions.Change(history, new PaymentOptionFields("Visa Gold", null, "visa"), T0.AddDays(1)));
+        var state = PaymentOptionState.Rehydrate(history);
+        Assert.Equal("Visa Gold", state.Name);
+        Assert.Equal("visa", state.Brand);
+    }
+
+    [Fact]
+    public void A_null_brand_clears_the_brand_and_a_change_without_one_is_a_full_replace()
+    {
+        var history = CreatedWithBrand("Visa", "visa");
+        var cleared = PaymentOptionDecisions.Change(history, PaymentOptionDecisions.ParseUpdate(new PaymentOptionInput("Visa", null)), T0.AddDays(1));
+        Assert.Null(Assert.IsType<PaymentOptionChanged>(Assert.Single(cleared)).Brand);
+        history.AddRange(cleared);
+        Assert.Null(PaymentOptionState.Rehydrate(history).Brand);
+    }
+
+    [Fact]
+    public void A_removed_option_keeps_its_brand()
+    {
+        var history = CreatedWithBrand("Visa", "visa");
+        history.AddRange(PaymentOptionDecisions.Remove(history, T0.AddDays(1)));
+        var state = PaymentOptionState.Rehydrate(history);
+        Assert.True(state.Removed);
+        Assert.Equal("visa", state.Brand);
     }
 
     [Fact]
@@ -207,8 +387,8 @@ public sealed class PaymentOptionDecisionTests
     {
         var history = Created();
         history.AddRange(PaymentOptionDecisions.Remove(history, T0.AddDays(1)));
-        Assert.Throws<PaymentOptionNotFoundException>(() => PaymentOptionDecisions.Change(history, new PaymentOptionFields("Other", null), T0.AddDays(2)));
-        Assert.Throws<PaymentOptionNotFoundException>(() => PaymentOptionDecisions.Change([], new PaymentOptionFields("Other", null), T0));
+        Assert.Throws<PaymentOptionNotFoundException>(() => PaymentOptionDecisions.Change(history, new PaymentOptionFields("Other", null, null), T0.AddDays(2)));
+        Assert.Throws<PaymentOptionNotFoundException>(() => PaymentOptionDecisions.Change([], new PaymentOptionFields("Other", null, null), T0));
     }
 
     [Fact]

@@ -19,9 +19,9 @@ public sealed class PaymentOptionApiTests(PostgresFixture pg)
 
     // ---- helpers ---------------------------------------------------------------------------------
 
-    private static async Task<JsonElement> CreateOptionAsync(ApiTestHost host, string name, string? label = null)
+    private static async Task<JsonElement> CreateOptionAsync(ApiTestHost host, string name, string? label = null, string? brand = null)
     {
-        using var response = await host.SendAsync(HttpMethod.Post, Options, new { name, label });
+        using var response = await host.SendAsync(HttpMethod.Post, Options, new { name, label, brand });
         Assert.True(response.StatusCode == HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Ct));
         var json = await ApiTestHost.JsonAsync(response);
         Assert.Equal($"{Options}/{json.GetProperty("id").GetString()}", response.Headers.Location?.ToString());
@@ -202,6 +202,132 @@ public sealed class PaymentOptionApiTests(PostgresFixture pg)
 
         using var delete = await host.SendAsync(HttpMethod.Delete, $"{Options}/{IdOf(option)}", null, removedTag);
         await ApiTestHost.AssertProblemAsync(delete, HttpStatusCode.NotFound, "not-found");
+    }
+
+    // ---- brand ---------------------------------------------------------------------------------
+
+    private static async Task<JsonElement> PutAsync(ApiTestHost host, JsonElement option, object body)
+    {
+        using var response = await host.SendAsync(HttpMethod.Put, $"{Options}/{IdOf(option)}", body, Tag(option));
+        Assert.True(response.StatusCode == HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+        return await ApiTestHost.JsonAsync(response);
+    }
+
+    private static string? BrandOf(JsonElement option) => option.GetProperty("brand").GetString();
+
+    [Fact]
+    public async Task Suggestion_ids_are_the_brand_ids_in_order()
+    {
+        await using var host = await MemberHostAsync();
+        using var response = await host.SendAsync(HttpMethod.Get, Options + "/suggestions");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var ids = (await ApiTestHost.JsonAsync(response)).GetProperty("suggestions").EnumerateArray().Select(s => s.GetProperty("id").GetString());
+        Assert.Equal(PaymentOptionBrands.Ids, ids);
+    }
+
+    [Fact]
+    public async Task A_brand_is_created_and_returned_by_post_get_list_and_get_by_id()
+    {
+        await using var host = await MemberHostAsync();
+        var visa = await CreateOptionAsync(host, "Joint card", null, "visa");
+        Assert.Equal("visa", BrandOf(visa));
+        var plain = await CreateOptionAsync(host, "Company card");
+        Assert.Equal(JsonValueKind.Null, plain.GetProperty("brand").ValueKind);
+
+        var listed = await ListAsync(host);
+        // The list is ordered by name: "Company card" before "Joint card".
+        Assert.Equal([null, "visa"], listed.EnumerateArray().Select(BrandOf));
+        Assert.All(listed.EnumerateArray(), o => Assert.Equal(["id", "version", "name", "label", "brand", "removed"], o.EnumerateObject().Select(p => p.Name)));
+
+        using var byId = await host.SendAsync(HttpMethod.Get, $"{Options}/{IdOf(visa)}");
+        Assert.Equal(HttpStatusCode.OK, byId.StatusCode);
+        Assert.Equal("visa", BrandOf(await ApiTestHost.JsonAsync(byId)));
+        foreach (var id in PaymentOptionBrands.Ids)
+        {
+            Assert.Equal(id, BrandOf(await CreateOptionAsync(host, "Card " + id, null, id)));
+        }
+    }
+
+    [Theory]
+    [InlineData("Visa")]
+    [InlineData(" visa")]
+    [InlineData("")]
+    [InlineData("zz-unknown-brand-9c4e")]
+    public async Task An_unknown_brand_is_a_400_with_a_brand_error_and_is_never_echoed_in_the_response_or_the_logs(string brand)
+    {
+        await using var host = await MemberHostAsync();
+        using var response = await host.SendAsync(HttpMethod.Post, Options, new { name = "Visa", label = (string?)null, brand });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var text = await response.Content.ReadAsStringAsync(Ct);
+        using var problem = JsonDocument.Parse(text);
+        var errors = problem.RootElement.GetProperty("errors");
+        Assert.Equal(["The brand is not a known payment option brand."], errors.GetProperty("brand").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(0, (await ListAsync(host)).GetArrayLength());
+
+        var option = await CreateOptionAsync(host, "Visa");
+        using var rejected = await host.SendAsync(HttpMethod.Put, $"{Options}/{IdOf(option)}", new { name = "Visa", label = (string?)null, brand }, Tag(option));
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        var putText = await rejected.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("\"brand\"", putText, StringComparison.Ordinal);
+        if (brand.Length >= 6)
+        {
+            Assert.DoesNotContain(brand, text, StringComparison.Ordinal);
+            Assert.DoesNotContain(brand, putText, StringComparison.Ordinal);
+            Assert.Empty(host.Logs.Find(brand));
+        }
+
+        // The logs carry only the reason code (positive control: the signal is there).
+        Assert.Contains(host.Logs.Entries, e => e.Contains("payment_option.rejected unknown_brand", StringComparison.Ordinal));
+        Assert.DoesNotContain(host.Logs.Entries, e => e.Contains("payment_option.rejected", StringComparison.Ordinal) && !e.Contains("unknown_brand", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Put_changes_the_brand_only_the_name_only_and_clears_the_brand_on_null_or_omission()
+    {
+        await using var host = await MemberHostAsync();
+        var created = await CreateOptionAsync(host, "Joint card");
+
+        var linked = await PutAsync(host, created, new { name = "Joint card", label = (string?)null, brand = "visa" });
+        Assert.Equal("visa", BrandOf(linked));
+        Assert.Equal("Joint card", linked.GetProperty("name").GetString());
+        Assert.Equal(2, linked.GetProperty("version").GetInt64());
+
+        var renamed = await PutAsync(host, linked, new { name = "Family card", label = (string?)null, brand = "visa" });
+        Assert.Equal("Family card", renamed.GetProperty("name").GetString());
+        Assert.Equal("visa", BrandOf(renamed));
+
+        var rebranded = await PutAsync(host, renamed, new { name = "Family card", label = (string?)null, brand = "mastercard" });
+        Assert.Equal("mastercard", BrandOf(rebranded));
+        Assert.Equal("Family card", rebranded.GetProperty("name").GetString());
+
+        var unchanged = await PutAsync(host, rebranded, new { name = "Family card", label = (string?)null, brand = "mastercard" });
+        Assert.Equal(rebranded.GetProperty("version").GetInt64(), unchanged.GetProperty("version").GetInt64());
+
+        // An explicit null clears the brand ...
+        var cleared = await PutAsync(host, unchanged, new { name = "Family card", label = (string?)null, brand = (string?)null });
+        Assert.Equal(JsonValueKind.Null, cleared.GetProperty("brand").ValueKind);
+        Assert.Equal(unchanged.GetProperty("version").GetInt64() + 1, cleared.GetProperty("version").GetInt64());
+
+        // ... and so does a body without a brand key (full replace: a stale pre-feature client clears it on rename).
+        var relinked = await PutAsync(host, cleared, new { name = "Family card", label = (string?)null, brand = "dankort" });
+        Assert.Equal("dankort", BrandOf(relinked));
+        var omitted = await PutAsync(host, relinked, new { name = "Family card renamed", label = (string?)null });
+        Assert.Equal(JsonValueKind.Null, omitted.GetProperty("brand").ValueKind);
+        Assert.Equal("Family card renamed", omitted.GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task A_removed_option_still_lists_its_brand()
+    {
+        await using var host = await MemberHostAsync();
+        var option = await CreateOptionAsync(host, "Joint card", null, "dankort");
+        await RemoveOptionAsync(host, option);
+
+        var listed = Assert.Single((await ListAsync(host)).EnumerateArray());
+        Assert.True(listed.GetProperty("removed").GetBoolean());
+        Assert.Equal("dankort", BrandOf(listed));
+        using var byId = await host.SendAsync(HttpMethod.Get, $"{Options}/{IdOf(option)}");
+        Assert.Equal("dankort", BrandOf(await ApiTestHost.JsonAsync(byId)));
     }
 
     // ---- card-number rule ------------------------------------------------------------------------
@@ -471,8 +597,8 @@ public sealed class PaymentOptionApiTests(PostgresFixture pg)
     public async Task The_option_list_and_suggestions_match_the_golden_files_the_frontend_specs_use()
     {
         await using var host = await MemberHostAsync();
-        var visa = await CreateOptionAsync(host, "Visa", "Joint account");
-        var old = await CreateOptionAsync(host, "Old card");
+        var visa = await CreateOptionAsync(host, "Visa", "Joint account", "visa");
+        var old = await CreateOptionAsync(host, "Old card", null, "dankort");
         await RemoveOptionAsync(host, old);
 
         using var list = await host.SendAsync(HttpMethod.Get, Options);
