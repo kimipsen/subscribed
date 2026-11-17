@@ -127,6 +127,16 @@
             [attr.aria-invalid]="err('endDate') ? 'true' : null" [attr.aria-describedby]="describedBy('endDate')" />
           @if (err('endDate'); as e) { <p class="field-error" id="endDate-error">{{ e.key | t: e.params }}</p> }
         </div>
+        <div class="field">
+          <label for="cancelBy">{{ 'subscriptions.field.cancelBy' | t }}</label>
+          <input id="cancelBy" name="cancelBy" type="datetime-local" [(ngModel)]="cancelBy"
+            [attr.aria-invalid]="err('cancelBy') ? 'true' : null" [attr.aria-describedby]="describedBy('cancelBy', 'cancelBy-hint')" />
+          <p class="muted" id="cancelBy-hint">
+            @if (householdZone(); as zone) { {{ 'subscriptions.field.cancelByHint' | t: { zone } }} }
+            @else { {{ 'subscriptions.field.cancelByHintNoZone' | t }} }
+          </p>
+          @if (err('cancelBy'); as e) { <p class="field-error" id="cancelBy-error">{{ e.key | t: e.params }}</p> }
+        </div>
         @if (!editing) {
           <div class="field">
             <label for="amount">{{ 'subscriptions.field.amount' | t }}</label>

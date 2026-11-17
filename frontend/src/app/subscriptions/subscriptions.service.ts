@@ -1,7 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Message } from '../i18n/i18n';
-import { Observable } from 'rxjs';
+import { Household } from '../session';
+import { Observable, map } from 'rxjs';
 import {
   AddSubscriptionBody,
   Catalog,
@@ -24,6 +25,11 @@ export class SubscriptionsService {
 
   /** A one-time polite status message for the next overview, e.g. after a removal. */
   readonly notice = signal<Message | null>(null);
+
+  /** The household's IANA time zone: cancel-by deadlines are entered and shown in that zone. */
+  householdZone(): Observable<string> {
+    return this.http.get<Household>('/api/household').pipe(map((household) => household.timeZoneId));
+  }
 
   overview(): Observable<SubscriptionOverview> {
     return this.http.get<SubscriptionOverview>(BASE);
