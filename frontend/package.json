@@ -6,7 +6,7 @@
     "start": "ng serve --proxy-config proxy.conf.json",
     "build": "node scripts/build.mjs && node --test scripts/theme-dist.test.mjs scripts/version-dist.test.mjs",
     "lint": "eslint src",
-    "test:ci": "ng test --watch=false && node --test scripts/theme.test.mjs scripts/build-args.test.mjs",
+    "test:ci": "ng test --watch=false && node --test scripts/theme.test.mjs scripts/build-args.test.mjs scripts/payment-option-logos.test.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },

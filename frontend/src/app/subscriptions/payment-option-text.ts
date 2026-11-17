@@ -29,7 +29,7 @@ const hasControl = (value: string): boolean => Array.from(value).some((c) => {
   return code < 32 || (code >= 127 && code <= 159);
 });
 
-export type OptionField = 'name' | 'label';
+export type OptionField = 'name' | 'label' | 'brand';
 export type OptionProblem = 'invalid' | 'cardNumber';
 
 /** Client-side rules for a name (1-40 characters) and an optional label (at most 40), neither with control characters nor a card number. */

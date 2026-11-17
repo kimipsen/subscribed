@@ -109,6 +109,11 @@ table.data thead th { border-bottom: 2px solid var(--color-control-border); }
 .totals li { padding: .4rem 0; border-bottom: 1px solid var(--color-border); }
 .history-note { margin: .25rem 0 0; }
 
+/* Payment option brand logos: a small gap and vertical alignment in chips, saved rows and the price history cell. */
+.suggestion, .option-list li { align-items: center; }
+.suggestion app-payment-option-logo { margin-inline-end: .25rem; }
+.option-list app-payment-option-logo { margin-inline-end: .5rem; }
+
 /* Catalog picker (add form) */
 .picker-heading {
   font-size: 1rem;

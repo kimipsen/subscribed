@@ -6,27 +6,31 @@ import { catchError, forkJoin, of } from 'rxjs';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
+import { PAYMENT_OPTION_BRANDS, brandOf } from './payment-option-brands';
+import { PaymentOptionLogo } from './payment-option-logo';
 import { OptionField, OptionProblem, checkOptionFields, optionText } from './payment-option-text';
 import { PaymentOptionsService } from './payment-options.service';
 import { SessionUnavailable } from './session-unavailable';
-import { ApiProblem, PaymentOption, PaymentOptionSuggestion } from './subscription.models';
+import { ApiProblem, PaymentOption, PaymentOptionBrand, PaymentOptionSuggestion } from './subscription.models';
 
 type Errors = Readonly<Partial<Record<OptionField, Message>>>;
 
 const PROBLEM_KEYS: Readonly<Record<OptionField, Readonly<Record<OptionProblem, MessageKey>>>> = {
   name: { invalid: 'paymentOptions.error.name', cardNumber: 'paymentOptions.error.cardNumber' },
   label: { invalid: 'paymentOptions.error.label', cardNumber: 'paymentOptions.error.cardNumber' },
+  brand: { invalid: 'paymentOptions.error.brand', cardNumber: 'paymentOptions.error.brand' },
 };
 
 /** The server's field keys, shown with a localized message (no backend English). The server cannot say why, so these are the general ones. */
 const SERVER_KEYS: Readonly<Record<OptionField, MessageKey>> = {
   name: 'paymentOptions.error.name',
   label: 'paymentOptions.error.label',
+  brand: 'paymentOptions.error.brand',
 };
 
 @Component({
   selector: 'app-payment-options-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, PaymentOptionLogo],
   templateUrl: './payment-options-page.html',
 })
 export class PaymentOptionsPage {
@@ -49,18 +53,22 @@ export class PaymentOptionsPage {
   // Add form.
   name = '';
   label = '';
+  brand: PaymentOptionBrand | null = null;
   readonly errors = signal<Errors>({});
 
   // Edit form (one option at a time) and the inline removal confirmation.
   readonly editing = signal<PaymentOption | null>(null);
   editName = '';
   editLabel = '';
+  editBrand: PaymentOptionBrand | null = null;
   readonly editErrors = signal<Errors>({});
   readonly confirming = signal<PaymentOption | null>(null);
 
   private started = false;
 
   readonly text = optionText;
+  readonly brands = PAYMENT_OPTION_BRANDS;
+  readonly brandOf = brandOf;
 
   constructor() {
     effect(() => {
@@ -102,9 +110,10 @@ export class PaymentOptionsPage {
     return this.editErrors()[field] ?? null;
   }
 
-  /** A suggestion prefills the name only. It does not link or constrain the option (no suggestion id is sent or stored). */
+  /** A suggestion prefills the name and the brand (its id is the brand id). The member can still change both. */
   pick(suggestion: PaymentOptionSuggestion): void {
     this.name = suggestion.name;
+    this.brand = brandOf(suggestion.id);
     this.errors.set({ ...this.errors(), name: undefined });
     this.focusLater('#option-name');
   }
@@ -120,11 +129,12 @@ export class PaymentOptionsPage {
     }
     const name = this.name.trim();
     this.saving.set(true);
-    this.service.create({ name, label: this.label.trim() || null }).subscribe({
+    this.service.create({ name, label: this.label.trim() || null, brand: this.brand }).subscribe({
       next: () => {
         this.saving.set(false);
         this.name = '';
         this.label = '';
+        this.brand = null;
         this.notice.set({ key: 'paymentOptions.added', params: { name } });
         this.reloadList();
         this.focusLater('#option-name');
@@ -142,6 +152,7 @@ export class PaymentOptionsPage {
     this.editing.set(option);
     this.editName = option.name;
     this.editLabel = option.label ?? '';
+    this.editBrand = option.brand;
     this.focusLater('#edit-name');
   }
 
@@ -164,7 +175,7 @@ export class PaymentOptionsPage {
     }
     const name = this.editName.trim();
     this.saving.set(true);
-    this.service.update(option.id, option.version, { name, label: this.editLabel.trim() || null }).subscribe({
+    this.service.update(option.id, option.version, { name, label: this.editLabel.trim() || null, brand: this.editBrand }).subscribe({
       next: () => {
         this.saving.set(false);
         this.editing.set(null);
@@ -247,7 +258,7 @@ export class PaymentOptionsPage {
       this.reloadList();
     } else if (error.status === 400 && body?.errors) {
       const mapped: Partial<Record<OptionField, Message>> = {};
-      for (const field of ['name', 'label'] as const) {
+      for (const field of ['name', 'label', 'brand'] as const) {
         if (Object.hasOwn(body.errors, field)) mapped[field] = { key: SERVER_KEYS[field] };
       }
       if (Object.keys(mapped).length > 0) {

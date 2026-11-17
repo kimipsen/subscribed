@@ -76,7 +76,21 @@ describe('PaymentOptionsPage', () => {
     await settle(harness);
   }
 
-  const created = (name: string, label: string | null = null): PaymentOption => ({ id: PAYPAL, version: 1, name, label, removed: false });
+  const created = (name: string, label: string | null = null, brand: PaymentOption['brand'] = null): PaymentOption => ({ id: PAYPAL, version: 1, name, label, brand, removed: false });
+
+  /** Chooses a value in a native select the way a member does. */
+  async function choose(harness: RouterTestingHarness, id: string, label: string) {
+    const select = el<HTMLSelectElement>(harness.routeNativeElement as HTMLElement, `#${id}`);
+    const index = Array.from(select.options).findIndex((o) => o.textContent?.trim() === label);
+    select.selectedIndex = index;
+    select.dispatchEvent(new Event('change'));
+    await settle(harness);
+  }
+
+  const selected = (root: HTMLElement, id: string) => {
+    const select = el<HTMLSelectElement>(root, `#${id}`);
+    return select.options[select.selectedIndex]?.textContent?.trim();
+  };
 
   it('lists the options that are not removed, with their label, and the suggestions as chips', async () => {
     const { root } = await open();
@@ -92,21 +106,23 @@ describe('PaymentOptionsPage', () => {
     expect(el(root, 'a[href="/"]')).toBeTruthy();
   });
 
-  it('a suggestion prefills the name only and creates an ordinary option: no suggestion id is sent', async () => {
+  it('a suggestion prefills the name and the brand, and the request carries the brand', async () => {
     const { harness, root } = await open();
     el<HTMLButtonElement>(root, '#suggest-paypal').click();
     await settle(harness);
     expect(el<HTMLInputElement>(root, '#option-name').value).toBe('PayPal');
+    expect(selected(root, 'option-brand')).toBe('PayPal');
     await submitForm(harness, '.add-form');
     const req = http.expectOne('/api/payment-options');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ name: 'PayPal', label: null });
-    req.flush(created('PayPal'), { status: 201, statusText: 'Created' });
+    expect(req.request.body).toEqual({ name: 'PayPal', label: null, brand: 'paypal' });
+    req.flush(created('PayPal', null, 'paypal'), { status: 201, statusText: 'Created' });
     await settle(harness);
-    await reload(harness, [...paymentOptionListFixture().options, created('PayPal')]);
+    await reload(harness, [...paymentOptionListFixture().options, created('PayPal', null, 'paypal')]);
     expect(root.querySelector('output.status')?.textContent).toContain('PayPal was added.');
     expect(items(root)).toHaveLength(2);
     expect(el<HTMLInputElement>(root, '#option-name').value).toBe('');
+    expect(selected(root, 'option-brand')).toBe(en['paymentOptions.brand.none']);
   });
 
   it('adds a custom option with a trimmed name and a label, sending an explicit null for an empty label', async () => {
@@ -115,11 +131,74 @@ describe('PaymentOptionsPage', () => {
     type(root, 'option-label', ' Finance ');
     await submitForm(harness, '.add-form');
     const req = http.expectOne('/api/payment-options');
-    expect(req.request.body).toEqual({ name: 'Company card', label: 'Finance' });
+    expect(req.request.body).toEqual({ name: 'Company card', label: 'Finance', brand: null });
     req.flush(created('Company card', 'Finance'), { status: 201, statusText: 'Created' });
     await settle(harness);
     await reload(harness, [created('Company card', 'Finance')]);
     expect(items(root)).toHaveLength(1);
+  });
+
+  it('a custom-named option can be linked to a brand', async () => {
+    const { harness, root } = await open();
+    type(root, 'option-name', 'Company card');
+    await choose(harness, 'option-brand', 'Mastercard');
+    await submitForm(harness, '.add-form');
+    const req = http.expectOne('/api/payment-options');
+    expect(req.request.body).toEqual({ name: 'Company card', label: null, brand: 'mastercard' });
+    req.flush(created('Company card', null, 'mastercard'), { status: 201, statusText: 'Created' });
+    await settle(harness);
+    await reload(harness, [created('Company card', null, 'mastercard')]);
+  });
+
+  it('offers None plus the five brands, and never an id the server would reject', async () => {
+    const { root } = await open();
+    const options = Array.from(el<HTMLSelectElement>(root, '#option-brand').options).map((o) => o.textContent?.trim());
+    expect(options).toEqual([en['paymentOptions.brand.none'], 'PayPal', 'Visa', 'Mastercard', 'Dankort', 'MobilePay / Vipps']);
+    expect(selected(root, 'option-brand')).toBe(en['paymentOptions.brand.none']);
+  });
+
+  it('None sends an explicit null brand, not an empty string', async () => {
+    const { harness, root } = await open();
+    el<HTMLButtonElement>(root, '#suggest-visa').click();
+    await settle(harness);
+    await choose(harness, 'option-brand', en['paymentOptions.brand.none']);
+    await submitForm(harness, '.add-form');
+    const req = http.expectOne('/api/payment-options');
+    expect(req.request.body).toEqual({ name: 'Visa', label: null, brand: null });
+    req.flush(created('Visa'), { status: 201, statusText: 'Created' });
+    await settle(harness);
+    await reload(harness, [created('Visa')]);
+  });
+
+  it('shows a localized message for a server brand error and focuses the brand select', async () => {
+    const { harness, root } = await open();
+    type(root, 'option-name', 'Visa');
+    await submitForm(harness, '.add-form');
+    http.expectOne('/api/payment-options').flush({ traceId: 't', errors: { brand: ['English from the server'] } }, { status: 400, statusText: 'Bad Request' });
+    await settle(harness);
+    expect(el(root, '#option-brand-error').textContent).toContain(en['paymentOptions.error.brand']);
+    expect(el(root, '#option-brand').getAttribute('aria-invalid')).toBe('true');
+    expect(root.textContent).not.toContain('English from the server');
+    expect(document.activeElement?.id).toBe('option-brand');
+  });
+
+  it('shows chips and saved rows with a decorative image: the brand logo or the generic card icon', async () => {
+    const options = [...paymentOptionListFixture().options, created('Cash')];
+    const { root } = await open({ options });
+    const chips = Array.from(root.querySelectorAll('.suggestion'));
+    expect(chips).toHaveLength(5);
+    for (const chip of chips) expect(chip.querySelectorAll('img[alt=""]')).toHaveLength(1);
+    const rows = items(root);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.querySelectorAll('img[alt=""]')).toHaveLength(1);
+      expect(row.querySelector('img')?.getAttribute('src')).toBe('/logos/generic-card.svg');
+    }
+  });
+
+  it('the chip button keeps the brand name as its accessible text', async () => {
+    const { root } = await open();
+    expect(plain(el(root, '#suggest-mobilepay-vipps').textContent)).toBe('MobilePay / Vipps');
   });
 
   it('rejects a card-number-like name or label before any request, with the localized card message', async () => {
@@ -163,6 +242,7 @@ describe('PaymentOptionsPage', () => {
     await settle(harness);
     expect(el<HTMLInputElement>(root, '#edit-name').value).toBe('Visa');
     expect(el<HTMLInputElement>(root, '#edit-label').value).toBe('Joint account');
+    expect(selected(root, 'edit-brand')).toBe('Visa');
     type(root, 'edit-name', 'Visa Gold');
     type(root, 'edit-label', '');
     await submitForm(harness, '.edit-form');
@@ -170,13 +250,41 @@ describe('PaymentOptionsPage', () => {
     expect(req.request.method).toBe('PUT');
     expect(req.request.headers.get('If-Match')).toBe('"3"');
     expect(req.request.headers.get('X-CSRF')).toBe('1');
-    expect(req.request.body).toEqual({ name: 'Visa Gold', label: null });
-    req.flush({ id: VISA, version: 4, name: 'Visa Gold', label: null, removed: false });
+    // Renaming keeps the brand: the edit form always sends the current one.
+    expect(req.request.body).toEqual({ name: 'Visa Gold', label: null, brand: 'visa' });
+    req.flush({ id: VISA, version: 4, name: 'Visa Gold', label: null, brand: 'visa', removed: false });
     await settle(harness);
-    await reload(harness, [{ id: VISA, version: 4, name: 'Visa Gold', label: null, removed: false }]);
+    await reload(harness, [{ id: VISA, version: 4, name: 'Visa Gold', label: null, brand: 'visa', removed: false }]);
     expect(root.querySelector('.edit-form')).toBeNull();
     expect(plain(items(root)[0].querySelector('.option-text')?.textContent)).toBe('Visa Gold');
     expect(root.querySelector('output.status')?.textContent).toContain('Visa Gold was saved.');
+  });
+
+  it('changes the brand to None in the edit form and sends null', async () => {
+    const { harness, root } = await open();
+    el<HTMLButtonElement>(root, `#edit-${VISA}`).click();
+    await settle(harness);
+    await choose(harness, 'edit-brand', en['paymentOptions.brand.none']);
+    await submitForm(harness, '.edit-form');
+    const req = http.expectOne(`/api/payment-options/${VISA}`);
+    expect(req.request.body).toEqual({ name: 'Visa', label: 'Joint account', brand: null });
+    req.flush({ id: VISA, version: 4, name: 'Visa', label: 'Joint account', brand: null, removed: false });
+    await settle(harness);
+    await reload(harness, [{ id: VISA, version: 4, name: 'Visa', label: 'Joint account', brand: null, removed: false }]);
+  });
+
+  it('an option without a brand starts the edit form on None and can be linked', async () => {
+    const { harness, root } = await open({ options: [{ id: VISA, version: 3, name: 'Cash', label: null, brand: null, removed: false }] });
+    el<HTMLButtonElement>(root, `#edit-${VISA}`).click();
+    await settle(harness);
+    expect(selected(root, 'edit-brand')).toBe(en['paymentOptions.brand.none']);
+    await choose(harness, 'edit-brand', 'Dankort');
+    await submitForm(harness, '.edit-form');
+    const req = http.expectOne(`/api/payment-options/${VISA}`);
+    expect(req.request.body).toEqual({ name: 'Cash', label: null, brand: 'dankort' });
+    req.flush({ id: VISA, version: 4, name: 'Cash', label: null, brand: 'dankort', removed: false });
+    await settle(harness);
+    await reload(harness, [{ id: VISA, version: 4, name: 'Cash', label: null, brand: 'dankort', removed: false }]);
   });
 
   it('cancels an edit without a request', async () => {
@@ -230,7 +338,7 @@ describe('PaymentOptionsPage', () => {
     expect(root.textContent).toContain('trace-412');
     buttonByText(root, en['subscriptions.form.reloadLatest']).click();
     await settle(harness);
-    http.expectOne('/api/payment-options').flush({ options: [{ id: VISA, version: 9, name: 'Visa X', label: null, removed: false }] });
+    http.expectOne('/api/payment-options').flush({ options: [{ id: VISA, version: 9, name: 'Visa X', label: null, brand: null, removed: false }] });
     await settle(harness);
     expect(root.textContent).not.toContain(en['paymentOptions.conflict']);
     expect(plain(items(root)[0].querySelector('.option-text')?.textContent)).toBe('Visa X');
