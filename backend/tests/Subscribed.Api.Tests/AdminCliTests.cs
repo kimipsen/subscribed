@@ -194,6 +194,7 @@ public sealed class AdminCliTests(PostgresFixture pg)
         Assert.Equal(optionsBefore, await db.ScalarAsMigratorAsync<string>(optionSql));
         Assert.Contains("Rebuilt 1 household view document(s).", rebuild.Out, StringComparison.Ordinal);
         Assert.Contains("Rebuilt 3 subscription view document(s).", rebuild.Out, StringComparison.Ordinal);
+        Assert.Contains("pause-rebuild converted=0 dropped_zero_day=0 orphan_resumes=0 zone_fallback=0", rebuild.Out, StringComparison.Ordinal);
         Assert.Contains("Rebuilt 2 payment option view document(s).", rebuild.Out, StringComparison.Ordinal);
     }
 }

@@ -238,7 +238,17 @@ public sealed class SubscriptionState
         {
             open.ResumedInstant = e.RecordedAt;
         }
+        else
+        {
+            OrphanLegacyResumes++;
+        }
     }
+
+    /// <summary>
+    /// Legacy resumes that found no open legacy period and were ignored. Internal and never serialized: it only feeds the one-line
+    /// summary of <c>admin projections rebuild</c>, which aggregates the stream and reads it from the fresh instance.
+    /// </summary>
+    internal int OrphanLegacyResumes { get; private set; }
 
     public void Apply(SubscriptionPausePeriodAdded e)
     {

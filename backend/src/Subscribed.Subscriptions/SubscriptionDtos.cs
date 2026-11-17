@@ -119,15 +119,23 @@ public sealed record SubscriptionSummaryDto(
     string NormalizedMonthly,
     string NormalizedYearly,
     bool UpcomingPriceChange,
+    string PeriodTotal,
+    bool ActiveInPeriod,
     string? CancelBy = null,
     DateTimeOffset? CancelByInstant = null)
 {
-    /// <summary><paramref name="zone"/> is the household zone: <c>cancelBy</c> is the stored instant as local wall time in it, <c>cancelByInstant</c> the same instant in UTC.</summary>
-    public static SubscriptionSummaryDto From(SubscriptionState state, DateOnly today, Catalog catalog, TimeZoneInfo zone)
+    /// <summary>
+    /// <paramref name="zone"/> is the household zone: <c>cancelBy</c> is the stored instant as local wall time in it, <c>cancelByInstant</c>
+    /// the same instant in UTC. <paramref name="period"/> is the report period of <c>periodTotal</c> and <c>activeInPeriod</c>.
+    /// </summary>
+    public static SubscriptionSummaryDto From(SubscriptionState state, DateOnly today, Catalog catalog, TimeZoneInfo zone, ReportPeriod period)
     {
         ArgumentNullException.ThrowIfNull(zone);
+        ArgumentNullException.ThrowIfNull(period);
         var minor = SubscriptionCalculator.MinorUnitOf(state);
         var current = SubscriptionCalculator.CurrentPrice(state, today);
+        var pauses = state.ResolvePausePeriods(zone, today);
+        var charge = SubscriptionCalculator.PeriodCost(state, period, pauses);
         return new SubscriptionSummaryDto(
             SubscriptionIds.Bare(state.Id),
             state.Version,
@@ -136,7 +144,7 @@ public sealed record SubscriptionSummaryDto(
             state.CatalogId,
             catalog.TryGet(state.CatalogId)?.Logo,
             SubscriptionCalculator.StatusOn(state, today, zone).ToWire(),
-            SubscriptionCalculator.IsPausedOn(state.ResolvePausePeriods(zone, today), today),
+            SubscriptionCalculator.IsPausedOn(pauses, today),
             state.StartDate,
             state.EndDate,
             state.Currency,
@@ -145,6 +153,8 @@ public sealed record SubscriptionSummaryDto(
             Money.FormatAmount(SubscriptionCalculator.NormalizedMonthly(current, minor), minor),
             Money.FormatAmount(SubscriptionCalculator.NormalizedYearly(current, minor), minor),
             SubscriptionCalculator.UpcomingPriceChange(state, today),
+            Money.FormatAmount(Money.RoundHalfAwayFromZero(charge.Cost, minor), minor),
+            charge.ChargedDays > 0,
             SubscriptionDecisions.RenderCancelBy(state.CancelBy, zone),
             state.CancelBy?.ToUniversalTime());
     }
@@ -152,14 +162,51 @@ public sealed record SubscriptionSummaryDto(
 
 public sealed record CurrencyTotalDto(string Currency, int MinorUnit, string Total, string MonthlyAverage, int ActiveCount);
 
-public sealed record SubscriptionOverviewDto(DateOnly AsOf, IReadOnlyList<SubscriptionSummaryDto> Subscriptions, IReadOnlyList<CurrencyTotalDto> Totals)
+/// <summary>The report period as the API shows it: the wire key, the inclusive dates and the number of months (always 12).</summary>
+public sealed record ReportPeriodDto(string Key, DateOnly From, DateOnly To, int Months)
 {
-    public static SubscriptionOverviewDto From(IReadOnlyList<SubscriptionState> subscriptions, DateOnly today, Catalog catalog, TimeZoneInfo zone) =>
-        new(
+    public static ReportPeriodDto Of(ReportPeriod period)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+        return new ReportPeriodDto(period.ToWire(), period.From, period.To, ReportPeriod.Months);
+    }
+}
+
+/// <summary>One pause period of a subscription. <c>resumeDate</c> is the first day charged again, null while the pause is open.</summary>
+public sealed record PausePeriodDto(string Id, DateOnly PauseDate, DateOnly? ResumeDate)
+{
+    public static PausePeriodDto From(PausePeriod period)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+        return new PausePeriodDto(period.PeriodId, period.PauseDate, period.ResumeDate);
+    }
+}
+
+/// <summary>Body of <c>POST {id}/pauses</c> and <c>PUT {id}/pauses/{periodId}</c>: <c>yyyy-MM-dd</c> strings, <c>resumeDate</c> optional.</summary>
+public sealed record PauseRequest(string? PauseDate, string? ResumeDate)
+{
+    public PauseInput ToInput() => new(PauseDate, ResumeDate);
+}
+
+/// <summary>What the period selector offers besides the two rolling windows: the calendar years (D3) and the current year.</summary>
+public sealed record PeriodOptionsDto(IReadOnlyList<int> Years, int CurrentYear)
+{
+    public static PeriodOptionsDto From(IReadOnlyList<SubscriptionState> subscriptions, DateOnly today) =>
+        new(ReportPeriod.Years(subscriptions, today), today.Year);
+}
+
+public sealed record SubscriptionOverviewDto(DateOnly AsOf, ReportPeriodDto Period, IReadOnlyList<SubscriptionSummaryDto> Subscriptions, IReadOnlyList<CurrencyTotalDto> Totals)
+{
+    public static SubscriptionOverviewDto From(IReadOnlyList<SubscriptionState> subscriptions, DateOnly today, Catalog catalog, TimeZoneInfo zone, ReportPeriod period)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+        return new(
             today,
-            [.. SubscriptionCalculator.ListOrder(subscriptions).Select(s => SubscriptionSummaryDto.From(s, today, catalog, zone))],
-            [.. SubscriptionCalculator.Totals(subscriptions, ReportPeriod.CurrentYear(today), zone, today).Select(t =>
+            ReportPeriodDto.Of(period),
+            [.. SubscriptionCalculator.ListOrder(subscriptions).Select(s => SubscriptionSummaryDto.From(s, today, catalog, zone, period))],
+            [.. SubscriptionCalculator.Totals(subscriptions, period, zone, today).Select(t =>
                 new CurrencyTotalDto(t.Currency, t.MinorUnit, Money.FormatAmount(t.Total, t.MinorUnit), Money.FormatAmount(t.MonthlyAverage, t.MinorUnit), t.ActiveCount))]);
+    }
 }
 
 public sealed record SubscriptionDetailDto(
@@ -183,15 +230,24 @@ public sealed record SubscriptionDetailDto(
     IReadOnlyList<HistoryEntryDto> PriceHistory,
     string? UnsubscribeUrl,
     string? EffectiveUnsubscribeUrl,
+    string PeriodTotal,
+    ReportPeriodDto Period,
+    IReadOnlyList<PausePeriodDto> PauseHistory,
     string? CancelBy = null,
     DateTimeOffset? CancelByInstant = null)
 {
-    /// <summary><paramref name="zone"/> is the household zone: <c>cancelBy</c> is the stored instant as local wall time in it, <c>cancelByInstant</c> the same instant in UTC.</summary>
-    public static SubscriptionDetailDto From(SubscriptionState state, DateOnly today, Catalog catalog, TimeZoneInfo zone)
+    /// <summary>
+    /// <paramref name="zone"/> is the household zone: <c>cancelBy</c> is the stored instant as local wall time in it, <c>cancelByInstant</c>
+    /// the same instant in UTC. <paramref name="period"/> is the report period of <c>periodTotal</c>.
+    /// </summary>
+    public static SubscriptionDetailDto From(SubscriptionState state, DateOnly today, Catalog catalog, TimeZoneInfo zone, ReportPeriod period)
     {
         ArgumentNullException.ThrowIfNull(zone);
+        ArgumentNullException.ThrowIfNull(period);
         var minor = SubscriptionCalculator.MinorUnitOf(state);
         var current = SubscriptionCalculator.CurrentPrice(state, today);
+        var pauses = state.ResolvePausePeriods(zone, today);
+        var charge = SubscriptionCalculator.PeriodCost(state, period, pauses);
         return new SubscriptionDetailDto(
             SubscriptionIds.Bare(state.Id),
             state.Version,
@@ -202,7 +258,7 @@ public sealed record SubscriptionDetailDto(
             catalog.TryGet(state.CatalogId)?.Logo,
             state.Notes,
             SubscriptionCalculator.StatusOn(state, today, zone).ToWire(),
-            SubscriptionCalculator.IsPausedOn(state.ResolvePausePeriods(zone, today), today),
+            SubscriptionCalculator.IsPausedOn(pauses, today),
             state.StartDate,
             state.EndDate,
             state.Currency,
@@ -226,6 +282,9 @@ public sealed record SubscriptionDetailDto(
                 r.Entry.PaymentOptionId))],
             state.UnsubscribeUrl,
             UnsubscribeLink.Effective(state, catalog),
+            Money.FormatAmount(Money.RoundHalfAwayFromZero(charge.Cost, minor), minor),
+            ReportPeriodDto.Of(period),
+            [.. pauses.Select(PausePeriodDto.From)],
             SubscriptionDecisions.RenderCancelBy(state.CancelBy, zone),
             state.CancelBy?.ToUniversalTime());
     }

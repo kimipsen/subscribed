@@ -19,7 +19,7 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
     /// <summary>Properties the DTOs declare nullable: a null on either side matches any kind there.</summary>
     private static readonly HashSet<string> Nullable = new(StringComparer.Ordinal)
     {
-        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange", "paymentOptionId", "label", "brand", "unsubscribeUrl", "effectiveUnsubscribeUrl", "cancelBy", "cancelByInstant",
+        "category", "notes", "endDate", "effectiveTo", "change", "percent", "defaultCurrency", "catalogId", "logoUrl", "upcomingChange", "paymentOptionId", "label", "brand", "unsubscribeUrl", "effectiveUnsubscribeUrl", "cancelBy", "cancelByInstant", "resumeDate",
     };
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -130,7 +130,7 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
     }
 
     [Fact]
-    public async Task The_four_scenarios_match_the_golden_files()
+    public async Task The_five_scenarios_match_the_golden_files()
     {
         await using var host = await ApiTestHost.StartAsync(pg);
         await host.InitHouseholdAsync("subject-owner");
@@ -141,7 +141,9 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
         var filmId = film.GetProperty("id").GetString()!;
         var s1 = await SendOkAsync(host, HttpMethod.Post, $"{Base}/{filmId}/prices", new { effectiveFrom = Day(host, -700), amount = "69.00", cadenceUnit = "month", cadenceCount = 1 }, ETag(film));
         var s2 = await SendOkAsync(host, HttpMethod.Post, $"{Base}/{filmId}/prices", new { effectiveFrom = Day(host, -300), amount = "79.00", cadenceUnit = "month", cadenceCount = 1 }, ETag(s1));
-        await SendOkAsync(host, HttpMethod.Post, $"{Base}/{filmId}/prices", new { effectiveFrom = Day(host, 30), amount = "89.00", cadenceUnit = "month", cadenceCount = 1 }, ETag(s2));
+        var s3 = await SendOkAsync(host, HttpMethod.Post, $"{Base}/{filmId}/prices", new { effectiveFrom = Day(host, 30), amount = "89.00", cadenceUnit = "month", cadenceCount = 1 }, ETag(s2));
+        // One closed pause, so the golden detail pins the shape of a pause period (resumeDate is declared nullable for an open one).
+        await SendOkAsync(host, HttpMethod.Post, $"{Base}/{filmId}/pauses", new { pauseDate = Day(host, -20), resumeDate = Day(host, -10) }, ETag(s3));
         Compare("detail.json", await GetAsync(host, filmId));
 
         // Overview: one row of each kind.
@@ -151,6 +153,13 @@ public sealed partial class SubscriptionContractTests(PostgresFixture pg)
         await AddAsync(host, NewBody(host, "SportsLive", amount: "149.00", start: Day(host, -400), end: Day(host, -30)));
         await AddAsync(host, NewBody(host, "VideoTube", "EUR", "11.99", start: Day(host, -200)));
         Compare("overview.json", await OverviewAsync(host));
+
+        // Period options.
+        using (var periods = await host.SendAsync(HttpMethod.Get, Base + "/periods"))
+        {
+            Assert.Equal(HttpStatusCode.OK, periods.StatusCode);
+            Compare("periods.json", await ApiTestHost.JsonAsync(periods));
+        }
 
         // Options.
         using (var options = await host.SendAsync(HttpMethod.Get, Base + "/options"))

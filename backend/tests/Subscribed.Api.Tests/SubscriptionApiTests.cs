@@ -67,6 +67,16 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         return await ApiTestHost.JsonAsync(response);
     }
 
+    internal static async Task<JsonElement> OverviewForPeriodAsync(ApiTestHost host, string period)
+    {
+        using var response = await host.SendAsync(HttpMethod.Get, $"{Base}?period={period}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return await ApiTestHost.JsonAsync(response);
+    }
+
+    internal static JsonElement Row(JsonElement overview, string name) =>
+        overview.GetProperty("subscriptions").EnumerateArray().Single(r => r.GetProperty("name").GetString() == name);
+
     internal static string ETag(JsonElement detail) => $"\"{detail.GetProperty("version").GetInt64()}\"";
 
     internal static async Task<JsonElement> SendOkAsync(ApiTestHost host, HttpMethod method, string path, object? body, string ifMatch)
@@ -98,6 +108,7 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         (HttpMethod.Get, Base, false),
         (HttpMethod.Get, Base + "/options", false),
         (HttpMethod.Get, Base + "/catalog", false),
+        (HttpMethod.Get, Base + "/periods", false),
         (HttpMethod.Post, Base, true),
         (HttpMethod.Get, $"{Base}/{id}", false),
         (HttpMethod.Put, $"{Base}/{id}", true),
@@ -105,6 +116,9 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         (HttpMethod.Post, $"{Base}/{id}/prices", true),
         (HttpMethod.Put, $"{Base}/{id}/prices/{entryId}", true),
         (HttpMethod.Delete, $"{Base}/{id}/prices/{entryId}", false),
+        (HttpMethod.Post, $"{Base}/{id}/pauses", true),
+        (HttpMethod.Put, $"{Base}/{id}/pauses/{entryId}", true),
+        (HttpMethod.Delete, $"{Base}/{id}/pauses/{entryId}", false),
         (HttpMethod.Post, $"{Base}/{id}/pause", false),
         (HttpMethod.Post, $"{Base}/{id}/resume", false),
     ];
@@ -346,7 +360,7 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
     }
 
     [Fact]
-    public async Task EX_011_a_not_started_subscription_is_left_out_of_totals_and_has_no_upcoming_change()
+    public async Task EX_011_a_not_started_subscription_is_in_the_period_totals_but_has_no_upcoming_change()
     {
         await using var host = await MemberHostAsync();
         var kids = await AddAsync(host, NewBody(host, "KidsClub", amount: "60.00", start: Day(host, 18)));
@@ -356,10 +370,16 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         Assert.True(history[0].GetProperty("current").GetBoolean());
         Assert.True(history[0].GetProperty("upcoming").GetBoolean());
 
-        var overview = await OverviewAsync(host);
-        var row = overview.GetProperty("subscriptions")[0];
+        // It starts 18 days from now, which is always inside the next 12 months: 60/month from then, so a positive total below
+        // 12 months of it (the calendar year would miss it when it starts next year).
+        var overview = await OverviewForPeriodAsync(host, "next-12-months");
+        var row = Row(overview, "KidsClub");
         Assert.False(row.GetProperty("upcomingPriceChange").GetBoolean());
-        Assert.Equal(0, overview.GetProperty("totals").GetArrayLength());
+        Assert.True(row.GetProperty("activeInPeriod").GetBoolean());
+        var total = decimal.Parse(row.GetProperty("periodTotal").GetString()!, CultureInfo.InvariantCulture);
+        Assert.InRange(total, 600m, 720m);
+        Assert.Equal(1, overview.GetProperty("totals").GetArrayLength());
+        Assert.Equal(1, overview.GetProperty("totals")[0].GetProperty("activeCount").GetInt32());
     }
 
     // ---- validation --------------------------------------------------------------------------------
@@ -662,7 +682,11 @@ public sealed class SubscriptionApiTests(PostgresFixture pg)
         Assert.Equal("active", rows["Ends today"].GetProperty("status").GetString());
         Assert.Equal("ended", rows["Ended yesterday"].GetProperty("status").GetString());
         Assert.Equal("129.00", rows["Ended yesterday"].GetProperty("currentPrice").GetProperty("amount").GetString());
-        Assert.Equal(1, overview.GetProperty("totals")[0].GetProperty("activeCount").GetInt32());
+        // The last 12 months contain both: a subscription that ended yesterday still had chargeable days in them (R3.4).
+        // (The window is used because the default calendar year would not contain yesterday on January 1.)
+        var last12 = await OverviewForPeriodAsync(host, "last-12-months");
+        Assert.Equal(2, last12.GetProperty("totals")[0].GetProperty("activeCount").GetInt32());
+        Assert.True(Row(last12, "Ended yesterday").GetProperty("activeInPeriod").GetBoolean());
     }
 
     [Fact]

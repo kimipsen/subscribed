@@ -284,7 +284,8 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
             ["subscription.added.v1", "subscription.pause_period_added.v1", "subscription.pause_period_changed.v1"],
             (await db.ScalarAsMigratorAsync<string>($"SELECT string_agg(type, ',' ORDER BY version) FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}'"))!.Split(','));
         var payload = JsonElement.Parse((await db.ScalarAsMigratorAsync<string>($"SELECT data::text FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}' AND version = 2"))!);
-        Assert.Equal(["periodId", "pauseDate", "resumeDate", "recordedAt"], payload.EnumerateObject().Select(p => p.Name));
+        // The column is jsonb, which does not keep the property order, so the names are compared as a set.
+        Assert.Equal(["pauseDate", "periodId", "recordedAt", "resumeDate"], payload.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         Assert.Equal("2026-11-13", payload.GetProperty("pauseDate").GetString());
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("resumeDate").ValueKind);
         Assert.Equal("member:test-member", await db.ScalarAsMigratorAsync<string>($"SELECT headers->>'actor' FROM subscribed.mt_events WHERE stream_id = '{StreamKey(added)}' AND version = 2"));
@@ -361,11 +362,40 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
         await db.ExecuteAsMigratorAsync("DELETE FROM subscribed.mt_doc_subscription_view");
         await using (var migrator = MigratorStore(db))
         {
-            Assert.Equal(4, await SubscriptionProjectionRebuilder.RebuildAsync(migrator, Ct));
+            var rebuilt = await SubscriptionProjectionRebuilder.RebuildWithSummaryAsync(migrator, null, new FixedTime(new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.Zero)), Ct);
+            Assert.Equal(4, rebuilt.Documents);
+
+            // One converted pair and one open pause converted, one zero-day pair dropped (D7), one resume with nothing to close.
+            Assert.Equal(new PauseRebuildSummary(Converted: 2, DroppedZeroDay: 1, OrphanResumes: 1, ZoneFallback: 0), rebuilt.Pause);
+            Assert.Equal("pause-rebuild converted=2 dropped_zero_day=1 orphan_resumes=1 zone_fallback=0", rebuilt.Pause.ToLine());
         }
 
         Assert.Equal(before, await SnapshotAsync());
         Check(await LoadAsync(pair), await LoadAsync(zeroDay), await LoadAsync(orphan), await LoadAsync(open));
+    }
+
+    [Fact]
+    public async Task The_rebuild_summary_counts_a_household_zone_that_falls_back_to_utc()
+    {
+        await using var db = await pg.CreateDatabaseAsync();
+        await using var store = AppStore(db);
+        await new HouseholdService(store, TimeProvider.System).InitializeAsync("Synthetic Household", "https://idp.test", "subject-owner", "Owner", Member, Ct);
+        await using (var session = store.LightweightSession())
+        {
+            session.Events.Append(HouseholdService.StreamId, new Subscribed.Household.Domain.HouseholdTimeZoneChanged("Mars/Olympus-Mons", At("2026-01-02T00:00:00Z")));
+            await session.SaveChangesAsync(Ct);
+        }
+
+        await WriteLegacyStreamAsync(store, new SubscriptionPaused(At("2026-03-10T10:00:00Z")), new SubscriptionResumed(At("2026-03-20T10:00:00Z")));
+
+        await using var migrator = MigratorStore(db);
+        var rebuilt = await SubscriptionProjectionRebuilder.RebuildWithSummaryAsync(migrator, null, new FixedTime(new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.Zero)), Ct);
+        Assert.Equal(new PauseRebuildSummary(Converted: 1, DroppedZeroDay: 0, OrphanResumes: 0, ZoneFallback: 1), rebuilt.Pause);
+    }
+
+    private sealed class FixedTime(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     [Fact]

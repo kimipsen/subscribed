@@ -73,7 +73,7 @@ public static class AdminCli
             {
                 "db migrate" => await MigrateAsync(settings, stdout),
                 "db patch" => await PatchAsync(settings, options, stdout, stderr),
-                "projections rebuild" => await RebuildAsync(settings, stdout),
+                "projections rebuild" => await RebuildAsync(settings, stdout, time),
                 _ => await HouseholdAsync(command, settings, options, stdout, stderr, time),
             };
         }
@@ -110,13 +110,14 @@ public static class AdminCli
         return Ok;
     }
 
-    private static async Task<int> RebuildAsync(SubscribedSettings settings, TextWriter stdout)
+    private static async Task<int> RebuildAsync(SubscribedSettings settings, TextWriter stdout, TimeProvider time)
     {
         await using var store = SubscribedStore.Create(settings.MigratorConnectionString!, settings.Schema, StoreRole.Migrator, SubscribedApp.Modules);
         var count = await HouseholdProjectionRebuilder.RebuildAsync(store);
         await stdout.WriteLineAsync($"Rebuilt {count} household view document(s).");
-        var subscriptions = await SubscriptionProjectionRebuilder.RebuildAsync(store);
-        await stdout.WriteLineAsync($"Rebuilt {subscriptions} subscription view document(s).");
+        var subscriptions = await SubscriptionProjectionRebuilder.RebuildWithSummaryAsync(store, null, time);
+        await stdout.WriteLineAsync($"Rebuilt {subscriptions.Documents} subscription view document(s).");
+        await stdout.WriteLineAsync(subscriptions.Pause.ToLine());
         var paymentOptions = await PaymentOptionProjectionRebuilder.RebuildAsync(store);
         await stdout.WriteLineAsync($"Rebuilt {paymentOptions} payment option view document(s).");
         return Ok;
