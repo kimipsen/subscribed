@@ -39,6 +39,8 @@ const ENABLE_TEMPLATE_CHECKS = false;
 // Files (relative to frontend/) whose templates already satisfy every template check. Token-free templates that
 // exist before restyling are listed now; each restyled page adds its files in its own commit.
 const MIGRATED_FILES = [
+  'src/app/app.html',
+  'src/app/app.ts',
   'src/app/foundation-page.ts',
   'src/app/subscriptions/payment-options-page.ts',
   'src/app/subscriptions/subscription-detail-page.ts',

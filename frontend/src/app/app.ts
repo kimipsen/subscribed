@@ -5,6 +5,7 @@ import { filter } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { House, LucideAngularModule, PanelLeftClose, PanelLeftOpen, Users, Wallet } from 'lucide-angular';
 import { SessionService } from './session';
+import { Notice } from './ui/notice';
 import { SidebarService } from './sidebar/sidebar';
 import { LanguageService, MessageKey } from './i18n/i18n';
 import { SUPPORTED_LANGUAGES, isLanguage } from './i18n/languages';
@@ -14,10 +15,9 @@ import { APP_VERSION } from './version';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, FormsModule, TranslatePipe, LucideAngularModule],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, FormsModule, TranslatePipe, LucideAngularModule, Notice],
   templateUrl: './app.html',
-  styleUrl: './app.scss',
-  host: { '(keydown.escape)': 'menuOpen.set(false)' },
+  host: { class: 'block min-h-dvh', '(keydown.escape)': 'menuOpen.set(false)' },
 })
 export class App {
   readonly i18n = inject(LanguageService);

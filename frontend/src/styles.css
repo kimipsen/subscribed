@@ -14,6 +14,20 @@
   --breakpoint-nav: 900px;
 }
 
+/* Global base rules (minimal @apply): focus ring, no outline on the programmatic focus targets, reduced motion. */
+@layer base {
+  :focus-visible {
+    @apply outline-3 outline-offset-3 outline-primary;
+  }
+  h1:focus,
+  main:focus {
+    @apply outline-none;
+  }
+  html {
+    @apply motion-safe:scroll-smooth;
+  }
+}
+
 /*
  * Theme overrides. Each block restates the stock daisyUI 5.8.1 theme and changes only the colours that fail the
  * WCAG pairs checked by scripts/theme.test.mjs (that test fails if anything else differs from the stock file):
