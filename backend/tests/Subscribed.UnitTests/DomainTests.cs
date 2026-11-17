@@ -226,6 +226,9 @@ public sealed class DomainTests
     [InlineData(HouseholdEventTypes.MemberGranted, typeof(HouseholdMemberGranted))]
     [InlineData(HouseholdEventTypes.MemberRevoked, typeof(HouseholdMemberRevoked))]
     [InlineData(HouseholdEventTypes.MemberLabelChanged, typeof(HouseholdMemberLabelChanged))]
+    [InlineData(HouseholdEventTypes.TimeZoneChanged, typeof(HouseholdTimeZoneChanged))]
+    [InlineData(HouseholdEventTypes.CalendarFeedRotated, typeof(HouseholdCalendarFeedRotated))]
+    [InlineData(HouseholdEventTypes.CalendarFeedRevoked, typeof(HouseholdCalendarFeedRevoked))]
     public void AC6_golden_fixtures_deserialize_and_round_trip(string alias, Type type)
     {
         var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "events", alias + ".json")).Trim();
