@@ -3,7 +3,7 @@
   @case ('member') {
     @if (loading()) {
       <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'subscriptions.heading' | t }}</h1>
-      <p class="my-2" role="status">{{ 'detail.loading' | t }}</p>
+      <output class="block my-2">{{ 'detail.loading' | t }}</output>
       <app-skeleton-block />
     } @else if (notFound()) {
       <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'subscriptions.notFound' | t }}</h1>
@@ -80,7 +80,7 @@
 
       <app-panel labelledBy="history-heading">
         <h2 id="history-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'detail.historyHeading' | t }}</h2>
-        <div class="overflow-x-auto" role="region" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
           <table class="table">
             <caption class="py-2 text-start text-base-content/70">{{ 'detail.historyCaption' | t }}</caption>
             <thead>
@@ -131,7 +131,7 @@
               }
             </tbody>
           </table>
-        </div>
+        </section>
 
         @if (confirmEntry(); as entry) {
           <div class="alert alert-warning my-4" role="alertdialog" aria-labelledby="confirm-entry" data-confirm-entry>
@@ -213,7 +213,7 @@
       <app-panel labelledBy="pauses-heading">
         <h2 id="pauses-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'pauses.heading' | t }}</h2>
         @if (pauses().length) {
-          <div class="overflow-x-auto" role="region" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+          <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
             <table class="table" data-pauses>
               <caption class="py-2 text-start text-base-content/70">{{ 'pauses.caption' | t }}</caption>
               <thead>
@@ -238,7 +238,7 @@
                 }
               </tbody>
             </table>
-          </div>
+          </section>
         } @else {
           <p class="my-2 text-base-content/70" data-pauses-empty>{{ 'pauses.empty' | t }}</p>
         }

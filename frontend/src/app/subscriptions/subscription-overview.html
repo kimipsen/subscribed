@@ -12,7 +12,7 @@
   }
   <app-period-selector />
   @if (loading()) {
-    <p class="my-2" role="status">{{ 'subscriptions.loading' | t }}</p>
+    <output class="block my-2">{{ 'subscriptions.loading' | t }}</output>
     <app-skeleton-block />
   } @else if (failed()) {
     <app-notice>
@@ -64,7 +64,7 @@
           <label for="group-toggle" class="font-medium">{{ 'subscriptions.group.toggle' | t }}</label>
         </div>
       </div>
-      <p class="my-2 text-base-content/70" role="status">{{ 'subscriptions.filter.resultCount' | t: { count: '' + visibleRows().length } }}</p>
+      <output class="block my-2 text-base-content/70">{{ 'subscriptions.filter.resultCount' | t: { count: '' + visibleRows().length } }}</output>
 
       <ng-template #columns>
         <thead>
@@ -113,7 +113,7 @@
         <!-- Defensive guard (R3.4): effectiveFilter falls back to All, so no selectable filter can match nothing. -->
         <p class="m-0 text-base-content/70">{{ 'subscriptions.filter.emptyBody' | t }}</p>
       } @else if (grouped()) {
-        <div class="overflow-x-auto" role="region" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
           @for (group of groups(); track group.key; let index = $index) {
             <section class="my-4" data-category-group [attr.aria-labelledby]="'category-group-' + index">
               <h3 class="mt-0 mb-1 text-lg font-semibold wrap-anywhere" [id]="'category-group-' + index">{{ groupLabel(group) }}</h3>
@@ -141,9 +141,9 @@
               </table>
             </section>
           }
-        </div>
+        </section>
       } @else {
-        <div class="overflow-x-auto" role="region" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
           <table class="table">
             <caption class="py-2 text-start text-base-content/70">{{ 'subscriptions.tableCaption' | t }}</caption>
             <ng-container [ngTemplateOutlet]="columns" />
@@ -153,7 +153,7 @@
               }
             </tbody>
           </table>
-        </div>
+        </section>
       }
     }
   }

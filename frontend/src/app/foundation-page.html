@@ -13,7 +13,7 @@
     @case ('loading') {
       <section aria-busy="true">
         <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'loading.heading' | t }}</h1>
-        <p class="my-2" role="status">{{ 'loading.status' | t }}</p>
+        <output class="block my-2">{{ 'loading.status' | t }}</output>
         <app-skeleton-block />
       </section>
     }
@@ -49,13 +49,13 @@
           <button type="button" class="btn btn-outline" (click)="copy(refInput)">{{ 'access.copy' | t }}</button>
           <button type="button" class="btn btn-outline" (click)="session.load()">{{ 'access.checkAgain' | t }}</button>
         </div>
-        <p class="my-2" role="status">{{ i18n.message(copyMessage()) }}</p>
+        <output class="block my-2">{{ i18n.message(copyMessage()) }}</output>
       </app-panel>
     }
     @case ('member') {
       @if (page() === 'household') {
         <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'household.heading' | t }}</h1>
-        @if (loading()) { <p class="my-2" role="status">{{ 'household.loading' | t }}</p> }
+        @if (loading()) { <output class="block my-2">{{ 'household.loading' | t }}</output> }
         @if (problem()) {
           <app-notice data-problem>
             <p class="m-0">{{ i18n.message(problem()) }}</p>

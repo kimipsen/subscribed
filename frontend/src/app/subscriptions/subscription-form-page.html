@@ -3,7 +3,7 @@
   @case ('member') {
     <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ (editing ? 'subscriptions.form.editHeading' : 'subscriptions.form.addHeading') | t }}</h1>
     @if (loading()) {
-      <p class="my-2" role="status">{{ 'subscriptions.form.loading' | t }}</p>
+      <output class="block my-2">{{ 'subscriptions.form.loading' | t }}</output>
       <app-skeleton-block />
     } @else if (notFound()) {
       <p class="my-2" role="alert">{{ 'subscriptions.notFound' | t }}</p>
@@ -52,10 +52,10 @@
                 }
               </ul>
               @if (selectedService(); as picked) {
-                <p class="my-2 flex flex-wrap items-center gap-2 rounded-box bg-base-200 px-3 py-2" role="status" data-picker-selected>
+                <output class="my-2 flex flex-wrap items-center gap-2 rounded-box bg-base-200 px-3 py-2" data-picker-selected>
                   <app-service-logo [name]="picked.name" [logoUrl]="picked.logoUrl" />
                   <span class="min-w-0 wrap-anywhere">{{ 'subscriptions.picker.selected' | t: { name: picked.name } }}</span>
-                </p>
+                </output>
                 @if (planChoices().length > 1) {
                   <app-form-field [label]="'subscriptions.picker.plan' | t" controlId="picker-plan">
                     <select id="picker-plan" class="select border-base-content/55 w-full" name="pickerPlan" (change)="choosePlan($any($event.target).value)">
@@ -69,7 +69,7 @@
               }
             </div>
           } @else if (!editing && catalogFailed()) {
-            <p class="my-2 text-base-content/70" role="status" id="picker-failed">{{ 'subscriptions.picker.loadFailed' | t }}</p>
+            <output class="block my-2 text-base-content/70" id="picker-failed">{{ 'subscriptions.picker.loadFailed' | t }}</output>
           }
           @if (editing && catalogId) {
             <div class="mb-4" id="linked-service">

@@ -64,7 +64,7 @@ describe('SubscriptionOverviewComponent', () => {
   it('shows a loading status first', () => {
     const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
     fixture.detectChanges();
-    expect(element(fixture).querySelector('[role=status]')?.textContent).toContain(en['subscriptions.loading']);
+    expect(element(fixture).querySelector('output')?.textContent).toContain(en['subscriptions.loading']);
     http.expectOne(OVERVIEW_URL).flush(overviewFixture());
     flushPeriods(http);
   });
@@ -115,7 +115,8 @@ describe('SubscriptionOverviewComponent', () => {
     const link = rowFor(root, 'StreamCo').querySelector('th[scope=row] a');
     expect(link?.getAttribute('href')).toMatch(/^\/subscriptions\/[0-9a-f]{32}$/);
     const region = query(root, '[data-table-scroll]');
-    expect(region.getAttribute('role')).toBe('region');
+    // A named <section> is a region landmark (implicit role), so no explicit role attribute.
+    expect(region.tagName).toBe('SECTION');
     expect(region.getAttribute('tabindex')).toBe('0');
     expect(region.getAttribute('aria-label')).toBe(en['subscriptions.scrollRegion']);
     expect(region.classList.contains('overflow-x-auto')).toBe(true);
@@ -419,7 +420,7 @@ describe('SubscriptionOverviewComponent categories', () => {
   const select = (el: HTMLElement) => el.querySelector('#category-filter') as HTMLSelectElement;
   const toggle = (el: HTMLElement) => el.querySelector('#group-toggle') as HTMLInputElement;
   const names = (el: HTMLElement) => Array.from(el.querySelectorAll('tbody th a')).map((a) => a.textContent?.trim());
-  const status = (el: HTMLElement) => plain(el.querySelector('p[role=status]')?.textContent);
+  const status = (el: HTMLElement) => plain(el.querySelector('output')?.textContent);
   const optionLabels = (el: HTMLElement) => Array.from(select(el).options).map((o) => o.textContent?.trim());
   const choose = async (fixture: Parameters<typeof settle>[0] & { nativeElement: unknown }, value: string) => {
     const control = select(root(fixture));
@@ -580,9 +581,9 @@ describe('SubscriptionOverviewComponent categories', () => {
     expect(el.querySelector('label[for=category-filter]')?.textContent?.trim()).toBe(en['subscriptions.filter.label']);
     expect(el.querySelector('label[for=group-toggle]')?.textContent?.trim()).toBe(en['subscriptions.group.toggle']);
     expect(toggle(el).type).toBe('checkbox');
-    expect(el.querySelectorAll('[role=region]')).toHaveLength(1);
+    expect(el.querySelectorAll('[data-table-scroll]')).toHaveLength(1);
     await group(fixture);
-    const regions = el.querySelectorAll('[role=region]');
+    const regions = el.querySelectorAll('[data-table-scroll]');
     expect(regions).toHaveLength(1);
     expect(regions[0].getAttribute('tabindex')).toBe('0');
     expect(regions[0].getAttribute('aria-label')).toBe(en['subscriptions.scrollRegion']);

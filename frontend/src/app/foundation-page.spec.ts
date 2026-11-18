@@ -45,7 +45,7 @@ describe('Foundation UI', () => {
 
   it('labels loading, anonymous, unavailable and access-denied states', async () => {
     const harness = await RouterTestingHarness.create('/');
-    expect(harness.routeNativeElement?.querySelector('[role=status]')?.textContent).toContain('Checking');
+    expect(harness.routeNativeElement?.querySelector('output')?.textContent).toContain('Checking');
     session.current.set({ state: 'anonymous' });
     harness.detectChanges();
     expect(harness.routeNativeElement?.textContent).toContain('Sign in with');
