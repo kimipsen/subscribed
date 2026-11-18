@@ -1,6 +1,7 @@
 import { Component, computed, inject } from '@angular/core';
 import { LanguageService, Message } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
+import { FormField } from '../ui/form-field';
 import { Period, PeriodService, periodKey, periodOptionMessage } from './period';
 import { SubscriptionsService } from './subscriptions.service';
 
@@ -18,7 +19,7 @@ interface PeriodChoice {
  */
 @Component({
   selector: 'app-period-selector',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, FormField],
   templateUrl: './period-selector.html',
 })
 export class PeriodSelector {

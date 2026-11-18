@@ -1,230 +1,262 @@
 @if (page() === 'signed-out') {
-  <section class="panel panel-narrow">
-    <h1 tabindex="-1">{{ 'signedOut.heading' | t }}</h1>
+  <app-panel [narrow]="true">
+    <h1 class="mt-0 mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'signedOut.heading' | t }}</h1>
     @if (route.snapshot.queryParamMap.get('idp') === '0') {
-      <p>{{ 'signedOut.idpActive' | t }}</p>
+      <p class="my-2">{{ 'signedOut.idpActive' | t }}</p>
     }
-    <button type="button" (click)="session.signIn()">{{ 'common.signIn' | t }}</button>
-  </section>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <button type="button" class="btn btn-primary" (click)="session.signIn()">{{ 'common.signIn' | t }}</button>
+    </div>
+  </app-panel>
 } @else {
   @switch (session.current().state) {
     @case ('loading') {
       <section aria-busy="true">
-        <h1 tabindex="-1">{{ 'loading.heading' | t }}</h1>
-        <p role="status">{{ 'loading.status' | t }}</p>
-        <div class="skeleton" aria-hidden="true"></div>
+        <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'loading.heading' | t }}</h1>
+        <output class="block my-2">{{ 'loading.status' | t }}</output>
+        <app-skeleton-block />
       </section>
     }
     @case ('unavailable') {
       <app-session-unavailable />
     }
     @case ('anonymous') {
-      <section class="panel panel-narrow">
-        <p class="eyebrow">{{ 'anonymous.eyebrow' | t }}</p>
-        <h1 tabindex="-1">{{ 'anonymous.heading' | t }}</h1>
-        <p>{{ 'anonymous.intro' | t }}</p>
-        @if (authError(); as error) { <p class="error" role="alert">{{ error | t }}</p> }
-        <button type="button" (click)="session.signIn(returnUrl())">
-          {{ 'anonymous.signIn' | t }}
-        </button>
-        <p class="muted">{{ 'anonymous.idpNote' | t }}</p>
-      </section>
+      <app-panel [narrow]="true">
+        <p class="mt-0 mb-1 text-sm font-medium tracking-wide text-base-content/70 uppercase">{{ 'anonymous.eyebrow' | t }}</p>
+        <h1 class="mt-0 mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'anonymous.heading' | t }}</h1>
+        <p class="my-2">{{ 'anonymous.intro' | t }}</p>
+        @if (authError(); as error) {
+          <app-notice data-problem><p class="m-0">{{ error | t }}</p></app-notice>
+        }
+        <div class="my-2 flex flex-wrap gap-2">
+          <button type="button" class="btn btn-primary" (click)="session.signIn(returnUrl())">
+            {{ 'anonymous.signIn' | t }}
+          </button>
+        </div>
+        <p class="my-2 text-base-content/70">{{ 'anonymous.idpNote' | t }}</p>
+      </app-panel>
     }
     @case ('not-member') {
-      <section class="panel panel-narrow">
-        <h1 tabindex="-1">{{ 'access.heading' | t }}</h1>
-        <p>{{ 'access.notGranted' | t }}</p>
-        <p>{{ 'access.askAdmin' | t }}</p>
-        <label for="reference">{{ 'access.referenceLabel' | t }}</label>
-        <input id="reference" #refInput readonly [value]="reference()">
-        <button type="button" (click)="copy(refInput)">{{ 'access.copy' | t }}</button>
-        <p role="status">{{ i18n.message(copyMessage()) }}</p>
-        <button class="secondary" type="button" (click)="session.load()">{{ 'access.checkAgain' | t }}</button>
-      </section>
+      <app-panel [narrow]="true">
+        <h1 class="mt-0 mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'access.heading' | t }}</h1>
+        <p class="my-2">{{ 'access.notGranted' | t }}</p>
+        <p class="my-2">{{ 'access.askAdmin' | t }}</p>
+        <div class="mb-4 flex flex-col gap-1">
+          <label class="font-medium" for="reference">{{ 'access.referenceLabel' | t }}</label>
+          <input id="reference" class="input w-full border-base-content/55" #refInput readonly [value]="reference()">
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="btn btn-outline" (click)="copy(refInput)">{{ 'access.copy' | t }}</button>
+          <button type="button" class="btn btn-outline" (click)="session.load()">{{ 'access.checkAgain' | t }}</button>
+        </div>
+        <output class="block my-2">{{ i18n.message(copyMessage()) }}</output>
+      </app-panel>
     }
     @case ('member') {
       @if (page() === 'household') {
-        <h1 tabindex="-1">{{ 'household.heading' | t }}</h1>
-        @if (loading()) { <p role="status">{{ 'household.loading' | t }}</p> }
+        <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'household.heading' | t }}</h1>
+        @if (loading()) { <output class="block my-2">{{ 'household.loading' | t }}</output> }
         @if (problem()) {
-          <div class="error" role="alert">
-            {{ i18n.message(problem()) }}
-            @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
-            <button type="button" (click)="load()">{{ 'household.reload' | t }}</button>
-          </div>
+          <app-notice data-problem>
+            <p class="m-0">{{ i18n.message(problem()) }}</p>
+            @if (traceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+            <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'household.reload' | t }}</button>
+          </app-notice>
         }
         @if (household(); as household) {
-          <section class="panel">
-            <h2>{{ 'household.nameHeading' | t }}</h2>
-            <form (ngSubmit)="save()" novalidate>
-              <label for="household-name">{{ 'household.nameLabel' | t }}</label>
-              <input id="household-name" name="householdName" [(ngModel)]="name"
-                maxlength="80" required [attr.aria-invalid]="fieldError() ? 'true' : null"
-                aria-describedby="name-hint name-error" [disabled]="saving()">
-              <p id="name-hint" class="muted">{{ 'household.nameHint' | t }}</p>
-              <div id="name-error" class="error" role="alert">
-                @if (fieldError()) {
-                  <p>{{ i18n.message(fieldError()) }}</p>
-                  @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
-                }
+          <app-panel>
+            <h2 class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'household.nameHeading' | t }}</h2>
+            <form class="flex max-w-xl flex-col" (ngSubmit)="save()" novalidate>
+              <div class="mb-4 flex flex-col gap-1">
+                <label class="font-medium" for="household-name">{{ 'household.nameLabel' | t }}</label>
+                <input id="household-name" class="input w-full border-base-content/55 aria-invalid:border-2" name="householdName" [(ngModel)]="name"
+                  maxlength="80" required [attr.aria-invalid]="fieldError() ? 'true' : null"
+                  aria-describedby="name-hint name-error" [disabled]="saving()">
+                <p id="name-hint" class="m-0 text-sm text-base-content/70 wrap-anywhere">{{ 'household.nameHint' | t }}</p>
+                <div id="name-error" class="text-sm text-error wrap-anywhere" role="alert">
+                  @if (fieldError()) {
+                    <p class="m-0">{{ i18n.message(fieldError()) }}</p>
+                    @if (traceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+                  }
+                </div>
               </div>
               @if (conflict()) {
-                <div class="notice" role="alert">
-                  {{ 'household.conflict' | t }}
-                  @if (traceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
-                  <button type="button" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
-                </div>
+                <app-notice data-conflict>
+                  <p class="m-0">{{ 'household.conflict' | t }}</p>
+                  @if (traceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
+                  <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
+                </app-notice>
               }
-              <button type="submit" [disabled]="saving() || !validName(name)">
-                {{ (saving() ? 'household.saving' : 'household.save') | t }}
-              </button>
-              @if (saved()) { <output class="status">{{ 'household.saved' | t }}</output> }
-            </form>
-          </section>
-          <section class="panel">
-            <h2>{{ 'household.timeZoneHeading' | t }}</h2>
-            <form (ngSubmit)="saveTimeZone()" novalidate>
-              <label for="household-time-zone">{{ 'household.timeZoneLabel' | t }}</label>
-              <select id="household-time-zone" name="householdTimeZone" [(ngModel)]="zoneDraft"
-                [disabled]="zoneSaving() || zoneOptions().length === 0"
-                [attr.aria-invalid]="zoneError()?.key === 'household.timeZoneInvalid' ? 'true' : null"
-                aria-describedby="time-zone-hint time-zone-error">
-                @for (zone of zoneOptions(); track zone) {
-                  <option [value]="zone">{{ zone }}</option>
-                }
-              </select>
-              <p id="time-zone-hint" class="muted">{{ 'household.timeZoneHint' | t }}</p>
-              @if (timeZonesLoading()) { <output class="status">{{ 'household.timeZoneLoading' | t }}</output> }
-              @if (timeZonesFailed()) {
-                <div class="error" role="alert">
-                  {{ 'household.timeZoneLoadFailed' | t }}
-                  <button type="button" (click)="loadTimeZones()">{{ 'household.timeZoneRetry' | t }}</button>
-                </div>
-              }
-              <div id="time-zone-error" class="error" role="alert">
-                @if (zoneError()) {
-                  <p>{{ i18n.message(zoneError()) }}</p>
-                  @if (zoneTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ zoneTraceId() }}</code></p> }
-                }
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="submit" class="btn btn-primary" [disabled]="saving() || !validName(name)">
+                  {{ (saving() ? 'household.saving' : 'household.save') | t }}
+                </button>
+                @if (saved()) { <output class="text-base-content/70">{{ 'household.saved' | t }}</output> }
               </div>
-              @if (zoneConflict()) {
-                <div class="notice" role="alert">
-                  {{ 'household.conflict' | t }}
-                  @if (zoneTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ zoneTraceId() }}</code></p> }
-                  <button type="button" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
-                </div>
-              }
-              <button type="submit" [disabled]="zoneSaving() || zoneUnchanged() || zoneOptions().length === 0">
-                {{ (zoneSaving() ? 'household.saving' : 'household.timeZoneSave') | t }}
-              </button>
-              @if (zoneSaved()) { <output class="status">{{ 'household.timeZoneSaved' | t }}</output> }
             </form>
-          </section>
-          <section class="panel" aria-labelledby="feed-heading">
-            <h2 id="feed-heading">{{ 'household.feedHeading' | t }}</h2>
-            <p>{{ 'household.feedIntro' | t }}</p>
+          </app-panel>
+          <app-panel>
+            <h2 class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'household.timeZoneHeading' | t }}</h2>
+            <form class="flex max-w-xl flex-col" (ngSubmit)="saveTimeZone()" novalidate>
+              <div class="mb-4 flex flex-col gap-1">
+                <label class="font-medium" for="household-time-zone">{{ 'household.timeZoneLabel' | t }}</label>
+                <select id="household-time-zone" class="select w-full border-base-content/55 aria-invalid:border-2" name="householdTimeZone" [(ngModel)]="zoneDraft"
+                  [disabled]="zoneSaving() || zoneOptions().length === 0"
+                  [attr.aria-invalid]="zoneError()?.key === 'household.timeZoneInvalid' ? 'true' : null"
+                  aria-describedby="time-zone-hint time-zone-error">
+                  @for (zone of zoneOptions(); track zone) {
+                    <option [value]="zone">{{ zone }}</option>
+                  }
+                </select>
+                <p id="time-zone-hint" class="m-0 text-sm text-base-content/70 wrap-anywhere">{{ 'household.timeZoneHint' | t }}</p>
+                @if (timeZonesLoading()) { <output class="text-base-content/70">{{ 'household.timeZoneLoading' | t }}</output> }
+                <div id="time-zone-error" class="text-sm text-error wrap-anywhere" role="alert">
+                  @if (zoneError()) {
+                    <p class="m-0">{{ i18n.message(zoneError()) }}</p>
+                    @if (zoneTraceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ zoneTraceId() }}</code></p> }
+                  }
+                </div>
+              </div>
+              @if (timeZonesFailed()) {
+                <app-notice data-problem>
+                  <p class="m-0">{{ 'household.timeZoneLoadFailed' | t }}</p>
+                  <button type="button" class="btn btn-sm btn-outline mt-2" (click)="loadTimeZones()">{{ 'household.timeZoneRetry' | t }}</button>
+                </app-notice>
+              }
+              @if (zoneConflict()) {
+                <app-notice data-conflict>
+                  <p class="m-0">{{ 'household.conflict' | t }}</p>
+                  @if (zoneTraceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ zoneTraceId() }}</code></p> }
+                  <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
+                </app-notice>
+              }
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="submit" class="btn btn-primary" [disabled]="zoneSaving() || zoneUnchanged() || zoneOptions().length === 0">
+                  {{ (zoneSaving() ? 'household.saving' : 'household.timeZoneSave') | t }}
+                </button>
+                @if (zoneSaved()) { <output class="text-base-content/70">{{ 'household.timeZoneSaved' | t }}</output> }
+              </div>
+            </form>
+          </app-panel>
+          <app-panel labelledBy="feed-heading">
+            <h2 id="feed-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'household.feedHeading' | t }}</h2>
+            <p class="my-2">{{ 'household.feedIntro' | t }}</p>
             @if (household.calendarFeed.enabled) {
-              <p id="feed-state">{{ 'household.feedActive' | t: { date: (household.calendarFeed.rotatedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</p>
+              <p id="feed-state" class="my-2">{{ 'household.feedActive' | t: { date: (household.calendarFeed.rotatedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</p>
             } @else {
-              <p id="feed-state">{{ 'household.feedNone' | t }}</p>
+              <p id="feed-state" class="my-2">{{ 'household.feedNone' | t }}</p>
             }
             @if (feedError()) {
-              <div class="error" role="alert">
-                {{ i18n.message(feedError()) }}
-                @if (feedTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ feedTraceId() }}</code></p> }
-              </div>
+              <app-notice data-problem>
+                <p class="m-0">{{ i18n.message(feedError()) }}</p>
+                @if (feedTraceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ feedTraceId() }}</code></p> }
+              </app-notice>
             }
             @if (feedConflict()) {
-              <div class="notice" role="alert">
-                {{ 'household.conflict' | t }}
-                @if (feedTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ feedTraceId() }}</code></p> }
-                <button type="button" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
-              </div>
+              <app-notice data-conflict>
+                <p class="m-0">{{ 'household.conflict' | t }}</p>
+                @if (feedTraceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ feedTraceId() }}</code></p> }
+                <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
+              </app-notice>
             }
             @if (feedUrl(); as url) {
-              <div id="feed-url-block">
-                <label for="feed-url">{{ 'household.feedUrlLabel' | t }}</label>
-                <input id="feed-url" #feedInput readonly [value]="url" aria-describedby="feed-url-once">
-                <output id="feed-url-once" class="notice status">{{ 'household.feedUrlOnce' | t }}</output>
-                <button type="button" (click)="copyFeedUrl(feedInput)">{{ 'household.feedCopy' | t }}</button>
-                @if (webcalUrl(); as webcal) {
-                  <a class="button" id="feed-subscribe" [href]="webcal">{{ 'household.feedSubscribe' | t }}</a>
-                }
-                <button type="button" class="secondary" (click)="hideFeedUrl()">{{ 'household.feedHide' | t }}</button>
-                <output class="status">{{ i18n.message(feedCopyMessage()) }}</output>
+              <div id="feed-url-block" class="my-4 flex max-w-xl flex-col gap-2">
+                <div class="flex flex-col gap-1">
+                  <label class="font-medium" for="feed-url">{{ 'household.feedUrlLabel' | t }}</label>
+                  <input id="feed-url" class="input w-full border-base-content/55" #feedInput readonly [value]="url" aria-describedby="feed-url-once">
+                </div>
+                <app-notice id="feed-url-once" [role]="'status'">{{ 'household.feedUrlOnce' | t }}</app-notice>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-outline" (click)="copyFeedUrl(feedInput)">{{ 'household.feedCopy' | t }}</button>
+                  @if (webcalUrl(); as webcal) {
+                    <a class="btn btn-outline" id="feed-subscribe" [href]="webcal">{{ 'household.feedSubscribe' | t }}</a>
+                  }
+                  <button type="button" class="btn btn-outline" id="feed-hide" (click)="hideFeedUrl()">{{ 'household.feedHide' | t }}</button>
+                </div>
+                <output class="text-base-content/70">{{ i18n.message(feedCopyMessage()) }}</output>
               </div>
             }
             @if (feedRevoked() && !household.calendarFeed.enabled) {
-              <output class="status">{{ 'household.feedRevoked' | t }}</output>
+              <output class="block my-2 text-base-content/70">{{ 'household.feedRevoked' | t }}</output>
             }
             @if (confirmingRotate()) {
-              <div class="notice" role="alertdialog" aria-labelledby="feed-rotate-confirm">
-                <p id="feed-rotate-confirm">{{ 'household.feedRotateConfirm' | t }}</p>
-                <button type="button" [disabled]="feedBusy()" (click)="createOrRotateFeed()">{{ 'household.feedRotateYes' | t }}</button>
-                <button type="button" class="secondary" (click)="cancelRotate()">{{ 'household.feedRotateNo' | t }}</button>
+              <div class="alert alert-warning my-4" role="alertdialog" aria-labelledby="feed-rotate-confirm" data-rotate-confirm>
+                <div class="min-w-0 wrap-anywhere">
+                  <p id="feed-rotate-confirm" class="m-0">{{ 'household.feedRotateConfirm' | t }}</p>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-neutral" data-rotate-yes [disabled]="feedBusy()" (click)="createOrRotateFeed()">{{ 'household.feedRotateYes' | t }}</button>
+                    <button type="button" class="btn btn-sm btn-outline" data-rotate-no (click)="cancelRotate()">{{ 'household.feedRotateNo' | t }}</button>
+                  </div>
+                </div>
               </div>
             } @else {
-              <button type="button" id="feed-create" [disabled]="feedBusy()" (click)="createOrRotateFeed()">
-                {{ (feedBusy() ? 'household.feedWorking' : (household.calendarFeed.enabled ? 'household.feedRotate' : 'household.feedCreate')) | t }}
-              </button>
-              @if (household.calendarFeed.enabled) {
-                <button type="button" id="feed-revoke" class="secondary" [disabled]="feedBusy()" (click)="revokeFeed()">
-                  {{ 'household.feedRevoke' | t }}
+              <div class="mt-4 flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary" id="feed-create" [disabled]="feedBusy()" (click)="createOrRotateFeed()">
+                  {{ (feedBusy() ? 'household.feedWorking' : (household.calendarFeed.enabled ? 'household.feedRotate' : 'household.feedCreate')) | t }}
                 </button>
-              }
+                @if (household.calendarFeed.enabled) {
+                  <button type="button" class="btn btn-outline" id="feed-revoke" [disabled]="feedBusy()" (click)="revokeFeed()">
+                    {{ 'household.feedRevoke' | t }}
+                  </button>
+                }
+              </div>
             }
-          </section>
-          <section class="panel">
-            <h2>{{ 'household.membersHeading' | t }}</h2>
-            @if (labelSaved()) { <output class="status">{{ 'household.memberSaved' | t }}</output> }
-            <ul class="members">
+          </app-panel>
+          <app-panel>
+            <h2 class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'household.membersHeading' | t }}</h2>
+            @if (labelSaved()) { <output class="block my-2 text-base-content/70">{{ 'household.memberSaved' | t }}</output> }
+            <ul class="m-0 flex list-none flex-col gap-2 p-0" data-member-list>
               @for (member of household.members; track member.memberId) {
-                <li>
+                <li class="flex flex-wrap items-center gap-2 border-b border-base-300 py-2">
                   @if (editingMemberId() === member.memberId) {
-                    <form class="member-edit" (ngSubmit)="saveLabel(member)" novalidate>
-                      <label [for]="'member-label-' + member.memberId">{{ 'household.memberLabelLabel' | t }}</label>
-                      <input [id]="'member-label-' + member.memberId" name="memberLabel" [(ngModel)]="labelDraft"
-                        maxlength="64" required [attr.aria-invalid]="labelInvalid() ? 'true' : null"
-                        [attr.aria-describedby]="'member-label-hint member-label-error'" [disabled]="labelSaving()">
-                      <p id="member-label-hint" class="muted">{{ 'household.memberLabelHint' | t }}</p>
-                      <div id="member-label-error" class="error" role="alert">
-                        @if (labelError()) {
-                          <p>{{ i18n.message(labelError()) }}</p>
-                          @if (labelTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ labelTraceId() }}</code></p> }
-                        }
+                    <form class="flex w-full max-w-xl flex-col" (ngSubmit)="saveLabel(member)" novalidate data-member-edit>
+                      <div class="mb-4 flex flex-col gap-1">
+                        <label class="font-medium" [for]="'member-label-' + member.memberId">{{ 'household.memberLabelLabel' | t }}</label>
+                        <input [id]="'member-label-' + member.memberId" class="input w-full border-base-content/55 aria-invalid:border-2" name="memberLabel" [(ngModel)]="labelDraft"
+                          maxlength="64" required [attr.aria-invalid]="labelInvalid() ? 'true' : null"
+                          [attr.aria-describedby]="'member-label-hint member-label-error'" [disabled]="labelSaving()">
+                        <p id="member-label-hint" class="m-0 text-sm text-base-content/70 wrap-anywhere">{{ 'household.memberLabelHint' | t }}</p>
+                        <div id="member-label-error" class="text-sm text-error wrap-anywhere" role="alert">
+                          @if (labelError()) {
+                            <p class="m-0">{{ i18n.message(labelError()) }}</p>
+                            @if (labelTraceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ labelTraceId() }}</code></p> }
+                          }
+                        </div>
                       </div>
                       @if (labelConflict()) {
-                        <div class="notice" role="alert">
-                          {{ 'household.conflict' | t }}
-                          @if (labelTraceId()) { <p>{{ 'common.referenceLabel' | t }} <code>{{ labelTraceId() }}</code></p> }
-                          <button type="button" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
-                        </div>
+                        <app-notice data-conflict>
+                          <p class="m-0">{{ 'household.conflict' | t }}</p>
+                          @if (labelTraceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ labelTraceId() }}</code></p> }
+                          <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'household.reloadLatest' | t }}</button>
+                        </app-notice>
                       }
-                      <button type="submit" [disabled]="labelSaving() || !validLabel(labelDraft)">
-                        {{ (labelSaving() ? 'household.saving' : 'household.memberSave') | t }}
-                      </button>
-                      <button type="button" class="secondary" [disabled]="labelSaving()" (click)="cancelEdit()">
-                        {{ 'household.memberCancel' | t }}
-                      </button>
+                      <div class="flex flex-wrap gap-2">
+                        <button type="submit" class="btn btn-primary" [disabled]="labelSaving() || !validLabel(labelDraft)">
+                          {{ (labelSaving() ? 'household.saving' : 'household.memberSave') | t }}
+                        </button>
+                        <button type="button" class="btn btn-outline" [disabled]="labelSaving()" (click)="cancelEdit()">
+                          {{ 'household.memberCancel' | t }}
+                        </button>
+                      </div>
                     </form>
                   } @else {
-                    <strong [id]="'member-name-' + member.memberId">{{ member.displayLabel }}</strong>
-                    <span class="muted">{{ 'household.joined' | t: { date: (member.grantedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</span>
-                    <button type="button" class="secondary" (click)="startEdit(member)"
+                    <strong class="min-w-0 flex-1 wrap-anywhere" [id]="'member-name-' + member.memberId">{{ member.displayLabel }}</strong>
+                    <span class="text-base-content/70">{{ 'household.joined' | t: { date: (member.grantedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</span>
+                    <button type="button" class="btn btn-sm btn-outline" (click)="startEdit(member)"
                       [attr.aria-describedby]="'member-name-' + member.memberId">{{ 'household.memberEdit' | t }}</button>
                   }
                 </li>
               }
             </ul>
-            <p class="muted">{{ 'household.membersManaged' | t }}</p>
-          </section>
+            <p class="mt-4 mb-0 text-base-content/70">{{ 'household.membersManaged' | t }}</p>
+          </app-panel>
         }
       } @else if (page() === 'not-found') {
-        <h1 tabindex="-1">{{ 'notFound.heading' | t }}</h1>
-        <a routerLink="/">{{ 'notFound.home' | t }}</a>
+        <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'notFound.heading' | t }}</h1>
+        <p class="my-2"><a class="text-primary underline" routerLink="/">{{ 'notFound.home' | t }}</a></p>
       } @else {
-        <h1 tabindex="-1">{{ 'home.welcome' | t: { name: user()?.displayName ?? '' } }}</h1>
-        <p class="muted">{{ 'home.ready' | t }}</p>
+        <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'home.welcome' | t: { name: user()?.displayName ?? '' } }}</h1>
+        <p class="my-2 text-base-content/70">{{ 'home.ready' | t }}</p>
         <app-subscription-overview />
       }
     }

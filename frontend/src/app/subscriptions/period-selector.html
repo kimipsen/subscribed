@@ -1,8 +1,7 @@
-<div class="field period-selector">
-  <label for="period-select">{{ 'subscriptions.period.label' | t }}</label>
-  <select id="period-select" (change)="choose($any($event.target).value)">
+<app-form-field [label]="'subscriptions.period.label' | t" controlId="period-select" class="my-4 max-w-72">
+  <select id="period-select" class="select border-base-content/55 w-full" (change)="choose($any($event.target).value)">
     @for (choice of choices(); track choice.value) {
       <option [value]="choice.value" [selected]="value() === choice.value">{{ choice.message ? (choice.message.key | t) : choice.label }}</option>
     }
   </select>
-</div>
+</app-form-field>

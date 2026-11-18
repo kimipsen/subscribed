@@ -10,6 +10,7 @@ import { Session, SessionService, csrfInterceptor } from './session';
 import { SIDEBAR_STORAGE } from './sidebar/sidebar';
 import { COLOR_SCHEME_QUERY, THEME_STORAGE, ThemeService } from './theme/theme';
 import { APP_VERSION } from './version';
+import { query, queryAll } from './testing/query';
 import { flushPeriods, periodTestProviders } from './subscriptions/testing/period-providers';
 import './app.config';
 
@@ -118,10 +119,10 @@ describe('Language selector', () => {
     TestBed.inject(SessionService).signOut();
     http.expectOne('/bff/logout').flush({}, { status: 503, statusText: 'Unavailable' });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('.error').textContent).toContain('Sign out failed');
+    expect(query(fixture, 'app-notice [role=alert]').textContent).toContain('Sign out failed');
     select(fixture, 'da');
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('.error').textContent).toContain('Udlogningen mislykkedes');
+    expect(query(fixture, 'app-notice [role=alert]').textContent).toContain('Udlogningen mislykkedes');
   });
 
   it('reports persistence failure with a dismissible localized notice', async () => {
@@ -129,11 +130,11 @@ describe('Language selector', () => {
     const fixture = await render();
     select(fixture, 'da');
     await fixture.whenStable();
-    const notice = fixture.nativeElement.querySelector('output.notice') as HTMLElement;
+    const notice = query(fixture, 'app-notice [role=status]');
     expect(notice.textContent).toContain('Dit sprogvalg kunne ikke gemmes');
-    notice.querySelector('button')?.click();
+    query<HTMLButtonElement>(notice, 'button').click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('output.notice')).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-notice')).toBeNull();
     expect(TestBed.inject(LanguageService).language()).toBe('da');
   });
 });
@@ -276,13 +277,13 @@ describe('Theme selector', () => {
     choose(fixture, 'theme-select', 'light');
     await fixture.whenStable();
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    const notice = fixture.nativeElement.querySelector('output.notice') as HTMLElement;
+    const notice = query(fixture, 'app-notice [role=status]');
     expect(notice.textContent).toContain('Dit valg af tema kunne ikke gemmes');
-    const dismiss = notice.querySelector('button') as HTMLButtonElement;
+    const dismiss = query<HTMLButtonElement>(notice, 'button');
     expect(dismiss.textContent).toBe('Luk');
     dismiss.click();
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('output.notice')).toBeNull();
+    expect(fixture.nativeElement.querySelector('app-notice')).toBeNull();
     expect(TestBed.inject(ThemeService).mode()).toBe('light');
   });
 
@@ -409,9 +410,13 @@ describe('Collapsible sidebar', () => {
   }
 
   const el = (fixture: ComponentFixture<App>) => fixture.nativeElement as HTMLElement;
-  const toggle = (fixture: ComponentFixture<App>) => el(fixture).querySelector('button.nav-toggle') as HTMLButtonElement;
-  const layout = (fixture: ComponentFixture<App>) => el(fixture).querySelector('.layout') as HTMLElement;
-  const links = (fixture: ComponentFixture<App>) => Array.from(el(fixture).querySelectorAll<HTMLAnchorElement>('nav a'));
+  const toggle = (fixture: ComponentFixture<App>) => query<HTMLButtonElement>(fixture, 'nav button[aria-controls="primary-nav"]');
+  const menuButton = (fixture: ComponentFixture<App>) => query<HTMLButtonElement>(fixture, 'header button[aria-controls="primary-nav"]');
+  const layout = (fixture: ComponentFixture<App>) => query(fixture, '[data-collapsed]');
+  const collapsed = (fixture: ComponentFixture<App>) => layout(fixture).getAttribute('data-collapsed');
+  const links = (fixture: ComponentFixture<App>) => queryAll<HTMLAnchorElement>(fixture, 'nav a', { min: 3 });
+  const labelOf = (link: HTMLElement) => query(link, '[data-nav-label]').textContent?.trim();
+  const toggleLabel = (fixture: ComponentFixture<App>) => query(toggle(fixture), '[data-nav-toggle-label]').textContent;
 
   async function click(fixture: ComponentFixture<App>) {
     toggle(fixture).click();
@@ -426,50 +431,78 @@ describe('Collapsible sidebar', () => {
     expect(button.getAttribute('aria-controls')).toBe('primary-nav');
     expect(button.getAttribute('aria-expanded')).toBe('true');
     expect(button.getAttribute('aria-label')).toBe('Collapse sidebar');
-    expect(el(fixture).querySelector('nav')?.id).toBe('primary-nav');
-    expect(layout(fixture).classList.contains('collapsed')).toBe(false);
+    expect(query(fixture, 'nav').id).toBe('primary-nav');
+    expect(collapsed(fixture)).toBe('false');
+    expect(layout(fixture).classList.contains('group')).toBe(true);
   });
 
   it('flips aria-expanded, the label and the icon on toggle', async () => {
     const fixture = await render();
-    const iconBefore = toggle(fixture).querySelector('svg')?.outerHTML;
+    const iconBefore = query(toggle(fixture), 'svg').outerHTML;
     await click(fixture);
     expect(toggle(fixture).getAttribute('aria-expanded')).toBe('false');
     expect(toggle(fixture).getAttribute('aria-label')).toBe('Expand sidebar');
-    expect(toggle(fixture).querySelector('.nav-label')?.textContent).toBe('Expand sidebar');
-    const iconAfter = toggle(fixture).querySelector('svg')?.outerHTML;
+    expect(toggleLabel(fixture)).toBe('Expand sidebar');
+    const iconAfter = query(toggle(fixture), 'svg').outerHTML;
     expect(iconAfter).toBeTruthy();
     expect(iconAfter).not.toBe(iconBefore);
     await click(fixture);
     expect(toggle(fixture).getAttribute('aria-expanded')).toBe('true');
     expect(toggle(fixture).getAttribute('aria-label')).toBe('Collapse sidebar');
-    expect(toggle(fixture).querySelector('svg')?.outerHTML).toBe(iconBefore);
+    expect(query(toggle(fixture), 'svg').outerHTML).toBe(iconBefore);
   });
 
   it('shows the collapse label inside the toggle', async () => {
     const fixture = await render();
-    expect(toggle(fixture).querySelector('.nav-label')?.textContent).toBe('Collapse sidebar');
+    expect(toggleLabel(fixture)).toBe('Collapse sidebar');
   });
 
-  it('puts the collapsed class on .layout.member and never on the nav', async () => {
+  it('puts data-collapsed and the group class on the layout wrapper and never on the nav', async () => {
     const fixture = await render();
     await click(fixture);
-    expect(layout(fixture).classList.contains('member')).toBe(true);
-    expect(layout(fixture).classList.contains('collapsed')).toBe(true);
-    expect(el(fixture).querySelector('nav')?.classList.contains('collapsed')).toBe(false);
+    expect(collapsed(fixture)).toBe('true');
+    expect(layout(fixture).classList.contains('group')).toBe(true);
+    expect(layout(fixture).contains(query(fixture, 'nav'))).toBe(true);
+    expect(query(fixture, 'nav').hasAttribute('data-collapsed')).toBe(false);
     await click(fixture);
-    expect(layout(fixture).classList.contains('collapsed')).toBe(false);
+    expect(collapsed(fixture)).toBe('false');
   });
 
-  it('renders an svg in the toggle and in each link, plus a .nav-label with no title attribute', async () => {
+  it('keeps every nav label in the DOM, never hidden, in both states', async () => {
     const fixture = await render();
-    expect(toggle(fixture).querySelector('svg')).toBeTruthy();
+    for (const expectedCollapsed of ['false', 'true']) {
+      expect(collapsed(fixture)).toBe(expectedCollapsed);
+      expect(queryAll(fixture, '[data-nav-label]', { min: 3 }).map((label) => label.textContent?.trim())).toEqual(['Home', 'Household', 'Payment options']);
+      for (const label of queryAll(fixture, '[data-nav-label]')) {
+        for (let node: HTMLElement | null = label; node && node.id !== 'primary-nav'; node = node.parentElement) {
+          expect(node.classList.contains('hidden'), node.outerHTML).toBe(false);
+        }
+        expect(label.classList.contains('nav:group-data-[collapsed=true]:sr-only')).toBe(true);
+      }
+      if (expectedCollapsed === 'false') await click(fixture);
+    }
+  });
+
+  it('gives each tooltip as an aria-hidden child and never a data-tip attribute', async () => {
+    const fixture = await render();
+    await click(fixture);
+    for (const link of links(fixture)) {
+      const tip = query(link, '.tooltip-content');
+      expect(tip.getAttribute('aria-hidden')).toBe('true');
+      expect(tip.textContent?.trim()).toBe(labelOf(link));
+      expect(link.hasAttribute('data-tip')).toBe(false);
+    }
+  });
+
+  it('renders an svg in the toggle and in each link, plus a data-nav-label with no title attribute', async () => {
+    const fixture = await render();
+    expect(query(toggle(fixture), 'svg')).toBeTruthy();
     const all = links(fixture);
-    expect(all.map((a) => a.querySelector('.nav-label')?.textContent?.trim())).toEqual(['Home', 'Household', 'Payment options']);
+    expect(all.map((a) => labelOf(a))).toEqual(['Home', 'Household', 'Payment options']);
     for (const link of all) {
-      expect(link.querySelector('svg')).toBeTruthy();
+      expect(query(link, 'svg')).toBeTruthy();
       expect(link.hasAttribute('title')).toBe(false);
-      expect(link.querySelector('.nav-label')?.hasAttribute('title')).toBe(false);
+      expect(query(link, '[data-nav-label]').hasAttribute('title')).toBe(false);
     }
     expect(toggle(fixture).hasAttribute('title')).toBe(false);
   });
@@ -478,20 +511,18 @@ describe('Collapsible sidebar', () => {
     TestBed.inject(LanguageService).setLanguage('da');
     const fixture = await render();
     expect(toggle(fixture).getAttribute('aria-label')).toBe('Skjul sidepanel');
-    expect(links(fixture).map((a) => a.querySelector('.nav-label')?.textContent?.trim())).toEqual(['Forside', 'Husstand', 'Betalingsmetoder']);
+    expect(links(fixture).map((a) => labelOf(a))).toEqual(['Forside', 'Husstand', 'Betalingsmetoder']);
     await click(fixture);
     expect(toggle(fixture).getAttribute('aria-label')).toBe('Vis sidepanel');
-    expect(toggle(fixture).querySelector('.nav-label')?.textContent).toBe('Vis sidepanel');
+    expect(toggleLabel(fixture)).toBe('Vis sidepanel');
   });
 
   it('links Payment options to /payment-options and marks it active with aria-current', async () => {
     const fixture = await render(member, '/payment-options');
     const [home, household, payment] = links(fixture);
     expect(payment.getAttribute('href')).toBe('/payment-options');
-    expect(payment.classList.contains('active')).toBe(true);
     expect(payment.getAttribute('aria-current')).toBe('page');
-    expect(home.classList.contains('active')).toBe(false);
-    expect(household.classList.contains('active')).toBe(false);
+    expect(household.hasAttribute('aria-current')).toBe(false);
     expect(home.hasAttribute('aria-current')).toBe(false);
   });
 
@@ -503,7 +534,7 @@ describe('Collapsible sidebar', () => {
     TestBed.resetTestingModule();
     configure(storage);
     const second = await render();
-    expect(layout(second).classList.contains('collapsed')).toBe(true);
+    expect(collapsed(second)).toBe('true');
     expect(toggle(second).getAttribute('aria-expanded')).toBe('false');
   });
 
@@ -515,26 +546,26 @@ describe('Collapsible sidebar', () => {
     });
     const fixture = await render();
     await click(fixture);
-    expect(layout(fixture).classList.contains('collapsed')).toBe(true);
-    expect(el(fixture).querySelector('output.notice')).toBeNull();
+    expect(collapsed(fixture)).toBe('true');
+    expect(el(fixture).querySelector('app-notice')).toBeNull();
     await click(fixture);
-    expect(layout(fixture).classList.contains('collapsed')).toBe(false);
+    expect(collapsed(fixture)).toBe('false');
   });
 
   it('keeps the Menu button working with a stored collapsed value', async () => {
     TestBed.resetTestingModule();
     configure(fakeSidebarStorage('collapsed'));
     const fixture = await render();
-    const menu = el(fixture).querySelector('button.menu') as HTMLButtonElement;
-    const nav = el(fixture).querySelector('nav') as HTMLElement;
+    const menu = menuButton(fixture);
+    const nav = query(fixture, 'nav');
     expect(menu.getAttribute('aria-expanded')).toBe('false');
-    expect(nav.classList.contains('open')).toBe(false);
+    expect(nav.getAttribute('data-open')).toBe('false');
     menu.click();
     await fixture.whenStable();
     fixture.detectChanges();
     expect(menu.getAttribute('aria-expanded')).toBe('true');
-    expect(nav.classList.contains('open')).toBe(true);
-    expect(layout(fixture).classList.contains('collapsed')).toBe(true);
+    expect(nav.getAttribute('data-open')).toBe('true');
+    expect(collapsed(fixture)).toBe('true');
   });
 
   it.each<Session>([
@@ -544,19 +575,7 @@ describe('Collapsible sidebar', () => {
   ])('renders no nav or toggle for the $state state', async (session) => {
     const fixture = await render(session);
     expect(el(fixture).querySelector('nav')).toBeNull();
-    expect(el(fixture).querySelector('.nav-toggle')).toBeNull();
-    expect(layout(fixture).classList.contains('member')).toBe(false);
-  });
-
-  it('does not hide .nav-label by any rule outside the 900px query', async () => {
-    await render();
-    // Top-level style rules only: rules inside @media blocks are CSSMediaRule children, not visited here.
-    const topLevel = Array.from(document.styleSheets).flatMap((sheet) => Array.from(sheet.cssRules))
-      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule);
-    expect(topLevel.some((rule) => rule.selectorText.includes('.nav-toggle'))).toBe(true);
-    for (const rule of topLevel.filter((r) => r.selectorText.includes('.nav-label'))) {
-      expect(rule.style.display, rule.selectorText).not.toBe('none');
-      expect(rule.style.visibility, rule.selectorText).not.toBe('hidden');
-    }
+    expect(el(fixture).querySelector('[data-nav-label]')).toBeNull();
+    expect(el(fixture).querySelector('[aria-controls=primary-nav]')).toBeNull();
   });
 });

@@ -31,6 +31,11 @@ import {
 import { SubscriptionsService } from './subscriptions.service';
 import { formatWallTime } from './time-zone';
 import { isHttpsUrl } from './unsubscribe-url';
+import { FormField } from '../ui/form-field';
+import { Notice } from '../ui/notice';
+import { Panel } from '../ui/panel';
+import { StatusBadge } from '../ui/status-badge';
+import { SkeletonBlock } from '../ui/skeleton-block';
 
 type EntryForm = { mode: 'add' } | { mode: 'correct'; entry: HistoryEntry };
 type PauseForm = { mode: 'add' } | { mode: 'edit'; period: PausePeriod };
@@ -74,7 +79,7 @@ const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.i
 
 @Component({
   selector: 'app-subscription-detail-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo, PeriodSelector],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo, FormField, Notice, Panel, PeriodSelector, SkeletonBlock, StatusBadge],
   templateUrl: './subscription-detail-page.html',
 })
 export class SubscriptionDetailPage {
@@ -340,7 +345,7 @@ export class SubscriptionDetailPage {
     if (!detail || !form || this.saving()) return;
     this.clearProblems();
     if (!this.validateEntry(detail, form)) {
-      this.focusLater('.entry-form [aria-invalid="true"]');
+      this.focusLater('[data-entry-form] [aria-invalid="true"]');
       return;
     }
     const body = this.entryBody(detail, form);
@@ -434,7 +439,7 @@ export class SubscriptionDetailPage {
     if (!detail || !form || this.saving()) return;
     this.clearProblems();
     if (!this.validatePause()) {
-      this.focusLater('.pause-form [aria-invalid="true"]');
+      this.focusLater('[data-pause-form] [aria-invalid="true"]');
       return;
     }
     // From the page's own fields: an empty resume date is an explicit null (an open pause).
@@ -643,9 +648,9 @@ export class SubscriptionDetailPage {
       this.problem.set({ key: 'subscriptions.pauseInvalid' });
       this.refresh();
     } else if (error.status === 400 && area === 'entry' && body?.errors && this.mapEntryErrors(body.errors)) {
-      this.focusLater('.entry-form [aria-invalid="true"]');
+      this.focusLater('[data-entry-form] [aria-invalid="true"]');
     } else if (error.status === 400 && area === 'pause' && body?.errors && this.mapPauseErrors(body.errors)) {
-      this.focusLater('.pause-form [aria-invalid="true"]');
+      this.focusLater('[data-pause-form] [aria-invalid="true"]');
     } else if (error.status === 400 && area === 'end' && body?.errors && Object.hasOwn(body.errors, 'endDate')) {
       this.endError.set({ key: 'detail.end.error' });
       this.focusLater('#end-date');

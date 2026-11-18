@@ -6,7 +6,7 @@
     "start": "ng serve --proxy-config proxy.conf.json",
     "build": "node scripts/build.mjs && node --test scripts/theme-dist.test.mjs scripts/version-dist.test.mjs",
     "lint": "eslint src",
-    "test:ci": "ng test --watch=false && node --test scripts/theme.test.mjs scripts/build-args.test.mjs scripts/payment-option-logos.test.mjs scripts/panel-layout.test.mjs scripts/sidebar-layout.test.mjs",
+    "test:ci": "ng test --watch=false && node --test scripts/theme.test.mjs scripts/build-args.test.mjs scripts/payment-option-logos.test.mjs scripts/styles-contract.test.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
@@ -40,9 +40,13 @@
     "@angular/cli": "21.2.29",
     "@angular/compiler-cli": "21.2.26",
     "@eslint/js": "9.39.5",
+    "@tailwindcss/postcss": "4.3.5",
     "angular-eslint": "21.4.0",
+    "daisyui": "5.8.1",
     "eslint": "9.39.5",
     "jsdom": "27.4.0",
+    "postcss": "8.5.33",
+    "tailwindcss": "4.3.5",
     "typescript": "5.9.3",
     "typescript-eslint": "8.72.2",
     "vitest": "4.1.12"

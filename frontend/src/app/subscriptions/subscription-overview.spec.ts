@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from '../i18n/i18n';
 import { en } from '../i18n/catalog.en';
+import { query, queryAll } from '../testing/query';
 import { da } from '../i18n/catalog.da';
 import { csrfInterceptor } from '../session';
 import { SubscriptionOverviewComponent } from './subscription-overview';
@@ -47,7 +48,9 @@ describe('SubscriptionOverviewComponent', () => {
 
   const element = (fixture: { nativeElement: unknown }) => fixture.nativeElement as HTMLElement;
   const rowFor = (root: HTMLElement, name: string) =>
-    Array.from(root.querySelectorAll('tbody tr')).find((row) => row.querySelector('th a')?.textContent?.trim() === name) as HTMLElement;
+    queryAll(root, 'tbody tr').find((row) => query(row, 'th a').textContent?.trim() === name) as HTMLElement;
+  /** The status column's badge; the "price change scheduled" badge is a separate `data-status="upcoming"` element. */
+  const statusBadge = (row: HTMLElement) => query(row, '[data-status]:not([data-status="upcoming"])');
 
   it('links to the payment options page whatever the state, in the active language', async () => {
     const root = element(await render());
@@ -61,7 +64,7 @@ describe('SubscriptionOverviewComponent', () => {
   it('shows a loading status first', () => {
     const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
     fixture.detectChanges();
-    expect(element(fixture).querySelector('[role=status]')?.textContent).toContain(en['subscriptions.loading']);
+    expect(element(fixture).querySelector('output')?.textContent).toContain(en['subscriptions.loading']);
     http.expectOne(OVERVIEW_URL).flush(overviewFixture());
     flushPeriods(http);
   });
@@ -76,7 +79,7 @@ describe('SubscriptionOverviewComponent', () => {
 
   it('labels statuses and shows "price change scheduled" only where one is scheduled', async () => {
     const root = element(await render());
-    const badge = (name: string) => rowFor(root, name).querySelector('.status-active, .status-ended, .status-not-started')?.textContent?.trim();
+    const badge = (name: string) => statusBadge(rowFor(root, name)).textContent?.trim();
     expect(badge('StreamCo')).toBe(en['subscriptions.status.active']);
     expect(badge('KidsClub')).toBe(en['subscriptions.status.not-started']);
     expect(badge('SportsLive')).toBe(en['subscriptions.status.ended']);
@@ -89,7 +92,7 @@ describe('SubscriptionOverviewComponent', () => {
   it('shows one totals line per currency and never a combined figure (AC-003)', async () => {
     const data = overviewFixture();
     const root = element(await render(data));
-    const lines = Array.from(root.querySelectorAll('.totals li')).map((li) => plain(li.textContent));
+    const lines = Array.from(queryAll(root, '[data-totals] li')).map((li) => plain(li.textContent));
     expect(lines.length).toBe(data.totals.length);
     expect(lines.length).toBeGreaterThan(1);
     expect(lines[0]).toContain('DKK');
@@ -111,10 +114,13 @@ describe('SubscriptionOverviewComponent', () => {
     expect(root.querySelectorAll('thead th[scope=col]')).toHaveLength(7);
     const link = rowFor(root, 'StreamCo').querySelector('th[scope=row] a');
     expect(link?.getAttribute('href')).toMatch(/^\/subscriptions\/[0-9a-f]{32}$/);
-    const region = root.querySelector('.table-scroll');
-    expect(region?.getAttribute('role')).toBe('region');
-    expect(region?.getAttribute('tabindex')).toBe('0');
-    expect(region?.getAttribute('aria-label')).toBe(en['subscriptions.scrollRegion']);
+    const region = query(root, '[data-table-scroll]');
+    // A named <section> is a region landmark (implicit role), so no explicit role attribute.
+    expect(region.tagName).toBe('SECTION');
+    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(region.getAttribute('aria-label')).toBe(en['subscriptions.scrollRegion']);
+    expect(region.classList.contains('overflow-x-auto')).toBe(true);
+    expect(query(region, 'table').classList.contains('table')).toBe(true);
   });
 
   it('shows an error with the reference and retries', async () => {
@@ -151,6 +157,8 @@ describe('SubscriptionOverviewComponent', () => {
     TestBed.inject(LanguageService).setLanguage('da');
     const root = element(await render());
     expect(root.textContent).toContain(da['subscriptions.tableCaption']);
+    expect(query(root, '#subscriptions-heading').textContent?.trim()).toBe(da['subscriptions.heading']);
+    expect(query(root, 'label[for=category-filter]').textContent?.trim()).toBe(da['subscriptions.filter.label']);
     expect(englishLeftovers(root)).toEqual([]);
   });
 
@@ -169,7 +177,7 @@ describe('SubscriptionOverviewComponent', () => {
 
     expect(plain(rowFor(root, 'StreamCo').textContent)).toContain('1.463,18 DKK');
     expect(plain(rowFor(root, 'StreamCo').textContent)).toContain(da['cadence.monthly']);
-    expect(rowFor(root, 'StreamCo').querySelector('.badge')?.textContent?.trim()).toBe(da['subscriptions.status.active']);
+    expect(statusBadge(rowFor(root, 'StreamCo')).textContent?.trim()).toBe(da['subscriptions.status.active']);
     expect(englishLeftovers(root)).toEqual([]);
     http.expectNone(() => true);
   });
@@ -197,7 +205,8 @@ describe('SubscriptionOverviewComponent', () => {
       expect(actionFor(root, 'StreamCo')?.getAttribute('aria-label')).toBe('Pause StreamCo');
       expect(actionFor(root, 'VideoTube')?.textContent?.trim()).toBe(en['subscriptions.resume']);
       expect(actionFor(root, 'VideoTube')?.getAttribute('aria-label')).toBe('Resume VideoTube');
-      expect(rowFor(root, 'VideoTube').querySelector('.status-paused')?.textContent?.trim()).toBe(en['subscriptions.status.paused']);
+      expect(statusBadge(rowFor(root, 'VideoTube')).getAttribute('data-status')).toBe('paused');
+      expect(statusBadge(rowFor(root, 'VideoTube')).textContent?.trim()).toBe(en['subscriptions.status.paused']);
       expect(actionFor(root, 'KidsClub')).toBeNull();
       expect(actionFor(root, 'SportsLive')).toBeNull();
       expect(root.textContent).toContain(en['subscriptions.col.actions']);
@@ -213,7 +222,7 @@ describe('SubscriptionOverviewComponent', () => {
       const root = element(await render(overview));
       expect(actionFor(root, 'KidsClub')?.textContent?.trim()).toBe(en['subscriptions.resume']);
       expect(actionFor(root, 'SportsLive')?.textContent?.trim()).toBe(en['subscriptions.resume']);
-      expect(rowFor(root, 'SportsLive').querySelector('.status-ended')).toBeTruthy();
+      expect(statusBadge(rowFor(root, 'SportsLive')).getAttribute('data-status')).toBe('ended');
     });
 
     it('posts the pause with the row version in If-Match and no body, reloads and says so politely', async () => {
@@ -235,9 +244,9 @@ describe('SubscriptionOverviewComponent', () => {
       await fixture.whenStable();
       fixture.detectChanges();
 
-      expect(rowFor(root, 'StreamCo').querySelector('.status-paused')).toBeTruthy();
+      expect(statusBadge(rowFor(root, 'StreamCo')).getAttribute('data-status')).toBe('paused');
       expect(actionFor(root, 'StreamCo')?.textContent?.trim()).toBe(en['subscriptions.resume']);
-      expect(root.querySelector('[role=status].status')?.textContent).toContain('StreamCo is paused.');
+      expect(query(root, '[data-action-notice] [role=status]').textContent).toContain('StreamCo is paused.');
       expect(root.querySelector('[role=alert]')).toBeNull();
     });
 
@@ -261,7 +270,7 @@ describe('SubscriptionOverviewComponent', () => {
       fixture.detectChanges();
 
       expect(actionFor(root, 'VideoTube')?.textContent?.trim()).toBe(en['subscriptions.pause']);
-      expect(root.querySelector('[role=status].status')?.textContent).toContain('VideoTube was resumed.');
+      expect(query(root, '[data-action-notice] [role=status]').textContent).toContain('VideoTube was resumed.');
     });
 
     it('sends exactly one request for a double click and disables every action button while it is in flight', async () => {
@@ -295,7 +304,7 @@ describe('SubscriptionOverviewComponent', () => {
       fixture.detectChanges();
 
       expect(root.querySelector('[role=alert]')?.textContent).toContain(en['subscriptions.form.conflict']);
-      expect(root.querySelector('[role=status].status')).toBeNull();
+      expect(root.querySelector('[data-action-notice]')).toBeNull();
 
       actionFor(root, 'StreamCo')!.click();
       const retry = http.expectOne((r) => r.method === 'POST');
@@ -337,7 +346,7 @@ describe('SubscriptionOverviewComponent', () => {
     it('renders the paused row and the action labels in Danish with no English application copy', async () => {
       TestBed.inject(LanguageService).setLanguage('da');
       const root = element(await render(data()));
-      expect(rowFor(root, 'VideoTube').querySelector('.status-paused')?.textContent?.trim()).toBe(da['subscriptions.status.paused']);
+      expect(statusBadge(rowFor(root, 'VideoTube')).textContent?.trim()).toBe(da['subscriptions.status.paused']);
       expect(actionFor(root, 'VideoTube')?.textContent?.trim()).toBe(da['subscriptions.resume']);
       expect(actionFor(root, 'VideoTube')?.getAttribute('aria-label')).toBe('Genoptag VideoTube');
       expect(actionFor(root, 'StreamCo')?.textContent?.trim()).toBe(da['subscriptions.pause']);
@@ -411,7 +420,7 @@ describe('SubscriptionOverviewComponent categories', () => {
   const select = (el: HTMLElement) => el.querySelector('#category-filter') as HTMLSelectElement;
   const toggle = (el: HTMLElement) => el.querySelector('#group-toggle') as HTMLInputElement;
   const names = (el: HTMLElement) => Array.from(el.querySelectorAll('tbody th a')).map((a) => a.textContent?.trim());
-  const status = (el: HTMLElement) => plain(el.querySelector('p[role=status]')?.textContent);
+  const status = (el: HTMLElement) => plain(el.querySelector('output')?.textContent);
   const optionLabels = (el: HTMLElement) => Array.from(select(el).options).map((o) => o.textContent?.trim());
   const choose = async (fixture: Parameters<typeof settle>[0] & { nativeElement: unknown }, value: string) => {
     const control = select(root(fixture));
@@ -425,7 +434,7 @@ describe('SubscriptionOverviewComponent categories', () => {
     box.dispatchEvent(new Event('change'));
     await settle(fixture);
   };
-  const headings = (el: HTMLElement) => Array.from(el.querySelectorAll('.category-group h3')).map((h) => h.textContent?.trim());
+  const headings = (el: HTMLElement) => Array.from(el.querySelectorAll('[data-category-group] h3')).map((h) => h.textContent?.trim());
 
   const data = () =>
     rows(
@@ -524,19 +533,19 @@ describe('SubscriptionOverviewComponent categories', () => {
     const el = root(fixture);
     await group(fixture);
     expect(headings(el)).toEqual(['Bills', 'Media', en['subscriptions.filter.uncategorized']]);
-    const sections = Array.from(el.querySelectorAll('.category-group'));
+    const sections = Array.from(el.querySelectorAll('[data-category-group]'));
     expect(plain(sections[1].querySelector('p')?.textContent)).toBe('Subscriptions: 4');
-    const lines = Array.from(sections[1].querySelectorAll('.totals li')).map((li) => plain(li.textContent));
+    const lines = Array.from(sections[1].querySelectorAll('[data-totals] li')).map((li) => plain(li.textContent));
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain('DKK 1,074.00 · DKK 89.50 per month on average');
     expect(lines[0]).toContain('2 active in the period');
     expect(lines[1]).toContain('EUR 60.00 · EUR 5.00 per month on average');
     expect(lines.some((line) => line.includes('DKK') && line.includes('EUR'))).toBe(false);
     // No row of Bills is active in the period: rows and count, but no totals line.
-    expect(sections[0].querySelector('.totals')).toBeNull();
+    expect(sections[0].querySelector('[data-totals]')).toBeNull();
     expect(sections[0].querySelectorAll('tbody tr')).toHaveLength(1);
     await group(fixture, false);
-    expect(el.querySelector('.category-group')).toBeNull();
+    expect(el.querySelector('[data-category-group]')).toBeNull();
     expect(el.querySelectorAll('tbody tr')).toHaveLength(6);
   });
 
@@ -560,10 +569,10 @@ describe('SubscriptionOverviewComponent categories', () => {
     const fixture = await render(rows({ name: 'A', category: 'Bad', periodTotal: '1,50' }, { name: 'B', category: 'Good' }));
     const el = root(fixture);
     await group(fixture);
-    const [bad, good] = Array.from(el.querySelectorAll('.category-group'));
-    expect(bad.querySelector('.totals')).toBeNull();
+    const [bad, good] = Array.from(el.querySelectorAll('[data-category-group]'));
+    expect(bad.querySelector('[data-totals]')).toBeNull();
     expect(bad.querySelectorAll('tbody tr')).toHaveLength(1);
-    expect(good.querySelector('.totals')).toBeTruthy();
+    expect(good.querySelector('[data-totals]')).toBeTruthy();
   });
 
   it('labels the controls and exposes group headings semantically (R5.1)', async () => {
@@ -572,13 +581,13 @@ describe('SubscriptionOverviewComponent categories', () => {
     expect(el.querySelector('label[for=category-filter]')?.textContent?.trim()).toBe(en['subscriptions.filter.label']);
     expect(el.querySelector('label[for=group-toggle]')?.textContent?.trim()).toBe(en['subscriptions.group.toggle']);
     expect(toggle(el).type).toBe('checkbox');
-    expect(el.querySelectorAll('[role=region]')).toHaveLength(1);
+    expect(el.querySelectorAll('[data-table-scroll]')).toHaveLength(1);
     await group(fixture);
-    const regions = el.querySelectorAll('[role=region]');
+    const regions = el.querySelectorAll('[data-table-scroll]');
     expect(regions).toHaveLength(1);
     expect(regions[0].getAttribute('tabindex')).toBe('0');
     expect(regions[0].getAttribute('aria-label')).toBe(en['subscriptions.scrollRegion']);
-    const sections = Array.from(el.querySelectorAll('.category-group'));
+    const sections = Array.from(el.querySelectorAll('[data-category-group]'));
     expect(sections.length).toBeGreaterThan(1);
     const ids = new Set<string>();
     for (const section of sections) {
@@ -731,7 +740,7 @@ describe('SubscriptionOverviewComponent period', () => {
     const { fixture, root } = await render();
     const table = root.querySelector('table');
     await choose(fixture, root, 'last-12-months');
-    expect(root.querySelector('.skeleton')).toBeNull();
+    expect(root.querySelector('app-skeleton-block')).toBeNull();
     expect(root.querySelector('table')).toBe(table);
     const data = periodData('last-12-months', '1');
     http.expectOne(url('last-12-months')).flush(data);
@@ -745,7 +754,7 @@ describe('SubscriptionOverviewComponent period', () => {
   it('shows the totals panel as the period total and the average per month, per currency', async () => {
     setup();
     const { fixture, root } = await render();
-    const lines = () => Array.from(root.querySelectorAll('.totals-panel .totals li')).map((li) => plain(li.textContent));
+    const lines = () => Array.from(root.querySelectorAll('[data-totals-panel] [data-totals] li')).map((li) => plain(li.textContent));
     expect(lines()[0]).toBe('DKK 3,862.32 · DKK 321.86 per month on average (4 active in the period)');
     const next = overviewFixture();
     next.period.key = 'next-12-months';
@@ -853,7 +862,7 @@ describe('SubscriptionOverviewComponent period', () => {
     const { root } = await render();
     expect(root.querySelector('label[for=period-select]')?.textContent?.trim()).toBe(da['subscriptions.period.label']);
     expect(headers(root)).toContain('I alt 2026');
-    expect(plain(root.querySelector('.totals-panel .totals li')?.textContent)).toBe('3.862,32 DKK · 321,86 DKK pr. måned i gennemsnit (4 aktive i perioden)');
+    expect(plain(root.querySelector('[data-totals-panel] [data-totals] li')?.textContent)).toBe('3.862,32 DKK · 321,86 DKK pr. måned i gennemsnit (4 aktive i perioden)');
     expect(Array.from(select(root).options).map((o) => plain(o.textContent))).toContain(da['subscriptions.period.next12']);
     expect(englishLeftovers(root)).toEqual([]);
   });
