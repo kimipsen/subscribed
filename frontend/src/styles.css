@@ -5,8 +5,10 @@
 @source not "./app/i18n/**";
 @source not "../scripts/**";
 @source not "../README.md";
+/* Only the daisyUI pieces the templates use are generated (keeps the initial bundle under budget). Add a component here when a template starts using it. */
 @plugin "daisyui" {
   themes: false;
+  include: properties, rootcolor, scrollbar, rootscrolllock, rootscrollgutter, svg, radius, alert, badge, button, card, checkbox, input, label, list, navbar, radio, select, skeleton, status, table, textarea, tooltip;
 }
 
 /* Nav breakpoint: the sidebar and the mobile Menu button switch at 900px (nav: / max-nav: variants). */

@@ -218,7 +218,7 @@ test('T-C styles.css has one override block per theme with the right daisyUI fla
   assert.match(blocks.get('light').body, /prefersdark:\s*false;/);
   assert.match(blocks.get('dark').body, /prefersdark:\s*true;/);
   assert.match(blocks.get('dark').body, /default:\s*false;/);
-  assert.match(stylesCss, /@plugin\s+"daisyui"\s*\{\s*themes:\s*false;\s*\}/, 'built-in themes are replaced by the two override blocks');
+  assert.match(stylesCss, /@plugin\s+"daisyui"\s*\{\s*themes:\s*false;(\s*include:[^;]+;)?\s*\}/, 'built-in themes are replaced by the two override blocks');
 });
 
 for (const theme of THEMES) {
