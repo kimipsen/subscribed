@@ -33,6 +33,7 @@ public static class SubscriptionEndpoints
         group.MapGet("", OverviewAsync);
         group.MapGet("options", OptionsAsync);
         group.MapGet("catalog", CatalogAsync);
+        group.MapGet("periods", PeriodsAsync);
         group.MapPost("", AddAsync);
         group.MapGet("{id}", GetAsync);
         group.MapPut("{id}", UpdateAsync);
@@ -40,6 +41,9 @@ public static class SubscriptionEndpoints
         group.MapPost("{id}/prices", AddPriceAsync);
         group.MapPut("{id}/prices/{entryId}", CorrectPriceAsync);
         group.MapDelete("{id}/prices/{entryId}", RemovePriceAsync);
+        group.MapPost("{id}/pauses", AddPauseAsync);
+        group.MapPut("{id}/pauses/{periodId}", ChangePauseAsync);
+        group.MapDelete("{id}/pauses/{periodId}", RemovePauseAsync);
         group.MapPost("{id}/pause", PauseAsync);
         group.MapPost("{id}/resume", ResumeAsync);
         return endpoints;
@@ -47,9 +51,22 @@ public static class SubscriptionEndpoints
 
     private static async Task<IResult> OverviewAsync(HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers)
     {
+        var today = SubscriptionCalculator.Today(time);
+        if (ReadPeriod(context, today, out var period) is { } problem)
+        {
+            return problem;
+        }
+
         var subscriptions = await service.ListAsync(context.RequestAborted).ConfigureAwait(false);
         CatalogLog.WarnIfAnyDangling(loggers.CreateLogger(CatalogLog.Category), subscriptions, catalog);
-        return Json(context, SubscriptionOverviewDto.From(subscriptions, SubscriptionCalculator.Today(time), catalog, HouseholdZone(context, loggers)));
+        return Json(context, SubscriptionOverviewDto.From(subscriptions, today, catalog, HouseholdZone(context, loggers), period));
+    }
+
+    /// <summary>What the period selector offers (D3). A literal route, so it wins over <c>{id}</c>.</summary>
+    private static async Task<IResult> PeriodsAsync(HttpContext context, SubscriptionService service, TimeProvider time)
+    {
+        var subscriptions = await service.ListAsync(context.RequestAborted).ConfigureAwait(false);
+        return Json(context, PeriodOptionsDto.From(subscriptions, SubscriptionCalculator.Today(time)));
     }
 
     private static async Task<IResult> OptionsAsync(HttpContext context, SubscriptionService service)
@@ -65,6 +82,11 @@ public static class SubscriptionEndpoints
         if (!SubscriptionIds.TryParse(id, out var bare))
         {
             return NotFound();
+        }
+
+        if (ReadPeriod(context, SubscriptionCalculator.Today(time), out _) is { } problem)
+        {
+            return problem;
         }
 
         var state = await service.GetAsync(bare, context.RequestAborted).ConfigureAwait(false);
@@ -133,14 +155,35 @@ public static class SubscriptionEndpoints
                 state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK))
             : Task.FromResult(NotFound());
 
+    private static Task<IResult> AddPauseAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
+        MutateAsync<PauseRequest, PauseChange>(id, context, service, loggers,
+            request => SubscriptionDecisions.ParsePause(request.ToInput()),
+            (bare, version, command, write) => service.AddPausePeriodAsync(bare, version, command, HouseholdZone(context, loggers), write, context.RequestAborted),
+            state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
+
+    private static Task<IResult> ChangePauseAsync(string id, string periodId, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
+        PausePeriodIds.TryParse(periodId, out var period)
+            ? MutateAsync<PauseRequest, PauseChange>(id, context, service, loggers,
+                request => SubscriptionDecisions.ParsePause(request.ToInput()),
+                (bare, version, command, write) => service.ChangePausePeriodAsync(bare, version, period, command, HouseholdZone(context, loggers), write, context.RequestAborted),
+                state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK))
+            : Task.FromResult(NotFound());
+
+    private static Task<IResult> RemovePauseAsync(string id, string periodId, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
+        PausePeriodIds.TryParse(periodId, out var period)
+            ? MutateNoBodyAsync(id, context, service, loggers,
+                (bare, version, write) => service.RemovePausePeriodAsync(bare, version, period, HouseholdZone(context, loggers), write, context.RequestAborted),
+                state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK))
+            : Task.FromResult(NotFound());
+
     private static Task<IResult> PauseAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateNoBodyAsync(id, context, service, loggers,
-            (bare, version, write) => service.PauseAsync(bare, version, write, context.RequestAborted),
+            (bare, version, write) => service.PauseAsync(bare, version, HouseholdZone(context, loggers), write, context.RequestAborted),
             state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
     private static Task<IResult> ResumeAsync(string id, HttpContext context, SubscriptionService service, TimeProvider time, Catalog catalog, ILoggerFactory loggers) =>
         MutateNoBodyAsync(id, context, service, loggers,
-            (bare, version, write) => service.ResumeAsync(bare, version, write, context.RequestAborted),
+            (bare, version, write) => service.ResumeAsync(bare, version, HouseholdZone(context, loggers), write, context.RequestAborted),
             state => Detail(context, state, time, catalog, loggers, StatusCodes.Status200OK));
 
     private static Task<IResult> RemoveAsync(string id, HttpContext context, SubscriptionService service, ILoggerFactory loggers) =>
@@ -256,12 +299,44 @@ public static class SubscriptionEndpoints
         }
     }
 
+    /// <summary>
+    /// The detail for the requested period. A GET validates <c>?period=</c> before it gets here, so an unparseable value can only
+    /// reach this point after a mutation: the write already happened and must not be reported as failed, so the response falls
+    /// back to the current year (D1).
+    /// </summary>
     private static IResult Detail(HttpContext context, SubscriptionState state, TimeProvider time, Catalog catalog, ILoggerFactory loggers, int status)
     {
         CatalogLog.WarnIfDangling(loggers.CreateLogger(CatalogLog.Category), state, catalog);
+        var today = SubscriptionCalculator.Today(time);
+        _ = ReadPeriod(context, today, out var period);
         context.Response.Headers.ETag = EntityTags.Format(state.Version);
         context.Response.Headers.CacheControl = "no-store";
-        return Results.Json(SubscriptionDetailDto.From(state, SubscriptionCalculator.Today(time), catalog, HouseholdZone(context, loggers)), statusCode: status);
+        return Results.Json(SubscriptionDetailDto.From(state, today, catalog, HouseholdZone(context, loggers), period), statusCode: status);
+    }
+
+    /// <summary>
+    /// Reads <c>?period=</c>: absent means the current calendar year. An unparseable or repeated value returns a 400 with a
+    /// <c>period</c> field error; <paramref name="period"/> is then the current year, which a lenient caller may use (D1).
+    /// </summary>
+    private static IResult? ReadPeriod(HttpContext context, DateOnly today, out ReportPeriod period)
+    {
+        var raw = context.Request.Query["period"];
+        if (raw.Count == 0)
+        {
+            period = ReportPeriod.CurrentYear(today);
+            return null;
+        }
+
+        if (raw.Count == 1 && ReportPeriod.TryParse(raw[0], today, out period))
+        {
+            return null;
+        }
+
+        period = ReportPeriod.CurrentYear(today);
+        return ValidationProblems.Result(new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["period"] = ["Use year-YYYY (1900-9999), last-12-months or next-12-months."],
+        });
     }
 
     private static IResult Json<T>(HttpContext context, T value)

@@ -9,6 +9,8 @@ import { SessionService } from '../session';
 import { PaymentOptionLogo } from './payment-option-logo';
 import { optionText } from './payment-option-text';
 import { PaymentOptionsService } from './payment-options.service';
+import { PeriodSelector } from './period-selector';
+import { PERIOD_TODAY, PeriodService, parsePeriodKey, periodTotalMessage } from './period';
 import { formatMoney, formatPercentChange, formatSignedMoney, parseAmountInput, toAmountInput, decimalSeparator } from './money';
 import { ServiceLogo } from './service-logo';
 import { SessionUnavailable } from './session-unavailable';
@@ -18,6 +20,8 @@ import {
   ApiProblem,
   CadenceUnit,
   HistoryEntry,
+  PauseBody,
+  PausePeriod,
   PaymentOption,
   PriceEntryBody,
   SubscriptionDetail,
@@ -34,7 +38,8 @@ import { StatusBadge } from '../ui/status-badge';
 import { SkeletonBlock } from '../ui/skeleton-block';
 
 type EntryForm = { mode: 'add' } | { mode: 'correct'; entry: HistoryEntry };
-type Area = 'entry' | 'end' | 'other';
+type PauseForm = { mode: 'add' } | { mode: 'edit'; period: PausePeriod };
+type Area = 'entry' | 'pause' | 'end' | 'other';
 
 const STATUS_KEYS: Readonly<Record<SubscriptionStatus, MessageKey>> = {
   active: 'subscriptions.status.active',
@@ -51,11 +56,30 @@ const ENTRY_ERRORS: Readonly<Record<string, MessageKey>> = {
   paymentOptionId: 'subscriptions.error.paymentOptionId',
 };
 
+/**
+ * The server's field errors are English sentences; the page shows its own localized text for the ones it knows, picked by the sentence
+ * (the API sends no codes). A sentence it does not know maps to nothing, and the page falls back to the generic failure.
+ */
+const PAUSE_SERVER_ERRORS: Readonly<Record<string, Readonly<Record<string, MessageKey>>>> = {
+  pauseDate: {
+    'The pause date cannot be in the future.': 'pauses.error.pauseFuture',
+    'The pause overlaps another pause.': 'pauses.error.overlap',
+    'A date in yyyy-MM-dd format is required.': 'pauses.error.malformed',
+    'The date must be in yyyy-MM-dd format.': 'pauses.error.malformed',
+  },
+  resumeDate: {
+    'The resume date cannot be in the future.': 'pauses.error.resumeFuture',
+    'The resume date must be after the pause date.': 'pauses.error.resumeNotAfter',
+    'Only the latest pause can be open.': 'pauses.error.onlyLatestOpen',
+    'The date must be in yyyy-MM-dd format.': 'pauses.error.malformed',
+  },
+};
+
 const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
 
 @Component({
   selector: 'app-subscription-detail-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo, FormField, Notice, Panel, SkeletonBlock, StatusBadge],
+  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo, FormField, Notice, Panel, PeriodSelector, SkeletonBlock, StatusBadge],
   templateUrl: './subscription-detail-page.html',
 })
 export class SubscriptionDetailPage {
@@ -63,6 +87,8 @@ export class SubscriptionDetailPage {
   readonly session = inject(SessionService);
   private readonly service = inject(SubscriptionsService);
   private readonly paymentOptionsService = inject(PaymentOptionsService);
+  private readonly period = inject(PeriodService);
+  private readonly today = inject(PERIOD_TODAY);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
@@ -97,6 +123,13 @@ export class SubscriptionDetailPage {
   entryOption = '';
   private entryAmountCanonical: string | null = null;
 
+  // Pause-history form and its inline confirmation.
+  readonly pauseForm = signal<PauseForm | null>(null);
+  readonly pauseErrors = signal<Readonly<Record<string, Message>>>({});
+  readonly confirmPause = signal<PausePeriod | null>(null);
+  pauseDateValue = '';
+  resumeDateValue = '';
+
   // End-date form, and the two inline confirmations.
   readonly endOpen = signal(false);
   readonly endError = signal<Message | null>(null);
@@ -106,6 +139,15 @@ export class SubscriptionDetailPage {
 
   private started = false;
   private optionsLoaded = false;
+  /** The latest detail request wins: a response of an earlier one (an out-of-order answer) must never overwrite the current selection's data. */
+  private latest = 0;
+  private requestedKey = '';
+
+  /** The heading of the period-total value: for the period the loaded detail is for, so it never disagrees with the figure. */
+  readonly totalHeading = computed(() => periodTotalMessage(parsePeriodKey(this.detail()?.period.key) ?? this.period.effective()));
+
+  /** The pauses in chronological order, whatever order the server sent them in. */
+  readonly pauses = computed(() => [...(this.detail()?.pauseHistory ?? [])].sort((a, b) => a.pauseDate.localeCompare(b.pauseDate)));
 
   readonly separator = computed(() => decimalSeparator(this.i18n.dateLocale()));
   readonly amountExample = computed(() => toAmountInput(this.minorUnit() === 0 ? '129' : '129.00', this.i18n.dateLocale()));
@@ -131,6 +173,13 @@ export class SubscriptionDetailPage {
         untracked(() => this.load());
       }
     });
+    // A new selection (the selector sits on this page) reloads the detail in place, without touching the messages.
+    effect(() => {
+      const key = this.period.effectiveKey();
+      untracked(() => {
+        if (this.started && key !== this.requestedKey) this.refresh();
+      });
+    });
     effect(() => {
       const locale = this.i18n.dateLocale();
       untracked(() => {
@@ -150,12 +199,16 @@ export class SubscriptionDetailPage {
     this.clearProblems();
     if (!this.optionsLoaded) this.loadOptions();
     if (!this.householdZone()) this.service.householdZone().subscribe({ next: (zone) => this.householdZone.set(zone || null), error: () => undefined });
-    this.service.detail(this.id).subscribe({
+    const request = ++this.latest;
+    this.requestedKey = this.period.effectiveKey();
+    this.service.detail(this.id, this.period.effective()).subscribe({
       next: (detail) => {
+        if (request !== this.latest) return;
         this.detail.set(detail);
         this.loading.set(false);
       },
       error: (error: HttpErrorResponse) => {
+        if (request !== this.latest) return;
         this.loading.set(false);
         if (error.status === 404) this.notFound.set(true);
         else if (error.status === 403) this.problem.set({ key: 'subscriptions.form.forbidden' });
@@ -217,6 +270,15 @@ export class SubscriptionDetailPage {
 
   choiceText(option: PaymentOption): string {
     return option.removed ? this.i18n.message({ key: 'paymentOptions.select.removed', params: { name: optionText(option) } }) : optionText(option);
+  }
+
+  /** The latest date either pause input accepts: today, the API's own UTC date. */
+  maxDate(): string {
+    return this.today().toISOString().slice(0, 10);
+  }
+
+  pauseError(field: string): Message | null {
+    return this.pauseErrors()[field] ?? null;
   }
 
   entryError(field: string): Message | null {
@@ -283,13 +345,13 @@ export class SubscriptionDetailPage {
     if (!detail || !form || this.saving()) return;
     this.clearProblems();
     if (!this.validateEntry(detail, form)) {
-      this.focusLater('.entry-form [aria-invalid="true"]');
+      this.focusLater('[data-entry-form] [aria-invalid="true"]');
       return;
     }
     const body = this.entryBody(detail, form);
     const request = form.mode === 'add' ?
-      this.service.addPrice(detail.id, detail.version, body) :
-      this.service.correctPrice(detail.id, detail.version, form.entry.entryId, body);
+      this.service.addPrice(detail.id, detail.version, body, this.period.effective()) :
+      this.service.correctPrice(detail.id, detail.version, form.entry.entryId, body, this.period.effective());
     this.run(request, 'entry', () => {
       this.entryForm.set(null);
       this.focusLater('#add-entry');
@@ -314,7 +376,7 @@ export class SubscriptionDetailPage {
     const entry = this.confirmEntry();
     if (!detail || !entry || this.saving()) return;
     this.clearProblems();
-    this.run(this.service.removePrice(detail.id, detail.version, entry.entryId), 'other', () => this.confirmEntry.set(null));
+    this.run(this.service.removePrice(detail.id, detail.version, entry.entryId, this.period.effective()), 'other', () => this.confirmEntry.set(null));
   }
 
   /** The body comes from the page's own fields and the loaded entry, never from a form's value (a disabled date control is left out of it). The details PUT (see `details`) carries no option. */
@@ -352,6 +414,100 @@ export class SubscriptionDetailPage {
     return Object.keys(errors).length === 0;
   }
 
+  // ---- pause history ---------------------------------------------------------------------------------
+
+  openPause(form: PauseForm): void {
+    this.clearProblems();
+    this.confirmPause.set(null);
+    if (!this.detail()) return;
+    this.pauseForm.set(form);
+    this.pauseDateValue = form.mode === 'edit' ? form.period.pauseDate : '';
+    this.resumeDateValue = form.mode === 'edit' ? (form.period.resumeDate ?? '') : '';
+    this.focusLater('#pause-form-heading');
+  }
+
+  closePause(): void {
+    const form = this.pauseForm();
+    this.pauseForm.set(null);
+    this.pauseErrors.set({});
+    this.focusLater(form?.mode === 'edit' ? `#edit-pause-${form.period.id}` : '#add-pause');
+  }
+
+  savePause(): void {
+    const detail = this.detail();
+    const form = this.pauseForm();
+    if (!detail || !form || this.saving()) return;
+    this.clearProblems();
+    if (!this.validatePause()) {
+      this.focusLater('[data-pause-form] [aria-invalid="true"]');
+      return;
+    }
+    // From the page's own fields: an empty resume date is an explicit null (an open pause).
+    const body: PauseBody = { pauseDate: this.pauseDateValue, resumeDate: this.resumeDateValue || null };
+    const period = this.period.effective();
+    const request = form.mode === 'add' ?
+      this.service.addPause(detail.id, detail.version, body, period) :
+      this.service.changePause(detail.id, detail.version, form.period.id, body, period);
+    this.run(request, 'pause', () => {
+      this.pauseForm.set(null);
+      this.notice.set({ key: form.mode === 'add' ? 'pauses.added' : 'pauses.changed' });
+      this.focusLater('#add-pause');
+    });
+  }
+
+  askRemovePause(period: PausePeriod): void {
+    this.clearProblems();
+    this.pauseForm.set(null);
+    this.confirmPause.set(period);
+    this.focusLater('#confirm-pause');
+  }
+
+  cancelRemovePause(): void {
+    const period = this.confirmPause();
+    this.confirmPause.set(null);
+    this.focusLater(period ? `#delete-pause-${period.id}` : '#add-pause');
+  }
+
+  removePause(): void {
+    const detail = this.detail();
+    const period = this.confirmPause();
+    if (!detail || !period || this.saving()) return;
+    this.clearProblems();
+    this.run(this.service.removePause(detail.id, detail.version, period.id, this.period.effective()), 'other', () => {
+      this.confirmPause.set(null);
+      this.notice.set({ key: 'pauses.deleted' });
+      this.focusLater('#add-pause');
+    });
+  }
+
+  /** What the server would refuse on shape or on the date rules that need no other pause; overlap and "only the latest can be open" stay with the server. */
+  private validatePause(): boolean {
+    const errors: Record<string, Message> = {};
+    const max = this.maxDate();
+    const pause = this.pauseDateValue;
+    const resume = this.resumeDateValue;
+    if (!isDate(pause)) errors['pauseDate'] = { key: 'pauses.error.malformed' };
+    else if (pause > max) errors['pauseDate'] = { key: 'pauses.error.pauseFuture' };
+    if (resume) {
+      if (!isDate(resume)) errors['resumeDate'] = { key: 'pauses.error.malformed' };
+      else if (resume > max) errors['resumeDate'] = { key: 'pauses.error.resumeFuture' };
+      else if (isDate(pause) && resume <= pause) errors['resumeDate'] = { key: 'pauses.error.resumeNotAfter' };
+    }
+    this.pauseErrors.set(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  private mapPauseErrors(errors: Record<string, string[]>): boolean {
+    const mapped: Record<string, Message> = {};
+    for (const field of Object.keys(PAUSE_SERVER_ERRORS)) {
+      const known = PAUSE_SERVER_ERRORS[field];
+      const text = Object.hasOwn(errors, field) ? errors[field].find((sentence) => Object.hasOwn(known, sentence)) : undefined;
+      if (text) mapped[field] = { key: known[text] };
+    }
+    this.pauseErrors.set(mapped);
+    return Object.keys(mapped).length > 0;
+  }
+
   // ---- pause and resume ------------------------------------------------------------------------------
 
   /** Pause is offered on active subscriptions only. Resume follows the flag, so it stays reachable when the dates show `ended` or `not-started`. */
@@ -371,7 +527,8 @@ export class SubscriptionDetailPage {
     const detail = this.detail();
     if (!detail || this.saving() || !(pausing ? this.canPause(detail) : detail.paused)) return;
     this.clearProblems();
-    const request = pausing ? this.service.pause(detail.id, detail.version) : this.service.resume(detail.id, detail.version);
+    const period = this.period.effective();
+    const request = pausing ? this.service.pause(detail.id, detail.version, period) : this.service.resume(detail.id, detail.version, period);
     this.run(request, 'other', () => {
       this.notice.set({ key: pausing ? 'subscriptions.paused' : 'subscriptions.resumed', params: { name: detail.name } });
       this.focusLater('#pause-toggle');
@@ -403,14 +560,14 @@ export class SubscriptionDetailPage {
       this.focusLater('#end-date');
       return;
     }
-    this.run(this.service.update(detail.id, detail.version, this.details(detail, this.endDateValue)), 'end', () => this.endOpen.set(false));
+    this.run(this.service.update(detail.id, detail.version, this.details(detail, this.endDateValue), this.period.effective()), 'end', () => this.endOpen.set(false));
   }
 
   reinstate(): void {
     const detail = this.detail();
     if (!detail || this.saving()) return;
     this.clearProblems();
-    this.run(this.service.update(detail.id, detail.version, this.details(detail, null)), 'other', () => undefined);
+    this.run(this.service.update(detail.id, detail.version, this.details(detail, null), this.period.effective()), 'other', () => undefined);
   }
 
   askRemove(): void {
@@ -464,8 +621,11 @@ export class SubscriptionDetailPage {
     request.subscribe({
       next: (updated) => {
         this.saving.set(false);
+        this.latest++;
         this.detail.set(updated);
         done();
+        // The selection changed while the request was in flight: the response is for the old period, so show the current one.
+        if (updated.period.key !== this.period.effectiveKey()) this.refresh();
       },
       error: (error: HttpErrorResponse) => {
         this.saving.set(false);
@@ -488,7 +648,9 @@ export class SubscriptionDetailPage {
       this.problem.set({ key: 'subscriptions.pauseInvalid' });
       this.refresh();
     } else if (error.status === 400 && area === 'entry' && body?.errors && this.mapEntryErrors(body.errors)) {
-      this.focusLater('.entry-form [aria-invalid="true"]');
+      this.focusLater('[data-entry-form] [aria-invalid="true"]');
+    } else if (error.status === 400 && area === 'pause' && body?.errors && this.mapPauseErrors(body.errors)) {
+      this.focusLater('[data-pause-form] [aria-invalid="true"]');
     } else if (error.status === 400 && area === 'end' && body?.errors && Object.hasOwn(body.errors, 'endDate')) {
       this.endError.set({ key: 'detail.end.error' });
       this.focusLater('#end-date');
@@ -499,10 +661,14 @@ export class SubscriptionDetailPage {
 
   /** Replaces the detail without touching the messages: a plain `load()` would clear the problem it follows. */
   private refresh(): void {
-    this.service.detail(this.id).subscribe({
-      next: (detail) => this.detail.set(detail),
+    const request = ++this.latest;
+    this.requestedKey = this.period.effectiveKey();
+    this.service.detail(this.id, this.period.effective()).subscribe({
+      next: (detail) => {
+        if (request === this.latest) this.detail.set(detail);
+      },
       error: (error: HttpErrorResponse) => {
-        if (error.status === 404) this.notFound.set(true);
+        if (request === this.latest && error.status === 404) this.notFound.set(true);
       },
     });
   }
@@ -528,6 +694,7 @@ export class SubscriptionDetailPage {
     this.conflict.set(false);
     this.traceId.set(undefined);
     this.entryErrors.set({});
+    this.pauseErrors.set({});
     this.endError.set(null);
   }
 }

@@ -32,22 +32,57 @@ export interface SubscriptionSummary {
   normalizedMonthly: string;
   normalizedYearly: string;
   upcomingPriceChange: boolean;
+  /** What this subscription costs over the report period (price history, start and end dates and pauses), rounded once. */
+  periodTotal: string;
+  /** Whether at least one day of the period is chargeable. Group totals count exactly these rows, whatever `status` says. */
+  activeInPeriod: boolean;
   /** The cancel-by deadline as local wall time in the household zone (`yyyy-MM-ddTHH:mm`), or null. */
   cancelBy: string | null;
   /** The same deadline as a UTC instant (ISO, ends in `Z`), or null. */
   cancelByInstant: string | null;
 }
 
+/** The report period as the API echoes it: the wire key, the inclusive dates and the number of months (always 12). */
+export interface ReportPeriod {
+  key: string;
+  from: string;
+  to: string;
+  months: number;
+}
+
+/** One pause of a subscription. `resumeDate` is the first day charged again, null while the pause is open. */
+export interface PausePeriod {
+  id: string;
+  pauseDate: string;
+  resumeDate: string | null;
+}
+
+/** Body of POST /pauses and PUT /pauses/{periodId}: `yyyy-MM-dd` strings, an explicit null `resumeDate` for an open pause. */
+export interface PauseBody {
+  pauseDate: string;
+  resumeDate: string | null;
+}
+
+/** GET /api/subscriptions/periods: the calendar years the selector offers, besides the two rolling windows. */
+export interface PeriodOptions {
+  years: number[];
+  currentYear: number;
+}
+
 export interface CurrencyTotal {
   currency: string;
   minorUnit: number;
-  monthly: string;
-  yearly: string;
+  /** The period total, rounded once from the unrounded sum. */
+  total: string;
+  /** The same sum divided by the 12 months of the period, rounded once. */
+  monthlyAverage: string;
+  /** Subscriptions with at least one chargeable day in the period. */
   activeCount: number;
 }
 
 export interface SubscriptionOverview {
   asOf: string;
+  period: ReportPeriod;
   subscriptions: SubscriptionSummary[];
   totals: CurrencyTotal[];
 }
@@ -92,6 +127,11 @@ export interface SubscriptionDetail {
   normalizedMonthly: string;
   normalizedYearly: string;
   priceHistory: HistoryEntry[];
+  /** What this subscription costs over `period`, rounded once. */
+  periodTotal: string;
+  period: ReportPeriod;
+  /** The pauses in chronological order. */
+  pauseHistory: PausePeriod[];
   /** The user-specified unsubscribe link, or null: pre-fills (and lets the member clear) the edit form. */
   unsubscribeUrl: string | null;
   /** The link the view shows: the user's URL, else the linked catalog service's, else null. Resolved by the server. */

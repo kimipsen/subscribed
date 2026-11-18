@@ -13,6 +13,8 @@ import { SubscriptionFormPage } from './subscription-form-page';
 import { catalogFixture, detailFixture, optionsFixture, overviewFixture, paymentOptionListFixture } from './testing/fixtures';
 import '../app.config';
 
+import { flushPeriods, periodTestProviders } from './testing/period-providers';
+
 describe('Subscription routes', () => {
   let http: HttpTestingController;
   let session: SessionService;
@@ -23,6 +25,7 @@ describe('Subscription routes', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
       ],
@@ -71,7 +74,11 @@ describe('Subscription routes', () => {
     const component = await harness.navigateByUrl(`/subscriptions/${detail.id}`, SubscriptionDetailPage);
     http.expectOne('/api/payment-options').flush(paymentOptionListFixture());
     http.expectOne('/api/household').flush({ timeZoneId: 'Europe/Copenhagen' });
-    http.expectOne(`/api/subscriptions/${detail.id}`).flush(detail);
+    http.expectOne(`/api/subscriptions/${detail.id}?period=year-2026`).flush(detail);
+    harness.detectChanges();
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    flushPeriods(http);
     expect(component.id).toBe(detail.id);
   });
 

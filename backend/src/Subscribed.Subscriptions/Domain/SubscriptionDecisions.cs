@@ -32,6 +32,12 @@ public sealed record DetailsUpdate(string Name, string? Category, string? Notes,
 
 public sealed record PriceEntryChange(DateOnly EffectiveFrom, decimal Amount, Cadence Cadence, string? PaymentOptionId = null);
 
+/// <summary>Raw pause period fields, exactly as the client sent them. Omitted means null.</summary>
+public sealed record PauseInput(string? PauseDate, string? ResumeDate);
+
+/// <summary>A pause period that passed the shape rules. A null <paramref name="ResumeDate"/> is an open period.</summary>
+public sealed record PauseChange(DateOnly PauseDate, DateOnly? ResumeDate);
+
 /// <summary>
 /// Commands to events. Each command runs in two steps so a rejected change applies nothing: <c>Parse*</c> checks the shape of
 /// the fields; the decision then rehydrates a fresh state from the history plus its candidate events and checks the BR-015
@@ -105,6 +111,17 @@ public static class SubscriptionDecisions
         var paymentOptionId = PaymentOptionId(input.PaymentOptionId, errors);
         errors.ThrowIfAny();
         return new PriceEntryChange(from!.Value, amount!.Value, cadence!.Value, paymentOptionId);
+    }
+
+    /// <summary>Shape only: <c>pauseDate</c> is required, <c>resumeDate</c> optional, both <c>yyyy-MM-dd</c>. The invariants run with the decision.</summary>
+    public static PauseChange ParsePause(PauseInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        var errors = new FieldErrors();
+        var pause = Date(input.PauseDate, "pauseDate", true, errors);
+        var resume = Date(input.ResumeDate, "resumeDate", false, errors);
+        errors.ThrowIfAny();
+        return new PauseChange(pause!.Value, resume);
     }
 
     // ---- step 2: decisions ---------------------------------------------------------------------------
@@ -254,7 +271,7 @@ public static class SubscriptionDecisions
             return events;
         }
 
-        if (SubscriptionCalculator.StatusOn(candidate, today) == SubscriptionStatus.Ended)
+        if (SubscriptionCalculator.IsEnded(candidate, today))
         {
             errors.Add("paymentOption", "The payment option cannot be changed on an ended subscription.");
             return events;
@@ -351,17 +368,64 @@ public static class SubscriptionDecisions
         return [new SubscriptionRemoved(now.ToUniversalTime())];
     }
 
-    /// <summary>Allowed in any non-removed state. Pausing a paused subscription is rejected, not a no-op.</summary>
-    public static IReadOnlyList<object> Pause(IReadOnlyList<object> history, DateTimeOffset now)
+    /// <summary>
+    /// Opens a pause period that starts today. Allowed in any non-removed state; pausing a paused subscription is rejected with
+    /// <see cref="SubscriptionStateException"/>, not a no-op. <paramref name="zone"/> resolves legacy periods (D11).
+    /// </summary>
+    public static IReadOnlyList<object> Pause(IReadOnlyList<object> history, string periodId, DateOnly today, TimeZoneInfo zone, DateTimeOffset now)
     {
-        var current = Load(history);
-        return current.Paused ? throw SubscriptionStateException.AlreadyPaused() : [new SubscriptionPaused(now.ToUniversalTime())];
+        ArgumentNullException.ThrowIfNull(periodId);
+        var periods = Load(history).ResolvePausePeriods(zone, today);
+        return SubscriptionCalculator.IsPausedOn(periods, today)
+            ? throw SubscriptionStateException.AlreadyPaused()
+            : [new SubscriptionPausePeriodAdded(periodId, today, null, now.ToUniversalTime())];
     }
 
-    public static IReadOnlyList<object> Resume(IReadOnlyList<object> history, DateTimeOffset now)
+    /// <summary>
+    /// Closes the open period that contains today with today as the resume date. A period that started today would become zero
+    /// days long (resume must be after pause), so it is removed instead (D6). Nothing to close is a <see cref="SubscriptionStateException"/>.
+    /// </summary>
+    public static IReadOnlyList<object> Resume(IReadOnlyList<object> history, DateOnly today, TimeZoneInfo zone, DateTimeOffset now)
     {
-        var current = Load(history);
-        return current.Paused ? [new SubscriptionResumed(now.ToUniversalTime())] : throw SubscriptionStateException.NotPaused();
+        var periods = Load(history).ResolvePausePeriods(zone, today);
+        var open = periods.FirstOrDefault(p => p.ResumeDate is null && p.PauseDate <= today) ?? throw SubscriptionStateException.NotPaused();
+        var at = now.ToUniversalTime();
+        return open.PauseDate == today
+            ? [new SubscriptionPausePeriodRemoved(open.PeriodId, at)]
+            : [new SubscriptionPausePeriodChanged(open.PeriodId, open.PauseDate, today, at)];
+    }
+
+    public static IReadOnlyList<object> AddPausePeriod(IReadOnlyList<object> history, PauseChange command, string periodId, DateOnly today, TimeZoneInfo zone, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(periodId);
+        var periods = Load(history).ResolvePausePeriods(zone, today);
+        var errors = new FieldErrors();
+        CheckPausePeriod(periods, command, today, errors);
+        errors.ThrowIfAny();
+        return [new SubscriptionPausePeriodAdded(periodId, command.PauseDate, command.ResumeDate, now.ToUniversalTime())];
+    }
+
+    /// <summary>An unknown id (or a legacy period dropped as zero-day, D7) is <see cref="SubscriptionNotFoundException"/>. The period itself is ignored by the overlap check.</summary>
+    public static IReadOnlyList<object> ChangePausePeriod(IReadOnlyList<object> history, string periodId, PauseChange command, DateOnly today, TimeZoneInfo zone, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var periods = Load(history).ResolvePausePeriods(zone, today);
+        var target = periods.FirstOrDefault(p => string.Equals(p.PeriodId, periodId, StringComparison.Ordinal)) ?? throw new SubscriptionNotFoundException();
+        var errors = new FieldErrors();
+        CheckPausePeriod([.. periods.Where(p => !ReferenceEquals(p, target))], command, today, errors);
+        errors.ThrowIfAny();
+        return target.PauseDate == command.PauseDate && target.ResumeDate == command.ResumeDate
+            ? []
+            : [new SubscriptionPausePeriodChanged(periodId, command.PauseDate, command.ResumeDate, now.ToUniversalTime())];
+    }
+
+    public static IReadOnlyList<object> RemovePausePeriod(IReadOnlyList<object> history, string periodId, DateOnly today, TimeZoneInfo zone, DateTimeOffset now)
+    {
+        var periods = Load(history).ResolvePausePeriods(zone, today);
+        return periods.Any(p => string.Equals(p.PeriodId, periodId, StringComparison.Ordinal))
+            ? [new SubscriptionPausePeriodRemoved(periodId, now.ToUniversalTime())]
+            : throw new SubscriptionNotFoundException();
     }
 
     // ---- helpers -------------------------------------------------------------------------------------
@@ -396,6 +460,40 @@ public static class SubscriptionDecisions
         if (!Money.HasAtMostFractionDigits(command.Amount, minor))
         {
             errors.Add("amount", $"The amount may have at most {minor} fraction digits in {state.Currency}.");
+        }
+    }
+
+    /// <summary>
+    /// The one invariant check for add and change (R5.5, R5.7). <paramref name="others"/> are the resolved periods the new one is
+    /// compared with. Periods may start before the subscription start or end after its end (R5.6), so the subscription dates are not checked.
+    /// </summary>
+    private static void CheckPausePeriod(IReadOnlyList<PausePeriod> others, PauseChange change, DateOnly today, FieldErrors errors)
+    {
+        if (change.PauseDate > today)
+        {
+            errors.Add("pauseDate", "The pause date cannot be in the future.");
+        }
+
+        if (change.ResumeDate is { } future && future > today)
+        {
+            errors.Add("resumeDate", "The resume date cannot be in the future.");
+        }
+
+        if (change.ResumeDate is { } resume && resume <= change.PauseDate)
+        {
+            errors.Add("resumeDate", "The resume date must be after the pause date.");
+            return;
+        }
+
+        var end = change.ResumeDate ?? DateOnly.MaxValue;
+        if (others.Any(o => change.PauseDate < (o.ResumeDate ?? DateOnly.MaxValue) && o.PauseDate < end))
+        {
+            errors.Add("pauseDate", "The pause overlaps another pause.");
+        }
+
+        if (change.ResumeDate is null && others.Any(o => o.ResumeDate is null || o.PauseDate >= change.PauseDate))
+        {
+            errors.Add("resumeDate", "Only the latest pause can be open.");
         }
     }
 

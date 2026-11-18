@@ -440,7 +440,7 @@ public sealed class SubscriptionPaymentOptionTests
     public void Edit_on_a_paused_subscription_applies_the_change()
     {
         var history = Added();
-        history.AddRange(SubscriptionDecisions.Pause(history, Now));
+        history.AddRange(SubscriptionDecisions.Pause(history, "pause-1", DateOnly.FromDateTime(Now.UtcDateTime), TimeZoneInfo.Utc, Now));
         var events = Decide(history, Edit(history, new PaymentOptionChange(OptionA)));
         Assert.IsType<SubscriptionPriceEntryAdded>(events[0]);
     }

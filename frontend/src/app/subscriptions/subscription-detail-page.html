@@ -43,6 +43,7 @@
 
       <app-panel labelledBy="summary-heading">
         <h2 id="summary-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'detail.summaryHeading' | t }}</h2>
+        <app-period-selector />
         <dl class="m-0 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-[max-content_minmax(0,1fr)]" data-summary>
           <dt class="mt-2 font-semibold sm:mt-0">{{ 'subscriptions.col.status' | t }}</dt>
           <dd class="m-0"><app-status-badge [status]="d.status">{{ statusKey(d.status) | t }}</app-status-badge></dd>
@@ -57,8 +58,8 @@
           <dd class="m-0 wrap-anywhere">{{ money(d.currentPrice.amount) }} · {{ cadence(d.currentPrice.cadenceUnit, d.currentPrice.cadenceCount) }}</dd>
           <dt class="mt-2 font-semibold sm:mt-0">{{ 'subscriptions.col.perMonth' | t }}</dt>
           <dd class="m-0">{{ money(d.normalizedMonthly) }}</dd>
-          <dt class="mt-2 font-semibold sm:mt-0">{{ 'subscriptions.col.perYear' | t }}</dt>
-          <dd class="m-0">{{ money(d.normalizedYearly) }}</dd>
+          <dt class="mt-2 font-semibold sm:mt-0">{{ totalHeading().key | t: totalHeading().params }}</dt>
+          <dd class="m-0">{{ money(d.periodTotal) }}</dd>
           @if (isHttpsUrl(d.effectiveUnsubscribeUrl)) {
             <dt class="mt-2 font-semibold sm:mt-0">{{ 'detail.unsubscribe' | t }}</dt>
             <dd class="m-0 wrap-anywhere"><a class="text-primary underline" [href]="d.effectiveUnsubscribeUrl" target="_blank" rel="noopener noreferrer">{{ 'detail.unsubscribeLink' | t }}</a></dd>
@@ -204,6 +205,76 @@
             <div class="flex flex-wrap items-center gap-2">
               <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'detail.entry.save') | t }}</button>
               <button type="button" class="btn btn-outline" (click)="closeEntry()">{{ 'subscriptions.form.cancel' | t }}</button>
+            </div>
+          </form>
+        }
+      </app-panel>
+
+      <app-panel labelledBy="pauses-heading">
+        <h2 id="pauses-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'pauses.heading' | t }}</h2>
+        @if (pauses().length) {
+          <div class="overflow-x-auto" role="region" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+            <table class="table" data-pauses>
+              <caption class="py-2 text-start text-base-content/70">{{ 'pauses.caption' | t }}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{{ 'pauses.col.pauseDate' | t }}</th>
+                  <th scope="col">{{ 'pauses.col.resumeDate' | t }}</th>
+                  <th scope="col">{{ 'pauses.col.actions' | t }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of pauses(); track row.id) {
+                  <tr>
+                    <th scope="row">{{ date(row.pauseDate) }}</th>
+                    <td>@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</td>
+                    <td>
+                      <div class="flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-sm btn-outline" [id]="'edit-pause-' + row.id" (click)="openPause({ mode: 'edit', period: row })">{{ 'pauses.edit' | t }}</button>
+                        <button type="button" class="btn btn-sm btn-outline" [id]="'delete-pause-' + row.id" (click)="askRemovePause(row)">{{ 'pauses.delete' | t }}</button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <p class="my-2 text-base-content/70" data-pauses-empty>{{ 'pauses.empty' | t }}</p>
+        }
+
+        @if (confirmPause(); as pause) {
+          <div class="alert alert-warning my-4" role="alertdialog" aria-labelledby="confirm-pause" data-confirm-pause>
+            <div class="min-w-0 wrap-anywhere">
+              <p id="confirm-pause" class="m-0" tabindex="-1">{{ 'pauses.deleteConfirm' | t: { date: date(pause.pauseDate) } }}</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-neutral" [disabled]="saving()" (click)="removePause()">{{ 'pauses.deleteYes' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline" (click)="cancelRemovePause()">{{ 'detail.keep' | t }}</button>
+              </div>
+            </div>
+          </div>
+        }
+
+        @if (!pauseForm()) {
+          <div class="mt-4"><button type="button" class="btn btn-primary" id="add-pause" (click)="openPause({ mode: 'add' })">{{ 'pauses.add' | t }}</button></div>
+        } @else {
+          <form class="mt-4 flex max-w-xl flex-col" (ngSubmit)="savePause()" novalidate data-pause-form>
+            <h3 id="pause-form-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere" tabindex="-1">{{ (pauseForm()?.mode === 'edit' ? 'pauses.editHeading' : 'pauses.addHeading') | t }}</h3>
+            @let pauseDateError = pauseError('pauseDate');
+            <app-form-field [label]="'pauses.field.pauseDate' | t" controlId="pause-pauseDate"
+              [error]="pauseDateError ? (pauseDateError.key | t: pauseDateError.params) : null">
+              <input id="pause-pauseDate" class="input border-base-content/55 w-full aria-invalid:border-2" name="pauseDateValue" type="date" [max]="maxDate()" [(ngModel)]="pauseDateValue"
+                [attr.aria-invalid]="pauseDateError ? 'true' : null" [attr.aria-describedby]="pauseDateError ? 'pause-pauseDate-error' : null" />
+            </app-form-field>
+            @let resumeDateError = pauseError('resumeDate');
+            <app-form-field [label]="'pauses.field.resumeDate' | t" controlId="pause-resumeDate"
+              [error]="resumeDateError ? (resumeDateError.key | t: resumeDateError.params) : null">
+              <input id="pause-resumeDate" class="input border-base-content/55 w-full aria-invalid:border-2" name="resumeDateValue" type="date" [max]="maxDate()" [(ngModel)]="resumeDateValue"
+                [attr.aria-invalid]="resumeDateError ? 'true' : null" [attr.aria-describedby]="resumeDateError ? 'pause-resumeDate-error' : null" />
+            </app-form-field>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'pauses.save') | t }}</button>
+              <button type="button" class="btn btn-outline" (click)="closePause()">{{ 'subscriptions.form.cancel' | t }}</button>
             </div>
           </form>
         }

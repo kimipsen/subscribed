@@ -11,6 +11,7 @@ import { en } from './i18n/catalog.en';
 import { da } from './i18n/catalog.da';
 import { vi } from 'vitest';
 import { query, queryAll } from './testing/query';
+import { flushPeriods, periodTestProviders } from './subscriptions/testing/period-providers';
 import './app.config';
 
 const ZONES = ['Europe/Copenhagen', 'Europe/London', 'UTC'];
@@ -27,6 +28,7 @@ describe('Foundation UI', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([csrfInterceptor])),
         provideHttpClientTesting(),
+        ...periodTestProviders(),
         { provide: BROWSER_LANGUAGES, useValue: ['en'] },
         { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
       ],
@@ -59,7 +61,8 @@ describe('Foundation UI', () => {
   it('renders the subscription overview on member home', async () => {
     session.current.set({ state: 'member', user: { displayName: 'Synthetic' }, expiresAt: '' });
     const harness = await RouterTestingHarness.create('/');
-    http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+    http.expectOne('/api/subscriptions?period=year-2026').flush({ asOf: '2026-11-13', period: { key: 'year-2026', from: '2026-01-01', to: '2026-12-31', months: 12 }, subscriptions: [], totals: [] });
+    flushPeriods(http);
     harness.detectChanges();
     expect(harness.routeNativeElement?.textContent).toContain('No subscriptions yet');
     expect(harness.routeNativeElement?.querySelector('a[href="/subscriptions/new"]')).toBeTruthy();
@@ -464,7 +467,8 @@ describe('Foundation UI', () => {
       TestBed.inject(LanguageService).setLanguage('da');
       const harness = await RouterTestingHarness.create(url);
       if (state.state === 'member' && url === '/') {
-        http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+        http.expectOne('/api/subscriptions?period=year-2026').flush({ asOf: '2026-11-13', period: { key: 'year-2026', from: '2026-01-01', to: '2026-12-31', months: 12 }, subscriptions: [], totals: [] });
+        flushPeriods(http);
         harness.detectChanges();
       }
       const text = harness.routeNativeElement?.textContent ?? '';
@@ -725,7 +729,8 @@ describe('Foundation UI', () => {
 
         issue('/calendar/THREE/subscribed.ics');
         await harness.navigateByUrl('/');
-        http.expectOne('/api/subscriptions').flush({ asOf: '2026-11-13', subscriptions: [], totals: [] });
+        http.expectOne('/api/subscriptions?period=year-2026').flush({ asOf: '2026-11-13', period: { key: 'year-2026', from: '2026-01-01', to: '2026-12-31', months: 12 }, subscriptions: [], totals: [] });
+        flushPeriods(http);
         const again = await harness.navigateByUrl('/household', FoundationPage);
         http.expectOne('/api/household').flush(household({ version: 5, calendarFeed: FEED_ON }));
         http.expectOne('/api/household/time-zones').flush({ timeZones: ZONES });

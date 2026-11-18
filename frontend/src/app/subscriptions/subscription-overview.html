@@ -10,6 +10,7 @@
       @if (actionTrace()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ actionTrace() }}</code></p> }
     </app-notice>
   }
+  <app-period-selector />
   @if (loading()) {
     <p class="my-2" role="status">{{ 'subscriptions.loading' | t }}</p>
     <app-skeleton-block />
@@ -36,8 +37,8 @@
             @for (total of data.totals; track total.currency) {
               <li class="wrap-anywhere">
                 {{ 'subscriptions.totalsLine' | t: {
-                  monthly: money(total.monthly, total.currency, total.minorUnit),
-                  yearly: money(total.yearly, total.currency, total.minorUnit)
+                  total: money(total.total, total.currency, total.minorUnit),
+                  average: money(total.monthlyAverage, total.currency, total.minorUnit)
                 } }}
                 <span class="text-base-content/70">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
               </li>
@@ -73,7 +74,7 @@
             <th scope="col">{{ 'subscriptions.col.status' | t }}</th>
             <th scope="col">{{ 'subscriptions.col.price' | t }}</th>
             <th scope="col">{{ 'subscriptions.col.perMonth' | t }}</th>
-            <th scope="col">{{ 'subscriptions.col.perYear' | t }}</th>
+            <th scope="col">{{ totalHeading().key | t: totalHeading().params }}</th>
             <th scope="col">{{ 'subscriptions.col.actions' | t }}</th>
           </tr>
         </thead>
@@ -95,7 +96,7 @@
             }
           </td>
           <td>{{ money(row.normalizedMonthly, row.currency, row.minorUnit) }}</td>
-          <td>{{ money(row.normalizedYearly, row.currency, row.minorUnit) }}</td>
+          <td>{{ money(row.periodTotal, row.currency, row.minorUnit) }}</td>
           <td>
             @if (row.paused) {
               <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [disabled]="acting() !== null"
@@ -122,8 +123,8 @@
                   @for (total of group.totals; track total.currency) {
                     <li class="wrap-anywhere">
                       {{ 'subscriptions.totalsLine' | t: {
-                        monthly: money(total.monthly, total.currency, total.minorUnit),
-                        yearly: money(total.yearly, total.currency, total.minorUnit)
+                        total: money(total.total, total.currency, total.minorUnit),
+                        average: money(total.monthlyAverage, total.currency, total.minorUnit)
                       } }}
                       <span class="text-base-content/70">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
                     </li>
