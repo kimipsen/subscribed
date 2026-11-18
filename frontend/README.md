@@ -88,18 +88,53 @@ CSP is unchanged; do **not** inline it. If it fails to load, the CSS
 (`src/app/theme/theme.ts`) starts. Keep the script's logic in sync with
 `isThemeMode`/`resolveTheme`.
 
-Colours are semantic tokens in `src/styles.scss`. To add one, add a
-`--color-<name>: #rrggbb;` line (lowercase 6-digit hex, one per line) to
-**both** the `light-tokens` and `dark-tokens` mixins, use `var(--color-<name>)`,
-and add the token and any text/UI contrast pair to `scripts/theme.test.mjs`.
-Hex, `white` or `black` literals outside the mixins fail the checks.
+Colours come from the two daisyUI 5 themes, `light` and `dark`, which daisyUI applies through
+`[data-theme="light"|"dark"]`: the attribute `theme-init.js` and `ThemeService` already write. Templates use
+daisyUI semantic colours (`bg-base-100`, `text-base-content`, `btn-primary`, ...) and never palette colours, `dark:`
+variants, arbitrary colour values or hex literals. `src/styles.css` registers both themes with
+`@plugin "daisyui/theme"`. Each block restates the stock daisyUI 5.8.1 theme and changes only the colours that fail
+a WCAG pair checked by `scripts/theme.test.mjs`: `error`/`error-content` in `light`, and `primary`/`primary-content` in
+`dark`. Do not add another override unless the contrast test shows a failure.
+
+To add or change a colour pair:
+
+1. Change the colour in the matching `@plugin "daisyui/theme"` block in `src/styles.css`. Keep the value inside the
+   sRGB gamut and the rest of the block identical to the stock theme file in `node_modules/daisyui/theme/`.
+2. Add the foreground/background pair to `pairsFor()` in `scripts/theme.test.mjs` as
+   `add('<description>', c('<fg token>'), c('<bg token>'), <minimum ratio>)`: 4.5 for text, 3 for UI and focus.
+   `pairsFor()` runs for both themes. A translucent text or border colour (`text-base-content/70`) must also be a row
+   of `ALPHA_TABLE` in `scripts/theme-palette.mjs`; templates may only use the alpha values in that table.
+3. Run `npm run test:ci`. Hex, `rgb()` and named colours outside the override blocks in `src/styles.css` fail the
+   checks.
 
 Dependency-free `node:test` checks run as part of the npm scripts:
-`npm run test:ci` runs `scripts/theme.test.mjs` (init-script behaviour, WCAG
-contrast of 4.5:1 for text and 3:1 for UI/focus in both themes, no hard-coded
-colours), and `npm run build` runs `scripts/theme-dist.test.mjs` (the built
-`index.html` keeps one blocking `theme-init.js` in `<head>`, no inline
-scripts, the CSP nonce placeholder, and a byte-identical script copy).
+
+- `npm run test:ci` runs `scripts/theme.test.mjs`: the init-script contract (`theme-init.js` mirrors `theme.ts`, read as
+  text), WCAG contrast of 4.5:1 for text and 3:1 for UI/focus in both themes (stock daisyUI colours plus the overrides,
+  including the button, menu and table hover and alpha states), a guard that the daisyUI 5.8.1 expressions behind those
+  state pairs have not changed, and no hard-coded colours in `src/styles.css`.
+- `npm run test:ci` also runs `scripts/styles-contract.test.mjs`, which parses every template with the Angular template
+  parser and enforces the styling rules: no `.scss` or component styles, no removed semantic class from the old
+  stylesheet, no inline `style`, only allow-listed daisyUI components, only the approved alpha utilities, complete class
+  literals, the sidebar rules and the control-border rules.
+- `npm run build` runs `scripts/theme-dist.test.mjs`: the built `index.html` keeps one blocking `theme-init.js` in `<head>`,
+  no inline scripts, the CSP nonce placeholder and a byte-identical script copy, and the built CSS holds both themes.
+
+Appearance has no automated check: jsdom applies no CSS, so specs assert DOM, attributes and text. Wrapping, overflow,
+focus-ring visibility, tooltips and colour rendering are checked by hand in a browser.
+
+### Class names must be complete literals
+
+Tailwind finds classes by scanning source text for complete class names (`src/styles.css` limits the scan to the
+templates and `.ts` files under `src`, excluding specs, `testing/` and `i18n/`). Write every class as a whole literal
+in a template or a class string. Never build one by concatenation or interpolation (`'bg-' + tone`,
+`` `text-${tone}` ``): the stylesheet would not contain it and the contract check fails. To vary a class, choose between
+complete literals (`[class]="open() ? 'btn-primary' : 'btn-ghost'"` or a lookup of literals).
+
+### Browser support
+
+Tailwind CSS 4 and daisyUI 5 need current evergreen browsers (cascade layers, `color-mix()`, `oklch()` and
+`@property`). Older browsers are not supported and are not tested.
 
 ## Languages
 
@@ -140,7 +175,11 @@ the leading `v` removed). When `APP_VERSION` is unset, the footer shows the `pac
 At 900px and wider, a member's navigation has a toggle that collapses the sidebar to an icons-only rail
 (4rem wide). The main content widens to use the space. In the rail, each link and the toggle show their
 label as a tooltip on hover and keyboard focus; the label stays in the DOM, so the accessible names do not
-change. The tooltip is CSS-only and cannot be dismissed with Escape.
+change. The tooltip is CSS-only and cannot be dismissed with Escape (a known limitation).
+
+The 900px breakpoint is the `nav` breakpoint (`--breakpoint-nav` in `src/styles.css`, used as the `nav:` and `max-nav:`
+variants), not Tailwind's `lg`. There is no layout-test script: the sidebar's DOM behaviour is covered by the Angular
+specs and its class rules by `scripts/styles-contract.test.mjs`; the rendered layout is checked by hand.
 
 The choice is stored in `localStorage` under `subscribed.sidebar` as `collapsed` or `expanded`. Any other
 value is ignored and the sidebar starts expanded. It is browser-local and independent of the account. If
