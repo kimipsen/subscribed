@@ -4,7 +4,9 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { FoundationPage } from './foundation-page';
-import { Household, SessionService, csrfInterceptor } from './session';
+import { McpTokensPanel } from './mcp-tokens-panel';
+import { By } from '@angular/platform-browser';
+import { Household, McpToken, SessionService, csrfInterceptor } from './session';
 import { routes } from './app.routes';
 import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from './i18n/i18n';
 import { en } from './i18n/catalog.en';
@@ -36,7 +38,11 @@ describe('Foundation UI', () => {
     http = TestBed.inject(HttpTestingController);
     session = TestBed.inject(SessionService);
   });
-  afterEach(() => http.verify());
+  afterEach(() => {
+    // Every household load also asks for the member's MCP tokens; specs about other panels do not care about that list.
+    http.match('/api/household/mcp-tokens').forEach((request) => request.flush({ tokens: [] }));
+    http.verify();
+  });
 
   /** The page asks for the time zone list once, right after the first successful household load. */
   function flushZones(zones: string[] = ZONES): void {
@@ -858,6 +864,344 @@ describe('Foundation UI', () => {
         http.expectOne('/api/household/calendar-feed').flush({
           household: household({ calendarFeed: FEED_ON }), feedPath: '/calendar/SECRET/subscribed.ics',
         });
+      });
+    });
+
+    describe('MCP tokens', () => {
+      const TOKENS_URL = '/api/household/mcp-tokens';
+      const FIRST: McpToken = { id: 'tok1', name: 'Laptop', createdAt: '2026-11-10T09:00:00Z', lastUsedAt: '2026-11-15T10:00:00Z' };
+      const SECOND: McpToken = { id: 'tok2', name: 'Phone', createdAt: '2026-11-12T09:00:00Z', lastUsedAt: null };
+      const SECRET = 'mcp_SECRET_VALUE_1234';
+
+      async function openMcp(tokens: McpToken[] | null = [FIRST, SECOND], over: Partial<Household> = {}) {
+        session.current.set({ state: 'member', user: { displayName: 'Synthetic' }, expiresAt: '' });
+        const harness = await RouterTestingHarness.create();
+        const page = await harness.navigateByUrl('/household', FoundationPage);
+        http.expectOne('/api/household').flush({ id: 'household-default', name: 'Before', version: 1, ...zoneFields, members: [], ...over });
+        flushZones();
+        const panel = await mounted(harness);
+        // null leaves the list request pending, for the loading and failure states.
+        if (tokens !== null) http.expectOne(TOKENS_URL).flush({ tokens });
+        harness.detectChanges();
+        await harness.fixture.whenStable();
+        return { harness, page, panel };
+      }
+
+      const panelOf = (harness: Harness) =>
+        harness.fixture.debugElement.query(By.directive(McpTokensPanel))?.componentInstance as McpTokensPanel | undefined;
+
+      /** The panel is its own lazy chunk: it appears, and asks for the list, a moment after the household arrives. */
+      async function mounted(harness: Harness): Promise<McpTokensPanel> {
+        await vi.waitFor(() => {
+          harness.detectChanges();
+          expect(panelOf(harness)).toBeTruthy();
+        });
+        harness.detectChanges();
+        await harness.fixture.whenStable();
+        return panelOf(harness) as McpTokensPanel;
+      }
+
+      const section = (harness: Harness) => q(harness, '[aria-labelledby="mcp-heading"]') as HTMLElement;
+      const rowsOf = (harness: Harness) => Array.from(root(harness).querySelectorAll('[data-mcp-token]')) as HTMLElement[];
+      const plain = (value: string | null | undefined) => (value ?? '').replace(/[\u00a0\u202f]/gu, ' ').replace(/\s+/gu, ' ').trim();
+
+      /** Types into the name field the way a member does, so the form model and the view stay in step. */
+      function typeName(harness: Harness, value: string) {
+        const input = q<HTMLInputElement>(harness, '#mcp-name') as HTMLInputElement;
+        input.value = value;
+        input.dispatchEvent(new Event('input'));
+        harness.detectChanges();
+      }
+
+      async function create(harness: Harness, panel: McpTokensPanel, name = 'Desktop', secret = SECRET, version = 2) {
+        typeName(harness, name);
+        panel.createMcpToken();
+        const request = http.expectOne(TOKENS_URL);
+        expect(request.request.method).toBe('POST');
+        request.flush({
+          household: household({ version }),
+          token: { id: 'tok3', name, createdAt: '2026-11-20T08:00:00Z', lastUsedAt: null },
+          secret,
+        }, { status: 201, statusText: 'Created' });
+        harness.detectChanges();
+        await harness.fixture.whenStable();
+      }
+
+      it('lists the tokens with name, created date and last used or never used, and no secret', async () => {
+        const { harness } = await openMcp();
+        expect(q(harness, '#mcp-heading')?.textContent?.trim()).toBe(en['household.mcpHeading']);
+        const rows = rowsOf(harness);
+        expect(rows).toHaveLength(2);
+        expect(plain(rows[0].textContent)).toContain('Laptop');
+        expect(plain(rows[0].textContent)).toContain('Created 10 Nov 2026');
+        expect(plain(rows[0].textContent)).toContain('Last used 15 Nov 2026');
+        expect(plain(rows[1].textContent)).toContain('Phone');
+        expect(plain(rows[1].textContent)).toContain(en['household.mcpNeverUsed']);
+        expect(rows[0].querySelector('[data-mcp-revoke]')?.textContent?.trim()).toBe(en['household.mcpRevoke']);
+        expect(q(harness, '#mcp-secret-block')).toBeNull();
+      });
+
+      it('shows the empty state when there are no tokens', async () => {
+        const { harness } = await openMcp([]);
+        expect(q(harness, '#mcp-empty')?.textContent).toContain(en['household.mcpEmpty']);
+        expect(rowsOf(harness)).toHaveLength(0);
+      });
+
+      it('shows the loading skeleton and a retry for a failed list', async () => {
+        const { harness, panel } = await openMcp(null);
+        expect(section(harness).querySelector('app-skeleton-block')).toBeTruthy();
+        expect(section(harness).textContent).toContain(en['household.mcpLoading']);
+        http.expectOne(TOKENS_URL).flush({}, { status: 503, statusText: 'Unavailable' });
+        harness.detectChanges();
+        expect(section(harness).textContent).toContain(en['household.mcpLoadFailed']);
+        expect(section(harness).querySelector('app-skeleton-block')).toBeNull();
+        click(harness, '#mcp-retry');
+        http.expectOne(TOKENS_URL).flush({ tokens: [FIRST] });
+        harness.detectChanges();
+        expect(rowsOf(harness)).toHaveLength(1);
+        expect(panel.mcpLoadFailed()).toBe(false);
+      });
+
+      it('keeps Create off for an empty or blank name and shows the 64 character limit', async () => {
+        const { harness, panel } = await openMcp();
+        const button = q<HTMLButtonElement>(harness, '#mcp-create');
+        expect(button?.disabled).toBe(true);
+        expect(q<HTMLInputElement>(harness, '#mcp-name')?.maxLength).toBe(64);
+        expect(q(harness, '#mcp-name-hint')?.textContent).toContain('64');
+        typeName(harness, '   ');
+        expect(button?.disabled).toBe(true);
+        panel.createMcpToken();
+        http.expectNone(TOKENS_URL);
+        expect(panel.mcpError()).toEqual({ key: 'household.mcpNameInvalid' });
+        typeName(harness, 'Desktop');
+        expect(button?.disabled).toBe(false);
+      });
+
+      it('creates a token, shows it once with the URL and the claude mcp add example, and clears it on hide', async () => {
+        const { harness, page, panel } = await openMcp();
+        typeName(harness, '  Desktop  ');
+        click(harness, '#mcp-create');
+        await harness.fixture.whenStable();
+        const request = http.expectOne(TOKENS_URL);
+        expect(request.request.method).toBe('POST');
+        expect(request.request.headers.get('X-CSRF')).toBe('1');
+        expect(request.request.body).toEqual({ name: 'Desktop' });
+        request.flush({
+          household: household({ version: 2 }),
+          token: { id: 'tok3', name: 'Desktop', createdAt: '2026-11-20T08:00:00Z', lastUsedAt: null },
+          secret: SECRET,
+        }, { status: 201, statusText: 'Created' });
+        harness.detectChanges();
+        expect(q<HTMLInputElement>(harness, '#mcp-secret')?.value).toBe(SECRET);
+        expect(q(harness, '#mcp-secret-once')?.textContent).toContain(en['household.mcpSecretOnce']);
+        expect(q(harness, '#mcp-url')?.textContent?.trim()).toBe(`${location.origin}/mcp`);
+        expect(plain(q(harness, '#mcp-command')?.textContent)).toBe(
+          `claude mcp add --transport http subscribed ${location.origin}/mcp --header "Authorization: Bearer ${SECRET}"`);
+        expect(rowsOf(harness)).toHaveLength(3);
+        expect(plain(rowsOf(harness)[2].textContent)).toContain('Desktop');
+        await harness.fixture.whenStable();
+        expect(q<HTMLInputElement>(harness, '#mcp-name')?.value).toBe('');
+        // The list state never holds the secret.
+        expect(JSON.stringify(panel.mcpTokens())).not.toContain('SECRET');
+        expect(JSON.stringify(page.household())).not.toContain('SECRET');
+
+        click(harness, '#mcp-hide');
+        expect(q(harness, '#mcp-secret-block')).toBeNull();
+        expect(panel.mcpSecret()).toBeNull();
+        expect(root(harness).textContent).not.toContain(SECRET);
+      });
+
+      it('has no token in the list after a reload', async () => {
+        const { harness, panel } = await openMcp();
+        await create(harness, panel);
+        expect(root(harness).textContent).toContain(SECRET);
+        await harness.navigateByUrl('/');
+        http.expectOne('/api/subscriptions?period=year-2026').flush({ asOf: '2026-11-13', period: { key: 'year-2026', from: '2026-01-01', to: '2026-12-31', months: 12 }, subscriptions: [], totals: [] });
+        flushPeriods(http);
+        await harness.navigateByUrl('/household', FoundationPage);
+        http.expectOne('/api/household').flush(household({ version: 2 }));
+        http.expectOne('/api/household/time-zones').flush({ timeZones: ZONES });
+        const reopened = await mounted(harness);
+        http.expectOne(TOKENS_URL).flush({ tokens: [FIRST, SECOND, { id: 'tok3', name: 'Desktop', createdAt: '2026-11-20T08:00:00Z', lastUsedAt: null }] });
+        harness.detectChanges();
+        expect(reopened.mcpSecret()).toBeNull();
+        expect(root(harness).textContent).not.toContain(SECRET);
+        expect(rowsOf(harness)).toHaveLength(3);
+      });
+
+      it('copies the token and falls back to a selected field when the clipboard is unavailable', async () => {
+        const { harness, panel } = await openMcp();
+        await create(harness, panel);
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { clipboard: { writeText } });
+        try {
+          const input = q<HTMLInputElement>(harness, '#mcp-secret') as HTMLInputElement;
+          await panel.copyMcpSecret(input);
+          harness.detectChanges();
+          expect(writeText).toHaveBeenCalledWith(SECRET);
+          expect(root(harness).textContent).toContain(en['household.mcpCopied']);
+          writeText.mockRejectedValue(new Error('Unavailable'));
+          await panel.copyMcpSecret(input);
+          harness.detectChanges();
+          expect(root(harness).textContent).toContain(en['household.mcpCopyUnavailable']);
+          expect(input.selectionEnd).toBe(SECRET.length);
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      });
+
+      it('asks to confirm, then calls DELETE, removes the row and confirms', async () => {
+        const { harness, page } = await openMcp();
+        rowsOf(harness)[0].querySelector<HTMLButtonElement>('[data-mcp-revoke]')?.click();
+        harness.detectChanges();
+        expect(q(harness, '[data-mcp-revoke-confirm]')?.textContent).toContain('Laptop');
+        http.expectNone(`${TOKENS_URL}/tok1`);
+        click(harness, '[data-mcp-revoke-yes]');
+        const request = http.expectOne(`${TOKENS_URL}/tok1`);
+        expect(request.request.method).toBe('DELETE');
+        expect(request.request.headers.get('X-CSRF')).toBe('1');
+        request.flush({ household: household({ version: 2 }) });
+        harness.detectChanges();
+        expect(rowsOf(harness)).toHaveLength(1);
+        expect(plain(rowsOf(harness)[0].textContent)).toContain('Phone');
+        expect(q(harness, '#mcp-revoked')?.textContent).toContain(en['household.mcpRevoked']);
+        expect(page.household()?.version).toBe(2);
+      });
+
+      it('sends nothing when the revoke is cancelled', async () => {
+        const { harness } = await openMcp();
+        rowsOf(harness)[0].querySelector<HTMLButtonElement>('[data-mcp-revoke]')?.click();
+        harness.detectChanges();
+        click(harness, '[data-mcp-revoke-no]');
+        expect(q(harness, '[data-mcp-revoke-confirm]')).toBeNull();
+        expect(rowsOf(harness)).toHaveLength(2);
+      });
+
+      it('drops the one-time token when that token is revoked', async () => {
+        const { harness, panel } = await openMcp();
+        await create(harness, panel);
+        rowsOf(harness)[2].querySelector<HTMLButtonElement>('[data-mcp-revoke]')?.click();
+        harness.detectChanges();
+        click(harness, '[data-mcp-revoke-yes]');
+        http.expectOne(`${TOKENS_URL}/tok3`).flush({ household: household({ version: 3 }) });
+        harness.detectChanges();
+        expect(panel.mcpSecret()).toBeNull();
+        expect(q(harness, '#mcp-secret-block')).toBeNull();
+      });
+
+      it('sends the new version in If-Match for a rename right after a create', async () => {
+        const { harness, page, panel } = await openMcp();
+        await create(harness, panel, 'Desktop', SECRET, 7);
+        expect(page.household()?.version).toBe(7);
+        page.name = 'Renamed';
+        page.save();
+        const rename = http.expectOne('/api/household/name');
+        expect(rename.request.headers.get('If-Match')).toBe('"7"');
+        rename.flush(household({ version: 8, name: 'Renamed' }));
+      });
+
+      it('sends the new version in If-Match for a rename right after a revoke', async () => {
+        const { harness, page } = await openMcp();
+        rowsOf(harness)[1].querySelector<HTMLButtonElement>('[data-mcp-revoke]')?.click();
+        harness.detectChanges();
+        click(harness, '[data-mcp-revoke-yes]');
+        http.expectOne(`${TOKENS_URL}/tok2`).flush({ household: household({ version: 9 }) });
+        harness.detectChanges();
+        page.name = 'Renamed';
+        page.save();
+        const rename = http.expectOne('/api/household/name');
+        expect(rename.request.headers.get('If-Match')).toBe('"9"');
+        rename.flush(household({ version: 10, name: 'Renamed' }));
+      });
+
+      it('shows a name message for a 400, a limit message for too many tokens and a reference for other failures', async () => {
+        const { harness, panel } = await openMcp();
+        const fail = (status: number, body: object) => {
+          typeName(harness, 'Desktop');
+          panel.createMcpToken();
+          http.expectOne(TOKENS_URL).flush(body, { status, statusText: 'Failure' });
+          harness.detectChanges();
+          return plain(q(harness, '#mcp-error')?.textContent);
+        };
+        expect(fail(400, { type: 'urn:subscribed:problem:validation-failed', errors: { name: ['x'] } }))
+          .toBe(en['household.mcpNameInvalid']);
+        expect(q(harness, '#mcp-name')?.getAttribute('aria-invalid')).toBe('true');
+        expect(fail(409, { type: 'urn:subscribed:problem:too-many-tokens', traceId: 'trace-1' }))
+          .toContain(en['household.mcpTooMany']);
+        expect(fail(409, { type: 'urn:subscribed:problem:mcp-disabled' })).toBe(en['household.mcpDisabled']);
+        const generic = fail(500, { type: 'urn:subscribed:problem:internal-error', traceId: 'trace-xyz' });
+        expect(generic).toContain(en['household.mcpFailed']);
+        expect(generic).toContain('trace-xyz');
+        expect(panel.mcpBusy()).toBe(false);
+        expect(panel.mcpSecret()).toBeNull();
+        expect(rowsOf(harness)).toHaveLength(2);
+      });
+
+      it('shows a failure with the trace id when a revoke fails and keeps the row', async () => {
+        const { harness } = await openMcp();
+        rowsOf(harness)[0].querySelector<HTMLButtonElement>('[data-mcp-revoke]')?.click();
+        harness.detectChanges();
+        click(harness, '[data-mcp-revoke-yes]');
+        http.expectOne(`${TOKENS_URL}/tok1`).flush({ traceId: 'trace-rev' }, { status: 500, statusText: 'Failure' });
+        harness.detectChanges();
+        expect(plain(q(harness, '#mcp-error')?.textContent)).toContain(en['household.mcpFailed']);
+        expect(plain(q(harness, '#mcp-error')?.textContent)).toContain('trace-rev');
+        expect(rowsOf(harness)).toHaveLength(2);
+      });
+
+      it('ignores a second create while one is in flight', async () => {
+        const { harness, panel } = await openMcp();
+        typeName(harness, 'Desktop');
+        panel.createMcpToken();
+        panel.createMcpToken();
+        http.expectOne(TOKENS_URL).flush({}, { status: 500, statusText: 'Failure' });
+      });
+
+      it('clears the one-time token when the component is destroyed', async () => {
+        const { harness, panel } = await openMcp();
+        await create(harness, panel);
+        expect(panel.mcpSecret()).not.toBeNull();
+        harness.fixture.destroy();
+        expect(panel.mcpSecret()).toBeNull();
+      });
+
+      it('clears the one-time token when the member leaves the member state', async () => {
+        const { harness, panel } = await openMcp();
+        await create(harness, panel);
+        session.current.set({ state: 'anonymous' });
+        harness.detectChanges();
+        await harness.fixture.whenStable();
+        expect(panel.mcpSecret()).toBeNull();
+      });
+
+      it('renders the section in Danish without English application copy', async () => {
+        const { harness, panel } = await openMcp();
+        await create(harness, panel);
+        TestBed.inject(LanguageService).setLanguage('da');
+        harness.detectChanges();
+        const text = plain(section(harness).textContent);
+        for (const key of ['household.mcpHeading', 'household.mcpIntro', 'household.mcpCreate', 'household.mcpSecretOnce',
+          'household.mcpListHeading', 'household.mcpNeverUsed', 'household.mcpRevoke', 'household.mcpHide'] as const) {
+          expect(text, key).toContain(da[key]);
+        }
+        expect(text).toContain('Oprettet 10. nov. 2026');
+        expect(text).toContain('Sidst brugt 15. nov. 2026');
+        expect(da['household.mcpHeading']).toBe('MCP-tokens');
+        expect(da['household.mcpCreate']).toBe('Opret token');
+        expect(da['household.mcpRevoke']).toBe('Træk token tilbage');
+        for (const key of ['household.mcpHeading', 'household.mcpIntro', 'household.mcpCreate', 'household.mcpSecretOnce',
+          'household.mcpNeverUsed', 'household.mcpRevoke', 'household.mcpHide'] as const) {
+          expect(text, key).not.toContain(en[key]);
+        }
+      });
+
+      it('has a Danish string for every household.mcp key', () => {
+        const keys = Object.keys(en).filter((key) => key.startsWith('household.mcp'));
+        expect(keys.length).toBeGreaterThan(25);
+        for (const key of keys) {
+          expect(da[key as keyof typeof da], key).toBeTruthy();
+          expect(da[key as keyof typeof da], key).not.toBe(en[key as keyof typeof en]);
+        }
       });
     });
 

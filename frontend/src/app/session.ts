@@ -31,6 +31,30 @@ export interface Household {
   members: { memberId: string; displayLabel: string; grantedAt: string }[];
 }
 
+/** One of the signed-in member's MCP tokens. The list never carries the secret. */
+export interface McpToken {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** The create response: the updated household (fresh version for If-Match), the token and its one-time secret. */
+export interface McpTokenCreated {
+  household: Household;
+  token: McpToken;
+  secret: string;
+}
+
+export interface McpTokenRevoked {
+  household: Household;
+}
+
+export function validMcpTokenName(name: string): boolean {
+  const trimmed = name.trim();
+  return trimmed.length >= 1 && trimmed.length <= 64 && !containsControlCharacters(name);
+}
+
 function isSessionResponse(value: unknown): value is Session {
   if (!value || typeof value !== 'object' || !('state' in value)) return false;
   if (value.state === 'anonymous') return true;

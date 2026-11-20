@@ -234,6 +234,12 @@ describe('Theme selector', () => {
       calendarFeed: { enabled: false, rotatedAt: null }, members: [],
     });
     http.expectOne('/api/household/time-zones').flush({ timeZones: ['UTC'] });
+    // The tokens panel is a lazy chunk; its list request follows once it has mounted.
+    const tokens = await vi.waitFor(() => {
+      fixture.detectChanges();
+      return http.expectOne('/api/household/mcp-tokens');
+    });
+    tokens.flush({ tokens: [] });
     await fixture.whenStable();
     const router = TestBed.inject(Router);
     const navigate = vi.spyOn(router, 'navigateByUrl');

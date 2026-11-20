@@ -116,7 +116,7 @@ describe('Language preferences', () => {
 });
 
 // Words that are legitimately identical in Danish and English.
-const SAME_IN_DANISH = new Set<MessageKey>(['shell.menu', 'shell.footer.version']);
+const SAME_IN_DANISH = new Set<MessageKey>(['shell.menu', 'shell.footer.version', 'detail.viaMcp']);
 
 describe('Translation catalogs', () => {
   it('keeps keys and parameters aligned, with complete non-empty translations', () => {

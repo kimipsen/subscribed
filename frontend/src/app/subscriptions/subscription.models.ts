@@ -55,6 +55,8 @@ export interface PausePeriod {
   id: string;
   pauseDate: string;
   resumeDate: string | null;
+  /** `mcp` when the latest write to this pause came through MCP; null or absent for the web and for rows older than MCP. */
+  via?: 'mcp' | null;
 }
 
 /** Body of POST /pauses and PUT /pauses/{periodId}: `yyyy-MM-dd` strings, an explicit null `resumeDate` for an open pause. */
@@ -106,6 +108,8 @@ export interface HistoryEntry {
   current: boolean;
   upcoming: boolean;
   paymentOptionId: string | null;
+  /** `mcp` when the latest write to this price entry came through MCP; null or absent otherwise. */
+  via?: 'mcp' | null;
 }
 
 export interface SubscriptionDetail {

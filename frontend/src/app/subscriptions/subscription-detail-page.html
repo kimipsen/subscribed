@@ -99,6 +99,7 @@
                   <th scope="row">
                     @if (row.effectiveTo) { {{ 'detail.periodClosed' | t: { from: date(row.effectiveFrom), to: date(row.effectiveTo) } }} }
                     @else { {{ 'detail.periodOpen' | t: { from: date(row.effectiveFrom) } }} }
+                    @if (row.via === 'mcp') { <span class="badge badge-neutral" data-via-mcp>{{ 'detail.viaMcp' | t }}</span> }
                     @if (row.initial) { <span class="text-base-content/70" data-history-note>{{ 'detail.initialPrice' | t }}</span> }
                     @if (row.current) { <app-status-badge status="current">{{ 'detail.badge.current' | t }}</app-status-badge> }
                     @if (row.upcoming) { <app-status-badge status="upcoming">{{ 'detail.badge.upcoming' | t }}</app-status-badge> }
@@ -226,7 +227,10 @@
               <tbody>
                 @for (row of pauses(); track row.id) {
                   <tr>
-                    <th scope="row">{{ date(row.pauseDate) }}</th>
+                    <th scope="row">
+                      {{ date(row.pauseDate) }}
+                      @if (row.via === 'mcp') { <span class="badge badge-neutral" data-via-mcp>{{ 'detail.viaMcp' | t }}</span> }
+                    </th>
                     <td>@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</td>
                     <td>
                       <div class="flex flex-wrap gap-2">
