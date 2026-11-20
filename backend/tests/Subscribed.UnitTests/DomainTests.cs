@@ -229,6 +229,8 @@ public sealed class DomainTests
     [InlineData(HouseholdEventTypes.TimeZoneChanged, typeof(HouseholdTimeZoneChanged))]
     [InlineData(HouseholdEventTypes.CalendarFeedRotated, typeof(HouseholdCalendarFeedRotated))]
     [InlineData(HouseholdEventTypes.CalendarFeedRevoked, typeof(HouseholdCalendarFeedRevoked))]
+    [InlineData(HouseholdEventTypes.McpTokenCreated, typeof(HouseholdMcpTokenCreated))]
+    [InlineData(HouseholdEventTypes.McpTokenRevoked, typeof(HouseholdMcpTokenRevoked))]
     public void AC6_golden_fixtures_deserialize_and_round_trip(string alias, Type type)
     {
         var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "events", alias + ".json")).Trim();
@@ -274,7 +276,10 @@ public sealed class DomainTests
     {
         foreach (var type in HouseholdEventTypes.ByAlias.Values)
         {
-            Assert.DoesNotContain(type.GetProperties(), p => p.Name.Contains("Email", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("Token", StringComparison.OrdinalIgnoreCase));
+            // TokenId is the public identifier of an MCP token; the secret is never a field (only SecretHash).
+            Assert.DoesNotContain(type.GetProperties(), p => p.Name.Contains("Email", StringComparison.OrdinalIgnoreCase)
+                || (p.Name.Contains("Token", StringComparison.OrdinalIgnoreCase) && p.Name != "TokenId"));
+            Assert.DoesNotContain(type.GetProperties(), p => p.Name is "Secret" or "RawSecret" or "Token");
         }
     }
 }

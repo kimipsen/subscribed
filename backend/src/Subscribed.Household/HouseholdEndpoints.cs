@@ -58,6 +58,7 @@ public static class HouseholdEndpoints
         group.MapPost("/calendar-feed", RotateCalendarFeedAsync);
         group.MapDelete("/calendar-feed", RevokeCalendarFeedAsync);
         group.MapPut("/members/{memberId}/label", ChangeMemberLabelAsync);
+        endpoints.MapMcpTokenEndpoints();
         return endpoints;
     }
 
@@ -228,7 +229,7 @@ public static class HouseholdEndpoints
         }).ConfigureAwait(false);
     }
 
-    private static IResult Ok(HttpContext context, HouseholdView updated)
+    internal static IResult Ok(HttpContext context, HouseholdView updated)
     {
         context.Response.Headers.ETag = ETag(updated.Version);
         context.Response.Headers.CacheControl = "no-store";
@@ -263,11 +264,17 @@ public static class HouseholdEndpoints
         }
         catch (EventStoreException ex) when (ex.Failure.Kind == EventStoreFailureKind.ConcurrencyConflict)
         {
-            SecurityLog.Info(loggers.CreateLogger(SecurityEvents.Category), SecurityEvents.ConcurrencyConflict, memberId);
-            var current = await service.GetViewAsync(context.RequestAborted).ConfigureAwait(false);
-            return Problem.Result(412, ProblemCodes.ConcurrencyConflict, "The household was changed by someone else.",
-                new Dictionary<string, object?> { ["currentVersion"] = current?.Version ?? HouseholdMembership.ViewFor(context).Version });
+            return await ConflictProblemAsync(context, service, loggers, memberId).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>The 412 for a stale or conflicting household write, with the current version so the client can re-read.</summary>
+    internal static async Task<IResult> ConflictProblemAsync(HttpContext context, HouseholdService service, ILoggerFactory loggers, string memberId)
+    {
+        SecurityLog.Info(loggers.CreateLogger(SecurityEvents.Category), SecurityEvents.ConcurrencyConflict, memberId);
+        var current = await service.GetViewAsync(context.RequestAborted).ConfigureAwait(false);
+        return Problem.Result(412, ProblemCodes.ConcurrencyConflict, "The household was changed by someone else.",
+            new Dictionary<string, object?> { ["currentVersion"] = current?.Version ?? HouseholdMembership.ViewFor(context).Version });
     }
 
     public static string ETag(long version) => $"\"{version.ToString(CultureInfo.InvariantCulture)}\"";
@@ -280,11 +287,11 @@ public static class HouseholdEndpoints
             && long.TryParse(v.AsSpan(1, v.Length - 2), NumberStyles.None, CultureInfo.InvariantCulture, out version);
     }
 
-    private static IResult ValidationProblem(string field, string message) =>
+    internal static IResult ValidationProblem(string field, string message) =>
         Problem.Result(400, ProblemCodes.ValidationFailed, "Validation failed",
             new Dictionary<string, object?> { ["errors"] = new Dictionary<string, string[]> { [JsonNamingPolicy.CamelCase.ConvertName(field)] = [message] } });
 
-    private static async Task<(T? Request, IResult? Error)> ReadBodyAsync<T>(HttpContext context, string field, string message)
+    internal static async Task<(T? Request, IResult? Error)> ReadBodyAsync<T>(HttpContext context, string field, string message)
         where T : class
     {
         if (context.Request.ContentLength > MaxBodyBytes)

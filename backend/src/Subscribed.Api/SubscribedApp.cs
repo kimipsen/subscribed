@@ -85,6 +85,11 @@ public static class SubscribedApp
         services.TryAddSingletonTimeProvider();
         services.AddSingleton<IDocumentStore>(_ => SubscribedStore.Create(settings.AppConnectionString, settings.Schema, StoreRole.App, Modules));
         services.AddSingleton<HouseholdService>();
+        // Test seams are registered with TryAdd so a test override (added before Build) wins; a plain AddSingleton would beat it.
+        services.TryAddSingleton<IHouseholdViewReader>(sp => sp.GetRequiredService<HouseholdService>());
+        services.TryAddSingleton<IMcpTokenUseStore, MartenMcpTokenUseStore>();
+        services.TryAddSingleton<McpTokenUseTracker>();
+        services.TryAddSingleton(new McpOptions(builder.Configuration.GetValue("Mcp:Enabled", true)));
         services.TryAddSingleton<ITimeZoneSource, SystemTimeZoneSource>();
         services.TryAddSingleton(sp => CatalogLoader.LoadEmbedded(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<SubscriptionService>();
@@ -128,6 +133,22 @@ public static class SubscribedApp
         {
             HouseholdLog.TimeZoneDataMissing(app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(HouseholdLog.Category));
         }
+
+        // No last-used touch may run against a disposed Marten store: drain them on shutdown, bounded by the touch timeout.
+        var tracker = app.Services.GetRequiredService<McpTokenUseTracker>();
+        var time = app.Services.GetRequiredService<TimeProvider>();
+        app.Lifetime.ApplicationStopping.Register(() =>
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(McpTokenUseTracker.Timeout, time);
+                tracker.FlushAsync(cts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                // Bounded wait: a stuck touch must not hold up shutdown.
+            }
+        });
 
         ConfigurePipeline(app, settings);
         return app;

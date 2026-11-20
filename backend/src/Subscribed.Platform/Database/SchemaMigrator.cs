@@ -13,9 +13,9 @@ namespace Subscribed.Platform.Database;
 /// </summary>
 public static class SchemaVersion
 {
-    public const int Current = 3;
+    public const int Current = 4;
 
-    public const string Description = "subscriptions: subscription view document; payment options: payment option view document";
+    public const string Description = "subscriptions: subscription view document; payment options: payment option view document; household: MCP token last-used document";
 
     public const string Table = "schema_migrations";
 }

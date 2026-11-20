@@ -6,15 +6,41 @@ using Subscribed.Platform.EventStore;
 namespace Subscribed.Household;
 
 /// <summary>Who caused a write; stored as event headers. Never contains claims beyond a member id.</summary>
-public sealed record WriteContext(string Actor, string? CorrelationId)
+public sealed record WriteContext(string Actor, string? CorrelationId, string? Source = null, string? TokenId = null)
 {
     public const string AdminCli = "admin-cli";
 
+    /// <summary>The <see cref="Source"/> of a write made through the MCP endpoint. Web writes carry no source.</summary>
+    public const string McpSource = "mcp";
+
     public static WriteContext Member(string memberId, string? correlationId) => new($"member:{memberId}", correlationId);
+
+    /// <summary>A write made through an MCP token. The actor stays the member that owns the token.</summary>
+    public static WriteContext Mcp(string memberId, string tokenId, string? correlationId) =>
+        new($"member:{memberId}", correlationId, McpSource, tokenId);
+}
+
+/// <summary>A token as shown to its owner. Never carries the secret or its hash.</summary>
+public sealed record McpTokenSummary(string Id, string Name, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
+
+/// <summary>Reads the current household view (one uncached primary-key read). A named seam so tests can inject failures.</summary>
+public interface IHouseholdViewReader
+{
+    Task<HouseholdView?> GetAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Test seam: called between the aggregate load and the append of a write that has events to append. No hook is registered in
+/// production. A test hook commits a competing event here to force a <c>ConcurrencyConflict</c> deterministically.
+/// </summary>
+public interface IHouseholdWriteHook
+{
+    Task OnLoadedAsync(long loadedVersion, CancellationToken ct);
 }
 
 /// <summary>Household commands and queries (the module's only public surface besides endpoints).</summary>
-public sealed class HouseholdService(IDocumentStore store, TimeProvider time, ILogger<HouseholdService>? logger = null)
+public sealed class HouseholdService(IDocumentStore store, TimeProvider time, ILogger<HouseholdService>? logger = null, IHouseholdWriteHook? hook = null)
+    : IHouseholdViewReader
 {
     public const string StreamId = Domain.Household.DefaultStreamId;
 
@@ -25,6 +51,8 @@ public sealed class HouseholdService(IDocumentStore store, TimeProvider time, IL
             await using var session = store.QuerySession();
             return await session.LoadAsync<HouseholdView>(StreamId, ct).ConfigureAwait(false);
         });
+
+    Task<HouseholdView?> IHouseholdViewReader.GetAsync(CancellationToken ct) => GetViewAsync(ct);
 
     /// <summary>Rehydrates the aggregate from its events (never from the view).</summary>
     public Task<Domain.Household> LoadAggregateAsync(CancellationToken ct = default) =>
@@ -76,6 +104,55 @@ public sealed class HouseholdService(IDocumentStore store, TimeProvider time, IL
         return (view, secret);
     }
 
+    /// <summary>
+    /// Creates a named MCP token for the member. The raw secret exists only in this method and the returned tuple (only its hash is
+    /// appended) and is never logged. On a <c>ConcurrencyConflict</c> the whole decision (cap, name, member) is re-run once on freshly
+    /// loaded state with the same secret; a second conflict is surfaced and nothing is appended.
+    /// </summary>
+    public async Task<(HouseholdView View, McpTokenSummary Token, string Secret)> CreateMcpTokenAsync(string memberId, string? name, WriteContext context, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(memberId);
+        ArgumentNullException.ThrowIfNull(context);
+        var secret = McpTokenSecrets.Create();
+        var hash = McpTokenSecrets.Hash(secret);
+        var tokenId = McpTokenSecrets.NewTokenId();
+        var view = await RetryOnceOnConflictAsync(() => WriteAsync(null, h => h.CreateMcpToken(memberId, name, hash, tokenId, time.GetUtcNow()), context, ct)).ConfigureAwait(false);
+        var created = view.McpTokens.FirstOrDefault(t => t.TokenId == tokenId)
+            ?? throw new InvalidOperationException("The MCP token is missing from the view after the write.");
+        if (logger is not null)
+        {
+            HouseholdLog.McpTokenCreated(logger, tokenId);
+        }
+
+        return (view, new McpTokenSummary(created.TokenId, created.Name, created.CreatedAt, null), secret);
+    }
+
+    /// <summary>Revokes one of the member's own tokens (<c>token-not-found</c> otherwise). Retries once on a conflict like create.</summary>
+    public async Task<HouseholdView> RevokeMcpTokenAsync(string memberId, string tokenId, WriteContext context, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(memberId);
+        ArgumentNullException.ThrowIfNull(context);
+        var view = await RetryOnceOnConflictAsync(() => WriteAsync(null, h => h.RevokeMcpToken(memberId, tokenId, time.GetUtcNow()), context, ct)).ConfigureAwait(false);
+        if (logger is not null)
+        {
+            HouseholdLog.McpTokenRevoked(logger, tokenId);
+        }
+
+        return view;
+    }
+
+    private static async Task<HouseholdView> RetryOnceOnConflictAsync(Func<Task<HouseholdView>> write)
+    {
+        try
+        {
+            return await write().ConfigureAwait(false);
+        }
+        catch (EventStoreException ex) when (ex.Failure.Kind == EventStoreFailureKind.ConcurrencyConflict)
+        {
+            return await write().ConfigureAwait(false);
+        }
+    }
+
     /// <summary>Revokes the calendar feed link. Revoking when no feed is active writes nothing.</summary>
     public async Task<HouseholdView> RevokeCalendarFeedAsync(long expectedVersion, WriteContext context, CancellationToken ct = default)
     {
@@ -105,6 +182,11 @@ public sealed class HouseholdService(IDocumentStore store, TimeProvider time, IL
             var events = decide(household);
             if (events.Count > 0)
             {
+                if (hook is not null)
+                {
+                    await hook.OnLoadedAsync(household.Version, ct).ConfigureAwait(false);
+                }
+
                 session.SetHeader("actor", context.Actor);
                 if (!string.IsNullOrEmpty(context.CorrelationId))
                 {
