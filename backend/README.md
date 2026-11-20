@@ -77,7 +77,7 @@ creates the table, records version 3 and re-applies `grants.sql`, and readiness 
 | `src/Subscribed.Platform` | `SubscribedStore` (only Marten configuration), `EventStoreErrors.Map` (only library-aware error code), `Database/grants.sql` (embedded, single source), `SchemaMigrator` + `SchemaVersion`, `ReadinessProbe`, `MartenXmlRepository` (DP keys), RFC 9457 `Problem`, `MemberIdentity`, `SecurityLog` |
 | `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler; the household time zone (`TimeZoneIds`, `ITimeZoneSource`) and the calendar feed secret (`CalendarFeedSecrets`) |
 | `src/Subscribed.Subscriptions` | sixteen `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, period totals, with exact rational arithmetic), `ReportPeriod`, `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints; `PaymentOptions/` holds the three `payment_option.*.v1` events, `PaymentOptionState`, `PaymentOptionDecisions`, `PaymentOptionService`, its rebuilder and the `/api/payment-options` endpoints; `Calendar/` holds the iCal feed builder (`CalendarFeedBuilder`, `IcsWriter`, `VTimeZoneWriter`, `CalendarFeedText`), see "Calendar reminders" |
-| `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli`, and `Calendar/CalendarEndpoints` (the anonymous `/calendar/{secret}/subscribed.ics` feed) |
+| `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli`, `Calendar/CalendarEndpoints` (the anonymous `/calendar/{secret}/subscribed.ics` feed) and `Mcp/` (the `McpBearer` scheme, the `/mcp` read tools, the tool wrapper, the 64 KB body cap and the content-free `McpLog`), see "MCP SDK spike" |
 | `tests/Subscribed.UnitTests` | invariants (AC7), golden event fixtures + unknown alias (AC6), validators, error map |
 | `tests/Subscribed.Persistence.Tests` | AC1–AC5, AC19, AC20 on PostgreSQL 18 as the least-privilege role |
 | `tests/Subscribed.Api.Tests` | HTTP tests on TestServer with the in-process stub IdP (AC8–AC15, AC12b, AC21), child-process startup tests (AC13), admin CLI |
@@ -536,6 +536,28 @@ another terminal, and browse port 4200. The local Keycloak client permits both
 callback origins. Existing realms are not re-imported: re-run
 `scripts/dev-keycloak-users.sh` to update their callback registrations (this also
 resets synthetic user passwords).
+
+## MCP SDK spike (issue #55, WP2)
+
+Outcome: **the official SDK path is kept** (no fallback to a hand-rolled JSON-RPC handler). The docs bead folds this section into
+the final MCP documentation. Everything below was observed against the running host in `Subscribed.Api.Tests` (`McpEndpointApiTests`),
+except where it says "not verified".
+
+| Item | Result |
+| --- | --- |
+| Package | `ModelContextProtocol.AspNetCore` **2.4.0**, pinned `[2.4.0]` in `Directory.Packages.props` and referenced from `Subscribed.Api.csproj` only. It resolves `ModelContextProtocol` **2.4.0** and `ModelContextProtocol.Core` **2.4.0** transitively. The `packages.lock.json` of `Subscribed.Api`, `Subscribed.Api.Tests` and `Subscribed.UnitTests` (the projects that reference `Api`) were regenerated. |
+| (a) Restore and build | `dotnet restore --locked-mode` and `dotnet build` succeed on `net11.0` with `CentralPackageTransitivePinningEnabled`, with `-warnaserror` analyzers on. |
+| (b) Transport and content type | `app.MapMcp("/mcp")` with `WithHttpTransport(o => o.Stateless = true)` works. `initialize`, `tools/list` and `tools/call` all answer **`200` with `Content-Type: text/event-stream`**: one `event: message` whose `data:` line is the JSON-RPC message, plus `Cache-Control: no-store, no-cache` and `X-Accel-Buffering: no`. Nothing may assume plain JSON; a notification (no `id`) answers `202`. The test client accepts both framings. No `Mcp-Session-Id` is ever sent. |
+| (c) Protocol negotiation | `initialize` returns the requested revision when it is supported (`2025-11-25`, `2025-06-18`, `2024-11-05`) and `2025-11-25` for an unsupported one. **Not verified here: MCP Inspector and Claude Code (`claude mcp add --transport http`)** were not run, because this build ran headless without those clients. The HTTP protocol exchange is covered by the tests; run both clients against a real deployment before announcing the feature. |
+| (d) `HttpContext` in tools | `IHttpContextAccessor.HttpContext` is available inside tool methods in stateless mode (it is the request that carries the bearer principal), so `McpCaller` reads the member, the token id and the household view from it. `AddHttpContextAccessor()` is registered explicitly. |
+| (e) Exceptions | The SDK does not swallow the body-cap exception: a chunked body over 64 KB is a `413` from the app's error boundary. For an exception thrown from a tool method the SDK answers `200` with `isError: true` and the text `An error occurred invoking '<tool>'.`, **but it logs the full exception, message and stack, at `Error` level** (category `ModelContextProtocol.Server.McpServer`); a missing or mistyped argument takes the same path. So (1) every tool body runs inside `McpToolRunner`, which catches everything itself and answers with the fixed `internal-error` body, and (2) `ConfigureLogging` raises the `ModelContextProtocol` category to `Critical`, so no SDK line carries an exception message or stack. The content-free `Subscribed.Mcp` lines replace them. |
+| (f) `Origin` | The SDK does **not** validate the `Origin` header (a request with a foreign `Origin` and a valid token succeeds). That is acceptable because `/mcp` accepts only a bearer token, never a cookie, and a browser cannot attach the token to a cross-site request; no CORS policy exists. |
+| (g) OAuth discovery after the `401` | Before the change `GET /.well-known/oauth-protected-resource` fell into the SPA fallback and answered the SPA HTML with `200`; a client that probes it would try to parse HTML as OAuth metadata. The host now answers a plain `404` problem for `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server` and `/register` (and their sub-paths). It is a clean "not here", not OAuth support. How the two clients react was not verified. |
+| (h) `GET` and `DELETE` | Stateless mode maps only `POST`. The host answers `GET /mcp` and `DELETE /mcp` with `401` without a valid token and `405` (`Allow: POST`) with one. Any other path under `/mcp` (and every method with `Mcp:Enabled=false`) is a `404` problem. |
+
+Decisions this spike fixes for the downstream beads: tool names are `snake_case`; tools return a `CallToolResult` with one JSON text block
+(camelCase, the web API's DTOs); domain errors are tool errors `{ code, title, errors?, currentVersion? }` with the web API's problem codes; an
+unclassified failure is `{ code: "internal-error", title: "The request failed.", traceId }`.
 
 ## Tests
 
