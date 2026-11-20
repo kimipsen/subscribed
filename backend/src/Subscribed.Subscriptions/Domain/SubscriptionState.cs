@@ -17,6 +17,9 @@ public sealed class PriceEntryState
     /// <summary>The payment option of this entry, or null. Snapshots written before this property existed read as null.</summary>
     public string? PaymentOptionId { get; set; }
 
+    /// <summary>The channel of the latest stamped event that wrote this entry (<c>"mcp"</c>), or null (D10).</summary>
+    public string? Via { get; set; }
+
     public Cadence Cadence => new(CadenceUnit, CadenceCount);
 }
 
@@ -40,11 +43,14 @@ public sealed class PausePeriodState
     /// <summary>The legacy <see cref="SubscriptionResumed.RecordedAt"/>.</summary>
     public DateTimeOffset? ResumedInstant { get; set; }
 
+    /// <summary>The channel of the latest stamped event that wrote this period (<c>"mcp"</c>), or null (D10).</summary>
+    public string? Via { get; set; }
+
     internal bool IsOpenLegacy => PauseDate is null && PausedInstant is not null && ResumedInstant is null;
 }
 
 /// <summary>A resolved pause period: <c>[PauseDate, ResumeDate)</c>, open when <paramref name="ResumeDate"/> is null.</summary>
-public sealed record PausePeriod(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate);
+public sealed record PausePeriod(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate, string? Via = null);
 
 /// <summary>
 /// The domain state and the Marten document (<c>subscription_view</c>) in one: a self-aggregating inline snapshot (D-12). Marten
@@ -125,6 +131,7 @@ public sealed class SubscriptionState
                     Amount = e.Amount,
                     CadenceUnit = e.CadenceUnit,
                     CadenceCount = e.CadenceCount,
+                    Via = e.Via,
                 },
             ],
         };
@@ -164,6 +171,7 @@ public sealed class SubscriptionState
             Amount = e.Amount,
             CadenceUnit = e.CadenceUnit,
             CadenceCount = e.CadenceCount,
+            Via = e.Via,
         });
     }
 
@@ -175,6 +183,7 @@ public sealed class SubscriptionState
         entry.Amount = e.Amount;
         entry.CadenceUnit = e.CadenceUnit;
         entry.CadenceCount = e.CadenceCount;
+        entry.Via = e.Via;
     }
 
     public void Apply(SubscriptionPriceEntryRemoved e)
@@ -253,7 +262,7 @@ public sealed class SubscriptionState
     public void Apply(SubscriptionPausePeriodAdded e)
     {
         ArgumentNullException.ThrowIfNull(e);
-        PausePeriods.Add(new PausePeriodState { PeriodId = e.PeriodId, PauseDate = e.PauseDate, ResumeDate = e.ResumeDate });
+        PausePeriods.Add(new PausePeriodState { PeriodId = e.PeriodId, PauseDate = e.PauseDate, ResumeDate = e.ResumeDate, Via = e.Via });
     }
 
     /// <summary>The explicit dates now win, so the legacy instants are cleared. An unknown id is a no-op.</summary>
@@ -267,6 +276,7 @@ public sealed class SubscriptionState
             period.ResumeDate = e.ResumeDate;
             period.PausedInstant = null;
             period.ResumedInstant = null;
+            period.Via = e.Via;
         }
     }
 
@@ -300,7 +310,7 @@ public sealed class SubscriptionState
                 continue;
             }
 
-            resolved.Add(new PausePeriod(p.PeriodId, pause.Value, resume));
+            resolved.Add(new PausePeriod(p.PeriodId, pause.Value, resume, p.Via));
         }
 
         return [.. resolved.OrderBy(p => p.PauseDate).ThenBy(p => p.PeriodId, StringComparer.Ordinal)];

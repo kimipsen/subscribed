@@ -249,12 +249,15 @@ public sealed class UnsubscribeUrlEventTests
     [Fact]
     public void New_events_put_the_field_after_recorded_at()
     {
-        foreach (var type in new[] { typeof(SubscriptionAdded), typeof(SubscriptionDetailsChanged) })
-        {
-            var names = type.GetConstructors().Single().GetParameters().Select(p => p.Name).ToList();
-            Assert.Equal("UnsubscribeUrl", names[^1]);
-            Assert.Equal("RecordedAt", names[^2]);
-        }
+        var details = typeof(SubscriptionDetailsChanged).GetConstructors().Single().GetParameters().Select(p => p.Name).ToList();
+        Assert.Equal("UnsubscribeUrl", details[^1]);
+        Assert.Equal("RecordedAt", details[^2]);
+
+        // SubscriptionAdded later gained the optional trailing Via (#55 WP3), after UnsubscribeUrl.
+        var added = typeof(SubscriptionAdded).GetConstructors().Single().GetParameters().Select(p => p.Name).ToList();
+        Assert.Equal("Via", added[^1]);
+        Assert.Equal("UnsubscribeUrl", added[^2]);
+        Assert.Equal("RecordedAt", added[^3]);
     }
 }
 

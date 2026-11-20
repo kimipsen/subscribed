@@ -118,7 +118,8 @@ public static class SubscribedApp
         {
             services.AddMcpServer()
                 .WithHttpTransport(o => o.Stateless = true)
-                .WithTools<SubscriptionReadTools>();
+                .WithTools<SubscriptionReadTools>()
+                .WithTools<SubscriptionWriteTools>();
         }
 
         services.AddScoped<IAuthorizationHandler, HouseholdMembership>();

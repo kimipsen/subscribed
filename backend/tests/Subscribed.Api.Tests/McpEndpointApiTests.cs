@@ -19,7 +19,7 @@ namespace Subscribed.Api.Tests;
 /// </summary>
 public sealed class McpEndpointApiTests(PostgresFixture pg)
 {
-    /// <summary>The planned read tool names. The write tool bead extends this to the full allowlist of 20.</summary>
+    /// <summary>The planned read tool names. The full allowlist of 20 adds the write tools (see <see cref="McpWriteToolsApiTests.AllToolNames"/>).</summary>
     internal static readonly string[] ReadToolNames =
     [
         "get_catalog", "get_payment_option_suggestions", "get_pauses", "get_price_history", "get_subscription",
@@ -66,7 +66,7 @@ public sealed class McpEndpointApiTests(PostgresFixture pg)
     // ---- tool list ----------------------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task A_valid_token_lists_exactly_the_planned_read_tools_all_read_only()
+    public async Task A_valid_token_lists_exactly_the_planned_tools_and_the_read_tools_are_read_only()
     {
         var s = await StartAsync();
         await using var host = s.Host;
@@ -75,8 +75,9 @@ public sealed class McpEndpointApiTests(PostgresFixture pg)
 
         Assert.Equal(HttpStatusCode.OK, reply.Status);
         var tools = reply.Result.GetProperty("tools").EnumerateArray().ToList();
-        Assert.Equal(ReadToolNames.Order(StringComparer.Ordinal), tools.Select(t => t.GetProperty("name").GetString()!).Order(StringComparer.Ordinal));
-        Assert.All(tools, t => Assert.True(t.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean()));
+        Assert.Equal(McpWriteToolsApiTests.AllToolNames.Order(StringComparer.Ordinal), tools.Select(t => t.GetProperty("name").GetString()!).Order(StringComparer.Ordinal));
+        Assert.All(tools.Where(t => ReadToolNames.Contains(t.GetProperty("name").GetString()!)), t => Assert.True(t.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean()));
+        Assert.All(tools.Where(t => !ReadToolNames.Contains(t.GetProperty("name").GetString()!)), t => Assert.False(t.GetProperty("annotations").GetProperty("readOnlyHint").GetBoolean()));
         Assert.Contains("version", tools.Single(t => t.GetProperty("name").GetString() == "get_subscription").GetProperty("description").GetString(), StringComparison.Ordinal);
     }
 

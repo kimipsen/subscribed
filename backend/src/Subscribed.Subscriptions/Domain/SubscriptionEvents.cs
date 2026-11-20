@@ -20,7 +20,11 @@ public sealed record SubscriptionAdded(
     string CadenceUnit,
     int CadenceCount,
     DateTimeOffset RecordedAt,
-    string? UnsubscribeUrl = null);
+    string? UnsubscribeUrl = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Via = null) : IViaStamped
+{
+    public object WithVia(string? via) => this with { Via = via };
+}
 
 /// <summary>
 /// Full replacement of the editable text details. <paramref name="UnsubscribeUrl"/> is the user-specified unsubscribe link (null
@@ -33,9 +37,15 @@ public sealed record SubscriptionCurrencyCorrected(string Currency, DateTimeOffs
 
 public sealed record SubscriptionPeriodChanged(DateOnly StartDate, DateOnly? EndDate, DateTimeOffset RecordedAt);
 
-public sealed record SubscriptionPriceEntryAdded(string EntryId, DateOnly EffectiveFrom, decimal Amount, string CadenceUnit, int CadenceCount, DateTimeOffset RecordedAt);
+public sealed record SubscriptionPriceEntryAdded(string EntryId, DateOnly EffectiveFrom, decimal Amount, string CadenceUnit, int CadenceCount, DateTimeOffset RecordedAt, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Via = null) : IViaStamped
+{
+    public object WithVia(string? via) => this with { Via = via };
+}
 
-public sealed record SubscriptionPriceEntryCorrected(string EntryId, DateOnly EffectiveFrom, decimal Amount, string CadenceUnit, int CadenceCount, DateTimeOffset RecordedAt);
+public sealed record SubscriptionPriceEntryCorrected(string EntryId, DateOnly EffectiveFrom, decimal Amount, string CadenceUnit, int CadenceCount, DateTimeOffset RecordedAt, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Via = null) : IViaStamped
+{
+    public object WithVia(string? via) => this with { Via = via };
+}
 
 public sealed record SubscriptionPriceEntryRemoved(string EntryId, DateTimeOffset RecordedAt);
 
@@ -50,10 +60,16 @@ public sealed record SubscriptionResumed(DateTimeOffset RecordedAt);
 /// charged again, or null while the period is open. The legacy <see cref="SubscriptionPaused"/> and <see cref="SubscriptionResumed"/>
 /// events stay replayable and are converted to periods when the state is resolved.
 /// </summary>
-public sealed record SubscriptionPausePeriodAdded(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate, DateTimeOffset RecordedAt);
+public sealed record SubscriptionPausePeriodAdded(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate, DateTimeOffset RecordedAt, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Via = null) : IViaStamped
+{
+    public object WithVia(string? via) => this with { Via = via };
+}
 
 /// <summary>Replaces both dates of one pause period. An unknown id is a no-op on replay.</summary>
-public sealed record SubscriptionPausePeriodChanged(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate, DateTimeOffset RecordedAt);
+public sealed record SubscriptionPausePeriodChanged(string PeriodId, DateOnly PauseDate, DateOnly? ResumeDate, DateTimeOffset RecordedAt, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Via = null) : IViaStamped
+{
+    public object WithVia(string? via) => this with { Via = via };
+}
 
 /// <summary>Removes one pause period. An unknown id is a no-op on replay.</summary>
 public sealed record SubscriptionPausePeriodRemoved(string PeriodId, DateTimeOffset RecordedAt);
@@ -70,6 +86,15 @@ public sealed record SubscriptionPriceEntryPaymentChanged(string EntryId, string
 /// clear a deadline.
 /// </summary>
 public sealed record SubscriptionCancelByChanged(DateTimeOffset? CancelBy, DateTimeOffset RecordedAt);
+
+/// <summary>
+/// An event that records which channel wrote it (<c>"mcp"</c>, or null for the web). The service stamps it once after the decide step,
+/// only for a write with a source. Via is always the value of the latest stamped event (rule D10), never carried forward.
+/// </summary>
+public interface IViaStamped
+{
+    object WithVia(string? via);
+}
 
 public sealed class UnknownSubscriptionEventAliasException(string alias)
     : Exception($"Unknown subscription event alias '{alias}'. Stored events are never skipped.")
