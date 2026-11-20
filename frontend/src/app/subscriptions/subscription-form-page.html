@@ -7,18 +7,18 @@
       <app-skeleton-block />
     } @else if (notFound()) {
       <p class="my-2" role="alert">{{ 'subscriptions.notFound' | t }}</p>
-      <a class="text-primary underline" routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
+      <a class="text-primary underline max-nav:inline-flex max-nav:min-h-11 max-nav:items-center" routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
     } @else if (loadFailed()) {
       <app-notice>
         <p class="m-0">{{ 'subscriptions.form.loadFailed' | t }}</p>
         @if (traceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
-        <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'common.retry' | t }}</button>
+        <button type="button" class="btn btn-sm btn-outline mt-2 max-nav:min-h-11" (click)="load()">{{ 'common.retry' | t }}</button>
       </app-notice>
     } @else if (options()) {
       @if (conflict()) {
         <app-notice>
           <p class="m-0">{{ 'subscriptions.form.conflict' | t }}</p>
-          <button type="button" class="btn btn-sm btn-outline mt-2" (click)="reloadLatest()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
+          <button type="button" class="btn btn-sm btn-outline mt-2 max-nav:min-h-11" (click)="reloadLatest()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
         </app-notice>
       }
       @if (problem(); as message) {
@@ -33,7 +33,7 @@
             <div class="mb-4" role="search" aria-labelledby="picker-heading" data-picker>
               <h2 id="picker-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'subscriptions.picker.heading' | t }}</h2>
               <app-form-field [label]="'subscriptions.picker.searchLabel' | t" controlId="picker-search">
-                <input id="picker-search" class="input border-base-content/55 w-full" name="pickerSearch" type="search" autocomplete="off" aria-describedby="picker-count"
+                <input id="picker-search" class="input max-nav:min-h-11 border-base-content/55 w-full" name="pickerSearch" type="search" autocomplete="off" aria-describedby="picker-count"
                   [ngModel]="search()" (ngModelChange)="onSearchInput($event)" (keydown.enter)="$event.preventDefault()" />
               </app-form-field>
               <p id="picker-count" class="mt-0 mb-2 text-sm text-base-content/70" aria-live="polite">
@@ -58,14 +58,14 @@
                 </output>
                 @if (planChoices().length > 1) {
                   <app-form-field [label]="'subscriptions.picker.plan' | t" controlId="picker-plan">
-                    <select id="picker-plan" class="select border-base-content/55 w-full" name="pickerPlan" (change)="choosePlan($any($event.target).value)">
+                    <select id="picker-plan" class="select max-nav:min-h-11 border-base-content/55 w-full" name="pickerPlan" (change)="choosePlan($any($event.target).value)">
                       @for (plan of planChoices(); track $index) {
                         <option [value]="$index" [selected]="plan === selectedPlan()">{{ planLabel(plan) }}</option>
                       }
                     </select>
                   </app-form-field>
                 }
-                <button type="button" class="btn btn-sm btn-outline" id="picker-unlink" (click)="unlink()">{{ 'subscriptions.picker.unlink' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" id="picker-unlink" (click)="unlink()">{{ 'subscriptions.picker.unlink' | t }}</button>
               }
             </div>
           } @else if (!editing && catalogFailed()) {
@@ -77,20 +77,20 @@
                 <app-service-logo [name]="linkedService()?.name ?? detail()?.name ?? catalogId" [logoUrl]="linkedService()?.logoUrl ?? detail()?.logoUrl ?? null" />
                 <span class="min-w-0 wrap-anywhere">{{ 'subscriptions.picker.linked' | t: { name: linkedService()?.name ?? catalogId } }}</span>
               </p>
-              <button type="button" class="btn btn-sm btn-outline" id="picker-remove-link" (click)="unlink()">{{ 'subscriptions.picker.removeLink' | t }}</button>
+              <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" id="picker-remove-link" (click)="unlink()">{{ 'subscriptions.picker.removeLink' | t }}</button>
             </div>
           }
           @if (err('catalogId'); as e) { <p class="mt-0 mb-4 text-sm text-error wrap-anywhere" id="catalogId-error" role="alert">{{ e.key | t: e.params }}</p> }
           @let nameError = err('name');
           <app-form-field [label]="'subscriptions.field.name' | t" controlId="name"
             [error]="nameError ? (nameError.key | t: nameError.params) : null">
-            <input id="name" class="input border-base-content/55 w-full aria-invalid:border-2" name="name" type="text" autocomplete="off" [(ngModel)]="name"
+            <input id="name" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="name" type="text" autocomplete="off" [(ngModel)]="name"
               [attr.aria-invalid]="nameError ? 'true' : null" [attr.aria-describedby]="describedBy('name')" />
           </app-form-field>
           @let categoryError = err('category');
           <app-form-field [label]="'subscriptions.field.category' | t" controlId="category"
             [error]="categoryError ? (categoryError.key | t: categoryError.params) : null">
-            <input id="category" class="input border-base-content/55 w-full aria-invalid:border-2" name="category" type="text" autocomplete="off" list="category-suggestions" [(ngModel)]="category"
+            <input id="category" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="category" type="text" autocomplete="off" list="category-suggestions" [(ngModel)]="category"
               [attr.aria-invalid]="categoryError ? 'true' : null" [attr.aria-describedby]="describedBy('category')" />
             <datalist id="category-suggestions">
               @for (suggestion of categorySuggestions(); track suggestion) { <option [value]="suggestion"></option> }
@@ -105,13 +105,13 @@
           @let unsubscribeUrlError = err('unsubscribeUrl');
           <app-form-field [label]="'subscriptions.field.unsubscribeUrl' | t" controlId="unsubscribeUrl" [hint]="'subscriptions.field.unsubscribeUrlHint' | t"
             [error]="unsubscribeUrlError ? (unsubscribeUrlError.key | t: unsubscribeUrlError.params) : null">
-            <input id="unsubscribeUrl" class="input border-base-content/55 placeholder:text-base-content/70 w-full aria-invalid:border-2" name="unsubscribeUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://" [(ngModel)]="unsubscribeUrl"
+            <input id="unsubscribeUrl" class="input max-nav:min-h-11 border-base-content/55 placeholder:text-base-content/70 w-full aria-invalid:border-2" name="unsubscribeUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://" [(ngModel)]="unsubscribeUrl"
               [attr.aria-invalid]="unsubscribeUrlError ? 'true' : null" [attr.aria-describedby]="describedBy('unsubscribeUrl', 'unsubscribeUrl-hint')" />
           </app-form-field>
           @let currencyError = err('currency');
           <app-form-field [label]="'subscriptions.field.currency' | t" controlId="currency"
             [error]="currencyError ? (currencyError.key | t: currencyError.params) : null">
-            <select id="currency" class="select border-base-content/55 w-full aria-invalid:border-2" name="currency" [(ngModel)]="currency"
+            <select id="currency" class="select max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="currency" [(ngModel)]="currency"
               [attr.aria-invalid]="currencyError ? 'true' : null" [attr.aria-describedby]="describedBy('currency')">
               @if (!currency) { <option value="">{{ 'subscriptions.field.chooseCurrency' | t }}</option> }
               @for (c of currencyLabels(); track c.code) { <option [value]="c.code">{{ c.label }}</option> }
@@ -120,13 +120,13 @@
           @let startDateError = err('startDate');
           <app-form-field [label]="'subscriptions.field.startDate' | t" controlId="startDate"
             [error]="startDateError ? (startDateError.key | t: startDateError.params) : null">
-            <input id="startDate" class="input border-base-content/55 w-full aria-invalid:border-2" name="startDate" type="date" [(ngModel)]="startDate"
+            <input id="startDate" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="startDate" type="date" [(ngModel)]="startDate"
               [attr.aria-invalid]="startDateError ? 'true' : null" [attr.aria-describedby]="describedBy('startDate')" />
           </app-form-field>
           @let endDateError = err('endDate');
           <app-form-field [label]="'subscriptions.field.endDate' | t" controlId="endDate"
             [error]="endDateError ? (endDateError.key | t: endDateError.params) : null">
-            <input id="endDate" class="input border-base-content/55 w-full aria-invalid:border-2" name="endDate" type="date" [(ngModel)]="endDate"
+            <input id="endDate" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="endDate" type="date" [(ngModel)]="endDate"
               [attr.aria-invalid]="endDateError ? 'true' : null" [attr.aria-describedby]="describedBy('endDate')" />
           </app-form-field>
           @let cancelByError = err('cancelBy');
@@ -134,7 +134,7 @@
           <app-form-field [label]="'subscriptions.field.cancelBy' | t" controlId="cancelBy"
             [hint]="zone ? ('subscriptions.field.cancelByHint' | t: { zone }) : ('subscriptions.field.cancelByHintNoZone' | t)"
             [error]="cancelByError ? (cancelByError.key | t: cancelByError.params) : null">
-            <input id="cancelBy" class="input border-base-content/55 w-full aria-invalid:border-2" name="cancelBy" type="datetime-local" [(ngModel)]="cancelBy"
+            <input id="cancelBy" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="cancelBy" type="datetime-local" [(ngModel)]="cancelBy"
               [attr.aria-invalid]="cancelByError ? 'true' : null" [attr.aria-describedby]="describedBy('cancelBy', 'cancelBy-hint')" />
           </app-form-field>
           @if (!editing) {
@@ -142,7 +142,7 @@
             <app-form-field [label]="'subscriptions.field.amount' | t" controlId="amount"
               [hint]="'subscriptions.field.amountHint' | t: { example: amountExample(), separator: separator() }"
               [error]="amountError ? (amountError.key | t: amountError.params) : null">
-              <input id="amount" class="input border-base-content/55 w-full aria-invalid:border-2" name="amount" type="text" inputmode="decimal" autocomplete="off" [ngModel]="amountText"
+              <input id="amount" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="amount" type="text" inputmode="decimal" autocomplete="off" [ngModel]="amountText"
                 (ngModelChange)="onAmountInput($event)"
                 [attr.aria-invalid]="amountError ? 'true' : null" [attr.aria-describedby]="describedBy('amount', 'amount-hint')" />
             </app-form-field>
@@ -154,24 +154,24 @@
             }
             <fieldset class="mb-4 min-w-0 rounded-box border border-base-300 px-4 pt-2 pb-4">
               <legend class="px-1 font-semibold">{{ 'subscriptions.field.cadence' | t }}</legend>
-              <div class="flex min-h-11 items-center gap-2"><input id="cadence-week" class="radio border-base-content/55" type="radio" name="cadencePreset" value="week" [(ngModel)]="cadencePreset" />
-                <label for="cadence-week">{{ 'cadence.weekly' | t }}</label></div>
-              <div class="flex min-h-11 items-center gap-2"><input id="cadence-month" class="radio border-base-content/55" type="radio" name="cadencePreset" value="month" [(ngModel)]="cadencePreset" />
-                <label for="cadence-month">{{ 'cadence.monthly' | t }}</label></div>
-              <div class="flex min-h-11 items-center gap-2"><input id="cadence-year" class="radio border-base-content/55" type="radio" name="cadencePreset" value="year" [(ngModel)]="cadencePreset" />
-                <label for="cadence-year">{{ 'cadence.yearly' | t }}</label></div>
-              <div class="flex min-h-11 items-center gap-2"><input id="cadence-custom" class="radio border-base-content/55" type="radio" name="cadencePreset" value="custom" [(ngModel)]="cadencePreset" />
-                <label for="cadence-custom">{{ 'cadence.custom' | t }}</label></div>
+              <label class="flex min-h-11 cursor-pointer items-center gap-2" for="cadence-week"><input id="cadence-week" class="radio border-base-content/55" type="radio" name="cadencePreset" value="week" [(ngModel)]="cadencePreset" />
+                <span>{{ 'cadence.weekly' | t }}</span></label>
+              <label class="flex min-h-11 cursor-pointer items-center gap-2" for="cadence-month"><input id="cadence-month" class="radio border-base-content/55" type="radio" name="cadencePreset" value="month" [(ngModel)]="cadencePreset" />
+                <span>{{ 'cadence.monthly' | t }}</span></label>
+              <label class="flex min-h-11 cursor-pointer items-center gap-2" for="cadence-year"><input id="cadence-year" class="radio border-base-content/55" type="radio" name="cadencePreset" value="year" [(ngModel)]="cadencePreset" />
+                <span>{{ 'cadence.yearly' | t }}</span></label>
+              <label class="flex min-h-11 cursor-pointer items-center gap-2" for="cadence-custom"><input id="cadence-custom" class="radio border-base-content/55" type="radio" name="cadencePreset" value="custom" [(ngModel)]="cadencePreset" />
+                <span>{{ 'cadence.custom' | t }}</span></label>
               @if (cadencePreset === 'custom') {
                 <div class="mt-2 grid max-w-xs gap-2" data-custom-cadence>
                   @let countError = err('cadenceCount');
                   <app-form-field [label]="('cadence.every' | t) + ' ' + ('cadence.number' | t)" controlId="cadence-count" errorId="cadenceCount-error"
                     [error]="countError ? (countError.key | t: countError.params) : null">
-                    <input id="cadence-count" class="input border-base-content/55 w-full aria-invalid:border-2" name="customCount" type="text" inputmode="numeric" [(ngModel)]="customCount"
+                    <input id="cadence-count" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="customCount" type="text" inputmode="numeric" [(ngModel)]="customCount"
                       [attr.aria-invalid]="countError ? 'true' : null" [attr.aria-describedby]="describedBy('cadenceCount')" />
                   </app-form-field>
                   <label class="font-medium" for="cadence-unit">{{ 'cadence.unit' | t }}</label>
-                  <select id="cadence-unit" class="select border-base-content/55 w-full" name="customUnit" [(ngModel)]="customUnit">
+                  <select id="cadence-unit" class="select max-nav:min-h-11 border-base-content/55 w-full" name="customUnit" [(ngModel)]="customUnit">
                     <option value="week">{{ 'cadence.unit.week' | t }}</option>
                     <option value="month">{{ 'cadence.unit.month' | t }}</option>
                     <option value="year">{{ 'cadence.unit.year' | t }}</option>
@@ -182,7 +182,7 @@
             @let paymentOptionError = err('paymentOptionId');
             <app-form-field [label]="'paymentOptions.select.label' | t" controlId="paymentOptionId"
               [error]="paymentOptionError ? (paymentOptionError.key | t: paymentOptionError.params) : null">
-              <select id="paymentOptionId" class="select border-base-content/55 w-full aria-invalid:border-2" name="paymentOptionId" [(ngModel)]="paymentOptionId"
+              <select id="paymentOptionId" class="select max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="paymentOptionId" [(ngModel)]="paymentOptionId"
                 [attr.aria-invalid]="paymentOptionError ? 'true' : null" [attr.aria-describedby]="describedBy('paymentOptionId')">
                 <option value="">{{ 'paymentOptions.select.none' | t }}</option>
                 @for (o of selectableOptions(); track o.id) { <option [value]="o.id">{{ optionText(o) }}</option> }
@@ -195,7 +195,7 @@
               [hint]="'subscriptions.field.paymentOptionEditHint' | t"
               [errorId]="endedError ? 'paymentOption-error' : 'paymentOptionId-error'"
               [error]="editOptionError ? (editOptionError.key | t: editOptionError.params) : null">
-              <select id="paymentOptionId" class="select border-base-content/55 w-full aria-invalid:border-2" name="paymentOptionId" [(ngModel)]="paymentOptionId"
+              <select id="paymentOptionId" class="select max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="paymentOptionId" [(ngModel)]="paymentOptionId"
                 [attr.aria-invalid]="editOptionError ? 'true' : null"
                 [attr.aria-describedby]="describedBy(endedError ? 'paymentOption' : 'paymentOptionId', 'paymentOptionId-hint')">
                 <option value="">{{ 'paymentOptions.select.none' | t }}</option>
@@ -204,10 +204,10 @@
             </app-form-field>
           }
           <div class="flex flex-wrap items-center gap-2">
-            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+            <button type="submit" class="btn btn-primary max-nav:min-h-11" [disabled]="saving()">
               {{ (saving() ? 'subscriptions.form.saving' : 'subscriptions.form.save') | t }}
             </button>
-            <a class="btn btn-outline" [routerLink]="editing ? ['/subscriptions', id] : ['/']">{{ 'subscriptions.form.cancel' | t }}</a>
+            <a class="btn btn-outline max-nav:min-h-11" [routerLink]="editing ? ['/subscriptions', id] : ['/']">{{ 'subscriptions.form.cancel' | t }}</a>
           </div>
         </form>
       </app-panel>

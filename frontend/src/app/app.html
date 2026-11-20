@@ -1,6 +1,6 @@
 <a class="btn btn-primary btn-sm sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-20" href="#main">{{ 'shell.skipLink' | t }}</a>
 <header class="navbar min-h-16 flex-wrap gap-x-3 gap-y-2 border-b border-base-300 bg-base-100 px-4 py-2 nav:px-6">
-  <a class="text-xl font-bold text-primary no-underline" routerLink="/">Subscribed</a>
+  <a class="text-xl font-bold text-primary no-underline max-nav:inline-flex max-nav:min-h-11 max-nav:items-center" routerLink="/">Subscribed</a>
   @if (session.current().state === 'member') {
     <button #menuButton class="btn btn-sm btn-outline nav:hidden max-nav:ms-auto max-nav:min-h-11 max-nav:min-w-11" type="button"
       aria-haspopup="dialog" aria-controls="mobile-nav"
@@ -66,18 +66,18 @@
     @if (i18n.persistFailed()) {
       <app-notice role="status">
         {{ 'language.saveFailed' | t }}
-        <button type="button" class="btn btn-sm btn-outline ms-2" (click)="i18n.dismissPersistNotice()">{{ 'language.dismiss' | t }}</button>
+        <button type="button" class="btn btn-sm btn-outline ms-2 max-nav:min-h-11" (click)="i18n.dismissPersistNotice()">{{ 'language.dismiss' | t }}</button>
       </app-notice>
     }
     @if (theme.persistFailed()) {
       <app-notice role="status">
         {{ 'theme.saveFailed' | t }}
-        <button type="button" class="btn btn-sm btn-outline ms-2" (click)="theme.dismissPersistNotice()">{{ 'theme.dismiss' | t }}</button>
+        <button type="button" class="btn btn-sm btn-outline ms-2 max-nav:min-h-11" (click)="theme.dismissPersistNotice()">{{ 'theme.dismiss' | t }}</button>
       </app-notice>
     }
     @if (session.expired()) {
       <app-notice role="alert">{{ 'shell.sessionExpired' | t }}
-        <button type="button" class="btn btn-sm btn-neutral ms-2" (click)="session.signIn(router.url)">{{ 'shell.signInAgain' | t }}</button>
+        <button type="button" class="btn btn-sm btn-neutral ms-2 max-nav:min-h-11" (click)="session.signIn(router.url)">{{ 'shell.signInAgain' | t }}</button>
       </app-notice>
     }
     @if (session.logoutError(); as error) {
@@ -137,6 +137,6 @@
   </dialog>
 }
 <footer class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-base-300 bg-base-100 px-6 py-4 text-sm">
-  <a class="text-primary underline" [href]="repoUrl" target="_blank" rel="noopener noreferrer">{{ 'shell.footer.github' | t }}</a>
+  <a class="text-primary underline max-nav:inline-flex max-nav:min-h-11 max-nav:items-center" [href]="repoUrl" target="_blank" rel="noopener noreferrer">{{ 'shell.footer.github' | t }}</a>
   <span>{{ 'shell.footer.version' | t }} <code>{{ version }}</code></span>
 </footer>

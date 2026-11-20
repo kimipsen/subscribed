@@ -1,5 +1,5 @@
 <app-form-field [label]="'subscriptions.period.label' | t" controlId="period-select" class="my-4 max-w-72">
-  <select id="period-select" class="select border-base-content/55 w-full" (change)="choose($any($event.target).value)">
+  <select id="period-select" class="select max-nav:min-h-11 border-base-content/55 w-full" (change)="choose($any($event.target).value)">
     @for (choice of choices(); track choice.value) {
       <option [value]="choice.value" [selected]="value() === choice.value">{{ choice.message ? (choice.message.key | t) : choice.label }}</option>
     }

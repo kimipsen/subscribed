@@ -2,7 +2,7 @@
   @case ('unavailable') { <app-session-unavailable /> }
   @case ('member') {
     <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'paymentOptions.heading' | t }}</h1>
-    <p class="my-2"><a class="text-primary underline" routerLink="/">{{ 'subscriptions.backHome' | t }}</a></p>
+    <p class="my-2"><a class="text-primary underline max-nav:inline-flex max-nav:min-h-11 max-nav:items-center" routerLink="/">{{ 'subscriptions.backHome' | t }}</a></p>
     <p class="my-2 text-base-content/70">{{ 'paymentOptions.intro' | t }}</p>
 
     @if (loading()) {
@@ -12,13 +12,13 @@
       <app-notice>
         <p class="m-0">{{ 'paymentOptions.loadFailed' | t }}</p>
         @if (traceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
-        <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'common.retry' | t }}</button>
+        <button type="button" class="btn btn-sm btn-outline mt-2 max-nav:min-h-11" (click)="load()">{{ 'common.retry' | t }}</button>
       </app-notice>
     } @else {
       @if (conflict()) {
         <app-notice>
           <p class="m-0">{{ 'paymentOptions.conflict' | t }}</p>
-          <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
+          <button type="button" class="btn btn-sm btn-outline mt-2 max-nav:min-h-11" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
         </app-notice>
       }
       @if (notice(); as message) {
@@ -41,8 +41,8 @@
               <li class="flex flex-wrap items-center gap-2 border-b border-base-300 py-2">
                 <app-payment-option-logo [brand]="option.brand" />
                 <span class="min-w-0 flex-1 wrap-anywhere" data-option-text>{{ text(option) }}</span>
-                <button type="button" class="btn btn-sm btn-outline" [id]="'edit-' + option.id" (click)="startEdit(option)">{{ 'paymentOptions.edit' | t }}</button>
-                <button type="button" class="btn btn-sm btn-outline" [id]="'remove-' + option.id" (click)="askRemove(option)">{{ 'paymentOptions.remove' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'edit-' + option.id" (click)="startEdit(option)">{{ 'paymentOptions.edit' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'remove-' + option.id" (click)="askRemove(option)">{{ 'paymentOptions.remove' | t }}</button>
               </li>
             }
           </ul>
@@ -53,8 +53,8 @@
             <div class="min-w-0 wrap-anywhere">
               <p id="confirm-option" class="m-0" tabindex="-1">{{ 'paymentOptions.removeConfirm' | t: { name: option.name } }}</p>
               <div class="mt-2 flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-neutral" [disabled]="saving()" (click)="remove()">{{ 'paymentOptions.removeYes' | t }}</button>
-                <button type="button" class="btn btn-sm btn-outline" (click)="cancelRemove()">{{ 'detail.keep' | t }}</button>
+                <button type="button" class="btn btn-sm btn-neutral max-nav:min-h-11" [disabled]="saving()" (click)="remove()">{{ 'paymentOptions.removeYes' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" (click)="cancelRemove()">{{ 'detail.keep' | t }}</button>
               </div>
             </div>
           </div>
@@ -66,28 +66,28 @@
             @let editErrName = editErr('name');
             <app-form-field [label]="'paymentOptions.field.name' | t" controlId="edit-name"
               [error]="editErrName ? (editErrName.key | t: editErrName.params) : null">
-              <input id="edit-name" class="input border-base-content/55 w-full aria-invalid:border-2" name="editName" type="text" autocomplete="off" [(ngModel)]="editName"
+              <input id="edit-name" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="editName" type="text" autocomplete="off" [(ngModel)]="editName"
                 [attr.aria-invalid]="editErrName ? 'true' : null" [attr.aria-describedby]="editErrName ? 'edit-name-error' : null" />
             </app-form-field>
             @let editErrLabel = editErr('label');
             <app-form-field [label]="'paymentOptions.field.label' | t" controlId="edit-label" [hint]="'paymentOptions.field.labelHint' | t"
               [error]="editErrLabel ? (editErrLabel.key | t: editErrLabel.params) : null">
-              <input id="edit-label" class="input border-base-content/55 w-full aria-invalid:border-2" name="editLabel" type="text" autocomplete="off" [(ngModel)]="editLabel"
+              <input id="edit-label" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="editLabel" type="text" autocomplete="off" [(ngModel)]="editLabel"
                 [attr.aria-invalid]="editErrLabel ? 'true' : null"
                 [attr.aria-describedby]="editErrLabel ? 'edit-label-error edit-label-hint' : 'edit-label-hint'" />
             </app-form-field>
             @let editErrBrand = editErr('brand');
             <app-form-field [label]="'paymentOptions.field.brand' | t" controlId="edit-brand"
               [error]="editErrBrand ? (editErrBrand.key | t: editErrBrand.params) : null">
-              <select id="edit-brand" class="select border-base-content/55 w-full aria-invalid:border-2" name="editBrand" [(ngModel)]="editBrand"
+              <select id="edit-brand" class="select max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="editBrand" [(ngModel)]="editBrand"
                 [attr.aria-invalid]="editErrBrand ? 'true' : null" [attr.aria-describedby]="editErrBrand ? 'edit-brand-error' : null">
                 <option [ngValue]="null">{{ 'paymentOptions.brand.none' | t }}</option>
                 @for (b of brands; track b.id) { <option [ngValue]="b.id">{{ b.name }}</option> }
               </select>
             </app-form-field>
             <div class="flex flex-wrap gap-2">
-              <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.save') | t }}</button>
-              <button type="button" class="btn btn-outline" (click)="cancelEdit()">{{ 'subscriptions.form.cancel' | t }}</button>
+              <button type="submit" class="btn btn-primary max-nav:min-h-11" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.save') | t }}</button>
+              <button type="button" class="btn btn-outline max-nav:min-h-11" (click)="cancelEdit()">{{ 'subscriptions.form.cancel' | t }}</button>
             </div>
           </form>
         }
@@ -100,7 +100,7 @@
             <legend class="px-1 text-base-content/70">{{ 'paymentOptions.suggestions' | t }}</legend>
             <div class="flex flex-wrap gap-2">
               @for (suggestion of suggestions(); track suggestion.id) {
-                <button type="button" class="btn btn-sm btn-outline h-auto min-h-8 gap-2 py-1 whitespace-normal" [id]="'suggest-' + suggestion.id" data-suggestion (click)="pick(suggestion)"><app-payment-option-logo [brand]="brandOf(suggestion.id)" [size]="20" /> {{ suggestion.name }}</button>
+                <button type="button" class="btn btn-sm btn-outline h-auto min-h-8 gap-2 py-1 whitespace-normal max-nav:min-h-11" [id]="'suggest-' + suggestion.id" data-suggestion (click)="pick(suggestion)"><app-payment-option-logo [brand]="brandOf(suggestion.id)" [size]="20" /> {{ suggestion.name }}</button>
               }
             </div>
           </fieldset>
@@ -109,27 +109,27 @@
           @let errName = err('name');
           <app-form-field [label]="'paymentOptions.field.name' | t" controlId="option-name"
             [error]="errName ? (errName.key | t: errName.params) : null">
-            <input id="option-name" class="input border-base-content/55 w-full aria-invalid:border-2" name="name" type="text" autocomplete="off" [(ngModel)]="name"
+            <input id="option-name" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="name" type="text" autocomplete="off" [(ngModel)]="name"
               [attr.aria-invalid]="errName ? 'true' : null" [attr.aria-describedby]="errName ? 'option-name-error' : null" />
           </app-form-field>
           @let errLabel = err('label');
           <app-form-field [label]="'paymentOptions.field.label' | t" controlId="option-label" [hint]="'paymentOptions.field.labelHint' | t"
             [error]="errLabel ? (errLabel.key | t: errLabel.params) : null">
-            <input id="option-label" class="input border-base-content/55 w-full aria-invalid:border-2" name="label" type="text" autocomplete="off" [(ngModel)]="label"
+            <input id="option-label" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="label" type="text" autocomplete="off" [(ngModel)]="label"
               [attr.aria-invalid]="errLabel ? 'true' : null"
               [attr.aria-describedby]="errLabel ? 'option-label-error option-label-hint' : 'option-label-hint'" />
           </app-form-field>
           @let errBrand = err('brand');
           <app-form-field [label]="'paymentOptions.field.brand' | t" controlId="option-brand"
             [error]="errBrand ? (errBrand.key | t: errBrand.params) : null">
-            <select id="option-brand" class="select border-base-content/55 w-full aria-invalid:border-2" name="brand" [(ngModel)]="brand"
+            <select id="option-brand" class="select max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="brand" [(ngModel)]="brand"
               [attr.aria-invalid]="errBrand ? 'true' : null" [attr.aria-describedby]="errBrand ? 'option-brand-error' : null">
               <option [ngValue]="null">{{ 'paymentOptions.brand.none' | t }}</option>
               @for (b of brands; track b.id) { <option [ngValue]="b.id">{{ b.name }}</option> }
             </select>
           </app-form-field>
           <div class="flex flex-wrap gap-2">
-            <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.add') | t }}</button>
+            <button type="submit" class="btn btn-primary max-nav:min-h-11" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'paymentOptions.add') | t }}</button>
           </div>
         </form>
       </app-panel>

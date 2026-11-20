@@ -187,6 +187,33 @@ storage is unavailable, the toggle still works until reload and shows no notice 
 language choices). Below 900px there is no toggle and no rail: the labels stay visible and the Menu button
 works as before.
 
+## Mobile layout (below 900px)
+
+Everything below the `nav` breakpoint (900px, see above) is built with the `max-nav:` variants, so the desktop
+markup and behaviour at 900px and wider stay unchanged. Class names are static literals (the #51 rule).
+
+- **Cards and tables.** The overview and the detail page render each list twice, but expose one representation per
+  breakpoint: the table sits in a `<section class="overflow-x-auto max-nav:hidden" data-table-scroll>` and the card
+  list is `<ul class="nav:hidden" data-cards>`. The hidden one is `display: none`, so it is out of the accessibility
+  tree and the tab order. Tests find the two through the `data-table-scroll` and `data-cards` hooks.
+- **Drawer.** The navigation drawer is a native `<dialog>` opened with `showModal()`, so the top layer, focus trap,
+  Escape and the `::backdrop` come from the browser. The slide-in animation is open-only (`starting:open:` plus
+  `open:translate-x-0`); there is no closing animation. While the drawer is open the app adds `overflow-hidden` to `<body>` (the scroll lock) and removes it when the
+  drawer closes.
+  The dialog is hidden at 900px and wider with `nav:open:hidden`, never `nav:hidden`, and the dialog carries no bare
+  `display` utility: either would override the closed state (`display: none` of a closed dialog) or fight `open:flex`.
+  The built-CSS test asserts that `nav:open:hidden` is emitted after `open:flex`.
+- **Touch targets.** Below the breakpoint every interactive control is at least 44px (`max-nav:min-h-11`, plus
+  `max-nav:min-w-11` for icon-only buttons). Radio and checkbox rows make the whole label the hit area.
+- **Focus.** The table row and its card are two copies of the same control, so `document.querySelector('#id')` can
+  return the hidden one and focusing a `display:none` element does nothing. Both copies carry the same
+  `data-focus-key="<kind>-<id>"`, and `focusVisible` (`ui/focus-visible-target.ts`) focuses the first copy that is
+  visible. Use it with a `data-focus-key` instead of querying by id after an action re-renders the row.
+
+Browser support is the same as for Tailwind 4 and daisyUI 5 (see Browser support above). The drawer additionally uses
+native `<dialog>` with `showModal()`; where `@starting-style` is not supported the drawer simply opens without the
+slide animation.
+
 ## Third-party licences
 
 | Package | Licence | Copyright | Source | Version | Date added |
