@@ -4,6 +4,7 @@ import { Component, Injector, afterNextRender, computed, effect, inject, signal,
 import { RouterLink } from '@angular/router';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
+import { focusVisible } from '../ui/focus-visible-target';
 import { FormField } from '../ui/form-field';
 import { Notice } from '../ui/notice';
 import { StatusBadge } from '../ui/status-badge';
@@ -135,7 +136,7 @@ export class SubscriptionOverviewComponent {
         this.overview.set(overview);
         this.loading.set(false);
         this.failed.set(false);
-        if (focusRow) afterNextRender(() => document.querySelector<HTMLElement>(`#action-${focusRow}`)?.focus(), { injector: this.injector });
+        if (focusRow) afterNextRender(() => focusVisible(document, `action-${focusRow}`), { injector: this.injector });
       },
       error: (error: HttpErrorResponse) => {
         if (request !== this.latest) return;

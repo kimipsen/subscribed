@@ -67,7 +67,7 @@ describe('SubscriptionDetailPage', () => {
 
   const el = <T extends HTMLElement = HTMLElement>(root: HTMLElement, selector: string) => query<T>(root, selector);
   const buttonByText = (root: HTMLElement, text: string) =>
-    Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
+    Array.from(root.querySelectorAll('button')).find((b) => !b.closest('[data-cards]') && b.textContent?.trim() === text) as HTMLButtonElement;
   const rows = (root: HTMLElement) => queryAll(root, '[aria-labelledby="history-heading"] tbody tr');
 
   function type(root: HTMLElement, id: string, value: string, event = 'input') {
@@ -1175,8 +1175,160 @@ describe('SubscriptionDetailPage', () => {
     expect(text).toContain(da['pauses.field.pauseDate']);
     expect(englishLeftovers(pausesSection(root))).toEqual([]);
   });
-});
+  // ---- cards below nav -------------------------------------------------------------------------------
 
+  describe('cards below nav', () => {
+    const historySection = (root: HTMLElement) => el(root, '[aria-labelledby="history-heading"]');
+    const historyCards = (root: HTMLElement) => queryAll(historySection(root), '[data-cards] > li');
+    const pauseCards = (root: HTMLElement) => queryAll(pausesSection(root), '[data-pauses-cards] > li');
+    const longPauses = () => withPauses([
+      { id: 'p2', pauseDate: '2026-11-01', resumeDate: null },
+      { id: 'p1', pauseDate: '2026-03-01', resumeDate: '2026-03-10' },
+    ]);
+
+    it('keeps the history table behind max-nav:hidden and adds a nav:hidden card list named by the table caption', async () => {
+      const { root } = await open();
+      const table = el(historySection(root), '[data-table-scroll]');
+      expect(table.classList.contains('max-nav:hidden')).toBe(true);
+      const cards = el(historySection(root), '[data-cards]');
+      expect(cards.tagName).toBe('UL');
+      expect(cards.classList.contains('nav:hidden')).toBe(true);
+      expect(cards.getAttribute('aria-label')).toBe(en['detail.historyCaption']);
+    });
+
+    it('renders one history card per table row with the same period, price, per-month, change, option and badges', async () => {
+      const { root, detail } = await open();
+      const cards = historyCards(root);
+      expect(cards).toHaveLength(detail.priceHistory.length);
+      expect(cards).toHaveLength(rows(root).length);
+      rows(root).forEach((row, index) => {
+        const card = cards[index];
+        expect(plain(query(card, 'p').textContent)).toBe(plain(query(row, 'th[scope=row]').textContent));
+        expect(plain(queryAll(card, 'p')[1].textContent)).toBe(plain(row.querySelectorAll('td')[0].textContent));
+        const values = queryAll(card, 'dd').map((dd) => plain(dd.textContent));
+        expect(values).toEqual([1, 2, 3].map((cell) => plain(row.querySelectorAll('td')[cell].textContent)));
+      });
+      const badges = (card: HTMLElement) => Array.from(card.querySelectorAll('[data-status]')).map((b) => b.getAttribute('data-status'));
+      expect(badges(cards[0])).toEqual([]);
+      expect(plain(cards[0].textContent)).toContain(en['detail.initialPrice']);
+      expect(badges(cards[2])).toEqual(['current']);
+      expect(badges(cards[3])).toEqual(['upcoming']);
+      expect(queryAll(cards[0], 'dt').map((dt) => dt.textContent?.trim())).toEqual([
+        en['detail.col.perMonth'], en['detail.col.change'], en['detail.col.paymentOption'],
+      ]);
+    });
+
+    it('shows a positive, zero, negative and absent change on the card as on the table', async () => {
+      const detail = detailFixture();
+      detail.priceHistory[1].change = { amount: '10.00', percent: '16.9' };
+      detail.priceHistory[2].change = { amount: '0.00', percent: '0' };
+      detail.priceHistory[3].change = { amount: '-10.00', percent: '-11.2' };
+      const { root } = await open(detail);
+      const cards = historyCards(root);
+      rows(root).forEach((row, index) => {
+        expect(plain(queryAll(cards[index], 'dd')[1].textContent)).toBe(plain(row.querySelectorAll('td')[2].textContent));
+      });
+      expect(plain(queryAll(cards[0], 'dd')[1].textContent)).toBe(en['detail.noPreviousPrice']);
+      expect(plain(queryAll(cards[3], 'dd')[1].textContent)).toContain('-');
+    });
+
+    it('shows the payment option on the card and wraps long values', async () => {
+      const options = paymentOptionListFixture();
+      const detail = detailFixture();
+      detail.priceHistory[2].paymentOptionId = options.options[0].id;
+      const { root } = await open(detail, options);
+      const row = rows(root)[2];
+      const card = historyCards(root)[2];
+      expect(plain(queryAll(card, 'dd')[2].textContent)).toBe(plain(row.querySelectorAll('td')[3].textContent));
+      expect(plain(queryAll(card, 'dd')[2].textContent)).not.toBe('—');
+      for (const dd of queryAll(card, 'dd')) expect(dd.classList.contains('wrap-anywhere')).toBe(true);
+      expect(card.classList.contains('min-w-0')).toBe(true);
+    });
+
+    it('gives the history card actions 44px targets below nav, card- ids and the shared focus key', async () => {
+      const { root, detail } = await open();
+      const initial = detail.priceHistory.find((h) => h.initial)!;
+      const later = detail.priceHistory.find((h) => !h.initial)!;
+      for (const [id, key] of [[`card-correct-${initial.entryId}`, `correct-${initial.entryId}`], [`card-remove-${later.entryId}`, `remove-${later.entryId}`]]) {
+        const button = el(root, `#${id}`);
+        expect(button.getAttribute('data-focus-key')).toBe(key);
+        expect(button.classList.contains('max-nav:min-h-11')).toBe(true);
+        expect(button.closest('[data-cards]')).not.toBeNull();
+      }
+      expect(root.querySelector(`#card-remove-${initial.entryId}`)).toBeNull();
+      expect(el(root, `#correct-${initial.entryId}`).getAttribute('data-focus-key')).toBe(`correct-${initial.entryId}`);
+      expect(el(root, `#remove-${later.entryId}`).getAttribute('data-focus-key')).toBe(`remove-${later.entryId}`);
+      const ids = queryAll(root, '[id]').map((e) => e.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('opens the correction form and removal confirmation from the card buttons', async () => {
+      const { harness, root, detail } = await open();
+      const later = detail.priceHistory.find((h) => !h.initial)!;
+      el<HTMLButtonElement>(root, `#card-correct-${later.entryId}`).click();
+      await settle(harness);
+      expect(root.querySelector('[data-entry-form]')).not.toBeNull();
+      el<HTMLButtonElement>(root, '[data-entry-form] button.btn-outline').click();
+      await settle(harness);
+      el<HTMLButtonElement>(root, `#card-remove-${later.entryId}`).click();
+      await settle(harness);
+      expect(root.querySelector('[data-confirm-entry]')).not.toBeNull();
+    });
+
+    it('renders pause cards matching the table, with Ongoing for an open pause, and keeps data-pauses on the table', async () => {
+      const { root } = await open(longPauses());
+      const section = pausesSection(root);
+      expect(el(section, 'table').hasAttribute('data-pauses')).toBe(true);
+      expect(el(section, '[data-table-scroll]').classList.contains('max-nav:hidden')).toBe(true);
+      const list = el(section, '[data-pauses-cards]');
+      expect(list.hasAttribute('data-cards')).toBe(true);
+      expect(list.classList.contains('nav:hidden')).toBe(true);
+      expect(list.getAttribute('aria-label')).toBe(en['pauses.caption']);
+      const cards = pauseCards(root);
+      expect(cards).toHaveLength(pauseRows(root).length);
+      pauseRows(root).forEach((row, index) => {
+        const values = queryAll(cards[index], 'dd').map((dd) => plain(dd.textContent));
+        expect(values).toEqual([plain(row.querySelector('th')?.textContent), plain(row.querySelector('td')?.textContent)]);
+      });
+      expect(plain(cards.map((c) => c.textContent).join(' '))).toContain(en['pauses.ongoing']);
+    });
+
+    it('gives the pause card actions card- ids, the shared focus key and 44px targets, keeping the table ids', async () => {
+      const { root } = await open(longPauses());
+      for (const id of ['p1', 'p2']) {
+        for (const kind of ['edit-pause', 'delete-pause']) {
+          const card = el(root, `#card-${kind}-${id}`);
+          const table = el(root, `#${kind}-${id}`);
+          expect(card.getAttribute('data-focus-key')).toBe(`${kind}-${id}`);
+          expect(table.getAttribute('data-focus-key')).toBe(`${kind}-${id}`);
+          expect(card.classList.contains('max-nav:min-h-11')).toBe(true);
+          expect(card.closest('[data-pauses-cards]')).not.toBeNull();
+          expect(table.closest('[data-pauses]')).not.toBeNull();
+        }
+      }
+      const ids = queryAll(root, '[id]').map((e) => e.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('opens the pause edit form and delete confirmation from the card buttons', async () => {
+      const { harness, root } = await open(longPauses());
+      el<HTMLButtonElement>(root, '#card-edit-pause-p1').click();
+      await settle(harness);
+      expect(root.querySelector('[data-pause-form]')).not.toBeNull();
+      el<HTMLButtonElement>(root, '[data-pause-form] button.btn-outline').click();
+      await settle(harness);
+      el<HTMLButtonElement>(root, '#card-delete-pause-p2').click();
+      await settle(harness);
+      expect(root.querySelector('[data-confirm-pause]')).not.toBeNull();
+    });
+
+    it('renders no pause card list when there are no pauses', async () => {
+      const { root } = await open(withPauses([]));
+      expect(root.querySelector('[data-pauses-cards]')).toBeNull();
+      expect(root.querySelector('[data-pauses-empty]')).not.toBeNull();
+    });
+  });
+});
 
 describe('SubscriptionDetailPage period', () => {
   let http: HttpTestingController;
