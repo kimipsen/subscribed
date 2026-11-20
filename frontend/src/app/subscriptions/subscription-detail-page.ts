@@ -6,6 +6,7 @@ import { Observable } from 'rxjs';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
+import { focusVisible } from '../ui/focus-visible-target';
 import { PaymentOptionLogo } from './payment-option-logo';
 import { optionText } from './payment-option-text';
 import { PaymentOptionsService } from './payment-options.service';
@@ -686,6 +687,11 @@ export class SubscriptionDetailPage {
   /** Focus after the next render: the element is not in the DOM until change detection has run. */
   private focusLater(selector: string): void {
     afterNextRender(() => document.querySelector<HTMLElement>(selector)?.focus(), { injector: this.injector });
+  }
+
+  /** Focuses the visible copy of a row action that exists as both a table button and a card button. */
+  private focusLaterKey(key: string): void {
+    afterNextRender(() => focusVisible(document, key), { injector: this.injector });
   }
 
   private clearProblems(): void {

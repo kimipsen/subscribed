@@ -2,13 +2,15 @@
 <header class="navbar min-h-16 flex-wrap gap-x-3 gap-y-2 border-b border-base-300 bg-base-100 px-4 py-2 nav:px-6">
   <a class="text-xl font-bold text-primary no-underline" routerLink="/">Subscribed</a>
   @if (session.current().state === 'member') {
-    <button class="btn btn-sm btn-outline nav:hidden" type="button" aria-controls="primary-nav"
+    <button #menuButton class="btn btn-sm btn-outline nav:hidden max-nav:ms-auto max-nav:min-h-11 max-nav:min-w-11" type="button"
+      aria-haspopup="dialog" aria-controls="mobile-nav"
       [attr.aria-expanded]="menuOpen()" (click)="menuOpen.set(!menuOpen())">{{ 'shell.menu' | t }}</button>
   }
-  <div class="flex flex-1 flex-wrap items-center justify-end gap-x-4 gap-y-2">
+  <div class="flex flex-1 flex-wrap items-center justify-end gap-x-4 gap-y-2"
+    [class]="isMember() ? 'max-nav:hidden' : ''">
     <div class="flex items-center gap-2">
       <label for="language-select" class="sr-only text-sm sm:not-sr-only">{{ 'language.label' | t }}</label>
-      <select id="language-select" class="select select-sm border-base-content/55" [ngModel]="i18n.language()" (ngModelChange)="onLanguage($event)">
+      <select id="language-select" class="select select-sm border-base-content/55 max-nav:min-h-11" [ngModel]="i18n.language()" (ngModelChange)="onLanguage($event)">
         @for (language of languages; track language.code) {
           <option [value]="language.code" [attr.lang]="language.code">{{ language.endonym }}</option>
         }
@@ -16,14 +18,14 @@
     </div>
     <div class="flex items-center gap-2">
       <label for="theme-select" class="sr-only text-sm sm:not-sr-only">{{ 'theme.label' | t }}</label>
-      <select id="theme-select" class="select select-sm border-base-content/55" [ngModel]="theme.mode()" (ngModelChange)="onTheme($event)">
+      <select id="theme-select" class="select select-sm border-base-content/55 max-nav:min-h-11" [ngModel]="theme.mode()" (ngModelChange)="onTheme($event)">
         @for (mode of themeModes; track mode) {
           <option [value]="mode">{{ themeLabels[mode] | t }}</option>
         }
       </select>
     </div>
     @if (session.current().state === 'member' || session.current().state === 'not-member') {
-      <button type="button" class="btn btn-sm btn-outline" (click)="session.signOut()" [disabled]="session.logoutPending()">
+      <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" (click)="session.signOut()" [disabled]="session.logoutPending()">
         {{ (session.logoutPending() ? 'shell.signingOut' : 'shell.signOut') | t }}
       </button>
     }
@@ -31,8 +33,8 @@
 </header>
 <div class="group nav:grid nav:grid-cols-[auto_1fr]" [attr.data-collapsed]="sidebar.collapsed()">
   @if (session.current().state === 'member') {
-    <nav id="primary-nav" [attr.aria-label]="'shell.primaryNav' | t" [attr.data-open]="menuOpen()" tabindex="-1"
-      class="flex flex-col gap-1 border-b border-base-300 bg-base-100 p-3 max-nav:data-[open=false]:hidden nav:w-56 nav:border-e nav:border-b-0 nav:group-data-[collapsed=true]:w-16 nav:group-data-[collapsed=true]:px-2"
+    <nav id="primary-nav" [attr.aria-label]="'shell.primaryNav' | t" tabindex="-1"
+      class="flex flex-col gap-1 border-b border-base-300 bg-base-100 p-3 max-nav:hidden nav:w-56 nav:border-e nav:border-b-0 nav:group-data-[collapsed=true]:w-16 nav:group-data-[collapsed=true]:px-2"
       (keydown.escape)="menuOpen.set(false)">
       <button class="hidden min-h-11 w-full cursor-pointer items-center gap-3 rounded-md px-4 py-3 text-start hover:bg-base-content/10 nav:flex nav:group-data-[collapsed=true]:tooltip nav:group-data-[collapsed=true]:tooltip-right nav:group-data-[collapsed=true]:justify-center nav:group-data-[collapsed=true]:px-0" type="button" aria-controls="primary-nav" [attr.aria-expanded]="!sidebar.collapsed()"
         [attr.aria-label]="(sidebar.collapsed() ? 'shell.nav.expand' : 'shell.nav.collapse') | t" (click)="sidebar.toggle()">
@@ -84,6 +86,56 @@
     <router-outlet />
   </main>
 </div>
+@if (session.current().state === 'member') {
+  <!-- The backdrop tap is a pointer-only convenience: Escape and the close button are the keyboard paths, and the native dialog is focusable. -->
+  <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+  <dialog #drawer id="mobile-nav" [attr.aria-label]="'shell.drawerLabel' | t"
+    class="nav:open:hidden fixed inset-y-0 start-0 m-0 h-dvh max-h-none w-[min(20rem,85vw)] max-w-none open:flex open:flex-col open:translate-x-0 border-e border-base-300 bg-base-100 p-0 text-base-content shadow-xl backdrop:bg-base-content/50 starting:open:-translate-x-full motion-safe:transition-transform"
+    (close)="onDrawerClosed()" (pointerdown)="onDrawerPointerDown($event)" (click)="onDrawerClick($event)">
+    <div class="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <button type="button" class="btn btn-outline self-end max-nav:min-h-11 max-nav:min-w-11" (click)="menuOpen.set(false)">{{ 'shell.drawerClose' | t }}</button>
+      <nav [attr.aria-label]="'shell.primaryNav' | t" class="flex flex-col gap-1">
+        <a routerLink="/" routerLinkActive [routerLinkActiveOptions]="{exact:true}" ariaCurrentWhenActive="page" (click)="menuOpen.set(false)"
+          class="flex min-h-11 items-center gap-3 rounded-md px-4 py-3 no-underline aria-[current=page]:bg-neutral aria-[current=page]:font-bold aria-[current=page]:text-neutral-content not-aria-[current=page]:hover:bg-base-content/10">
+          <lucide-icon class="shrink-0" [img]="icons.House" [size]="20" [strokeWidth]="2" aria-hidden="true" />
+          <span>{{ 'shell.nav.home' | t }}</span>
+        </a>
+        <a routerLink="/household" routerLinkActive ariaCurrentWhenActive="page" (click)="menuOpen.set(false)"
+          class="flex min-h-11 items-center gap-3 rounded-md px-4 py-3 no-underline aria-[current=page]:bg-neutral aria-[current=page]:font-bold aria-[current=page]:text-neutral-content not-aria-[current=page]:hover:bg-base-content/10">
+          <lucide-icon class="shrink-0" [img]="icons.Users" [size]="20" [strokeWidth]="2" aria-hidden="true" />
+          <span>{{ 'shell.nav.household' | t }}</span>
+        </a>
+        <a routerLink="/payment-options" routerLinkActive ariaCurrentWhenActive="page" (click)="menuOpen.set(false)"
+          class="flex min-h-11 items-center gap-3 rounded-md px-4 py-3 no-underline aria-[current=page]:bg-neutral aria-[current=page]:font-bold aria-[current=page]:text-neutral-content not-aria-[current=page]:hover:bg-base-content/10">
+          <lucide-icon class="shrink-0" [img]="icons.Wallet" [size]="20" [strokeWidth]="2" aria-hidden="true" />
+          <span>{{ 'shell.nav.paymentOptions' | t }}</span>
+        </a>
+      </nav>
+      <section class="flex flex-col gap-3 border-t border-base-300 pt-4" aria-labelledby="drawer-settings-heading">
+        <h2 id="drawer-settings-heading" class="text-sm font-bold">{{ 'shell.settings' | t }}</h2>
+        <div class="flex flex-col gap-1">
+          <label for="drawer-language-select" class="text-sm">{{ 'language.label' | t }}</label>
+          <select id="drawer-language-select" class="select min-h-11 w-full border-base-content/55" [ngModel]="i18n.language()" (ngModelChange)="onLanguage($event)">
+            @for (language of languages; track language.code) {
+              <option [value]="language.code" [attr.lang]="language.code">{{ language.endonym }}</option>
+            }
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label for="drawer-theme-select" class="text-sm">{{ 'theme.label' | t }}</label>
+          <select id="drawer-theme-select" class="select min-h-11 w-full border-base-content/55" [ngModel]="theme.mode()" (ngModelChange)="onTheme($event)">
+            @for (mode of themeModes; track mode) {
+              <option [value]="mode">{{ themeLabels[mode] | t }}</option>
+            }
+          </select>
+        </div>
+        <button type="button" class="btn btn-outline min-h-11 w-full" (click)="onDrawerSignOut()" [disabled]="session.logoutPending()">
+          {{ (session.logoutPending() ? 'shell.signingOut' : 'shell.signOut') | t }}
+        </button>
+      </section>
+    </div>
+  </dialog>
+}
 <footer class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-base-300 bg-base-100 px-6 py-4 text-sm">
   <a class="text-primary underline" [href]="repoUrl" target="_blank" rel="noopener noreferrer">{{ 'shell.footer.github' | t }}</a>
   <span>{{ 'shell.footer.version' | t }} <code>{{ version }}</code></span>
