@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 import { BROWSER_LANGUAGES, LANGUAGE_STORAGE, LanguageService } from '../i18n/i18n';
 import { en } from '../i18n/catalog.en';
@@ -120,6 +120,12 @@ describe('SubscriptionOverviewComponent', () => {
     expect(region.getAttribute('tabindex')).toBe('0');
     expect(region.getAttribute('aria-label')).toBe(en['subscriptions.scrollRegion']);
     expect(region.classList.contains('overflow-x-auto')).toBe(true);
+    // Below `nav` the table section is display:none and a sibling card list takes over (CSS only, both stay in the DOM).
+    expect(region.classList.contains('max-nav:hidden')).toBe(true);
+    const cards = query(root, '[data-cards]');
+    expect(cards.tagName).toBe('UL');
+    expect(cards.classList.contains('nav:hidden')).toBe(true);
+    expect(cards.getAttribute('aria-label')).toBe(en['subscriptions.tableCaption']);
     expect(query(region, 'table').classList.contains('table')).toBe(true);
   });
 
@@ -582,11 +588,16 @@ describe('SubscriptionOverviewComponent categories', () => {
     expect(el.querySelector('label[for=group-toggle]')?.textContent?.trim()).toBe(en['subscriptions.group.toggle']);
     expect(toggle(el).type).toBe('checkbox');
     expect(el.querySelectorAll('[data-table-scroll]')).toHaveLength(1);
+    expect(el.querySelectorAll('[data-cards]')).toHaveLength(1);
     await group(fixture);
+    // One scroll region and one card list per group, each named by its group heading (not by a shared label).
     const regions = el.querySelectorAll('[data-table-scroll]');
-    expect(regions).toHaveLength(1);
-    expect(regions[0].getAttribute('tabindex')).toBe('0');
-    expect(regions[0].getAttribute('aria-label')).toBe(en['subscriptions.scrollRegion']);
+    expect(regions).toHaveLength(el.querySelectorAll('[data-category-group]').length);
+    expect(el.querySelectorAll('[data-cards]')).toHaveLength(regions.length);
+    for (const region of Array.from(regions)) {
+      expect(region.getAttribute('tabindex')).toBe('0');
+      expect(region.hasAttribute('aria-label')).toBe(false);
+    }
     const sections = Array.from(el.querySelectorAll('[data-category-group]'));
     expect(sections.length).toBeGreaterThan(1);
     const ids = new Set<string>();
@@ -595,6 +606,8 @@ describe('SubscriptionOverviewComponent categories', () => {
       ids.add(id);
       expect(section.querySelector(`h3[id=${id}]`)).toBeTruthy();
       expect(section.querySelector('table')?.getAttribute('aria-labelledby')).toBe(id);
+      expect(query(section, '[data-table-scroll]').getAttribute('aria-labelledby')).toBe(id);
+      expect(query(section, '[data-cards]').getAttribute('aria-labelledby')).toBe(id);
       expect(section.querySelector('caption')).toBeNull();
     }
     expect(ids.size).toBe(sections.length);
@@ -876,5 +889,253 @@ describe('SubscriptionOverviewComponent period', () => {
 
   it('offers a year option for every fixture year', () => {
     expect(periodOptionsFixture().years).toEqual([2024, 2025, 2026, 2027]);
+  });
+});
+
+describe('SubscriptionOverviewComponent cards below nav', () => {
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        provideHttpClient(withInterceptors([csrfInterceptor])),
+        provideHttpClientTesting(),
+        ...periodTestProviders(),
+        { provide: BROWSER_LANGUAGES, useValue: ['en'] },
+        { provide: LANGUAGE_STORAGE, useValue: { getItem: () => null, setItem: vi.fn() } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+  afterEach(() => http.verify());
+
+  async function render(data: SubscriptionOverview) {
+    const fixture = TestBed.createComponent(SubscriptionOverviewComponent);
+    fixture.detectChanges();
+    http.expectOne(OVERVIEW_URL).flush(data);
+    flushPeriods(http);
+    await settle(fixture);
+    return fixture;
+  }
+  async function settle(fixture: { whenStable(): Promise<unknown>; detectChanges(): void }) {
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+  const root = (fixture: { nativeElement: unknown }) => fixture.nativeElement as HTMLElement;
+  const group = async (fixture: Parameters<typeof settle>[0] & { nativeElement: unknown }) => {
+    const box = query<HTMLInputElement>(root(fixture), '#group-toggle');
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    await settle(fixture);
+  };
+
+  /** Active with a scheduled change and a logo-less long name, active plain, paused, ended (no action), in two categories and one without. */
+  const LONG_NAME = 'An-extraordinarily-long-subscription-name-without-any-spaces-that-must-wrap-instead-of-overflowing';
+  const data = () =>
+    overviewWith([
+      { name: 'Alpha', category: 'Streaming', status: 'active', paused: false, upcomingPriceChange: true },
+      { name: 'Bravo', category: 'Streaming', status: 'paused', paused: true, upcomingPriceChange: false },
+      { name: LONG_NAME, category: 'Food', status: 'active', paused: false, upcomingPriceChange: false, logoUrl: null },
+      { name: 'Delta', category: null, status: 'ended', paused: false, upcomingPriceChange: false },
+    ]);
+
+  const cardFor = (el: HTMLElement, name: string) =>
+    queryAll(el, '[data-cards] li').find((li) => query(li, 'a').textContent?.trim() === name) as HTMLElement;
+  const tableRowFor = (el: HTMLElement, name: string) =>
+    queryAll(el, '[data-table-scroll] tbody tr').find((row) => query(row, 'th a').textContent?.trim() === name) as HTMLElement;
+
+  it('renders one card per row in flat mode, in the same order as the table, linking to the same detail pages', async () => {
+    const el = root(await render(data()));
+    const cards = queryAll(el, '[data-cards] > li');
+    const rows = queryAll(el, '[data-table-scroll] tbody tr');
+    expect(cards).toHaveLength(rows.length);
+    expect(cards.map((c) => query(c, 'a').textContent?.trim())).toEqual(rows.map((r) => query(r, 'th a').textContent?.trim()));
+    expect(cards.map((c) => query(c, 'a').getAttribute('href'))).toEqual(rows.map((r) => query(r, 'th a').getAttribute('href')));
+    expect(el.querySelectorAll('[data-cards]')).toHaveLength(1);
+  });
+
+  it('shows price, cadence, status and the scheduled-change badge on the card, as the table does', async () => {
+    const el = root(await render(data()));
+    const alpha = cardFor(el, 'Alpha');
+    const row = tableRowFor(el, 'Alpha');
+    expect(plain(alpha.textContent)).toContain(plain(row.querySelectorAll('td')[2].textContent).replace(en['subscriptions.priceChangeScheduled'], '').trim());
+    expect(query(alpha, '[data-status]:not([data-status="upcoming"])').textContent?.trim()).toBe(en['subscriptions.status.active']);
+    expect(alpha.textContent).toContain(en['subscriptions.priceChangeScheduled']);
+    expect(plain(alpha.textContent)).toContain('· Monthly');
+    // Only what the plan puts on the card: category, per-month and period total stay on the detail page.
+    expect(plain(alpha.textContent)).not.toContain('Streaming');
+    expect(cardFor(el, 'Bravo').textContent).not.toContain(en['subscriptions.priceChangeScheduled']);
+    expect(query(cardFor(el, 'Bravo'), '[data-status]').getAttribute('data-status')).toBe('paused');
+    expect(query(cardFor(el, 'Delta'), '[data-status]').getAttribute('data-status')).toBe('ended');
+  });
+
+  it('offers Pause on active, Resume on paused and nothing on ended cards, named like the table buttons', async () => {
+    const el = root(await render(data()));
+    expect(query(cardFor(el, 'Alpha'), 'button').textContent?.trim()).toBe(en['subscriptions.pause']);
+    expect(query(cardFor(el, 'Alpha'), 'button').getAttribute('aria-label')).toBe('Pause Alpha');
+    expect(query(cardFor(el, 'Bravo'), 'button').textContent?.trim()).toBe(en['subscriptions.resume']);
+    expect(query(cardFor(el, 'Bravo'), 'button').getAttribute('aria-label')).toBe('Resume Bravo');
+    expect(cardFor(el, 'Delta').querySelector('button')).toBeNull();
+    expect(tableRowFor(el, 'Delta').querySelector('button')).toBeNull();
+  });
+
+  it('gives the card button a card- id and the shared focus key; the table copy keeps its id and gains the key', async () => {
+    const overview = data();
+    const el = root(await render(overview));
+    const id = overview.subscriptions.find((s) => s.name === 'Alpha')!.id;
+    const cardButton = query(cardFor(el, 'Alpha'), 'button');
+    const tableButton = query(tableRowFor(el, 'Alpha'), 'button');
+    expect(cardButton.id).toBe(`card-action-${id}`);
+    expect(tableButton.id).toBe(`action-${id}`);
+    expect(cardButton.getAttribute('data-focus-key')).toBe(`action-${id}`);
+    expect(tableButton.getAttribute('data-focus-key')).toBe(`action-${id}`);
+    const ids = queryAll(el, '[id]').map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('uses a stretched link, a raised button with a 44px target below nav, and a relative card', async () => {
+    const el = root(await render(data()));
+    const card = cardFor(el, 'Alpha');
+    expect(card.classList.contains('relative')).toBe(true);
+    const anchor = query(card, 'a');
+    expect(anchor.classList.contains('after:absolute')).toBe(true);
+    expect(anchor.classList.contains('after:inset-0')).toBe(true);
+    const button = query(card, 'button');
+    expect(button.classList.contains('relative')).toBe(true);
+    expect(button.classList.contains('z-10')).toBe(true);
+    expect(button.classList.contains('max-nav:min-h-11')).toBe(true);
+    // One link per card, so a screen reader hears one link per card.
+    expect(card.querySelectorAll('a')).toHaveLength(1);
+  });
+
+  it('falls back to the initial letter without a logo (no broken image) and wraps a very long name', async () => {
+    const el = root(await render(data()));
+    const card = cardFor(el, LONG_NAME);
+    expect(card.querySelector('img')).toBeNull();
+    expect(query(card, 'span[aria-hidden="true"]').textContent?.trim()).toBe('A');
+    const anchor = query(card, 'a');
+    expect(anchor.classList.contains('wrap-anywhere')).toBe(true);
+    expect(anchor.classList.contains('min-w-0')).toBe(true);
+    expect(card.classList.contains('min-w-0')).toBe(true);
+    expect(anchor.textContent?.trim()).toBe(LONG_NAME);
+  });
+
+  it('renders a logo image when there is a logo', async () => {
+    const el = root(await render(overviewWith([{ name: 'Logo', logoUrl: '/logos/a.png' }])));
+    expect(query(cardFor(el, 'Logo'), 'img').getAttribute('src')).toBe('/logos/a.png');
+  });
+
+  it('shows cards in grouped mode, one list per group, next to that group\'s table', async () => {
+    const fixture = await render(data());
+    await group(fixture);
+    const el = root(fixture);
+    const sections = queryAll(el, '[data-category-group]');
+    expect(sections).toHaveLength(3);
+    for (const section of sections) {
+      const rows = queryAll(section, '[data-table-scroll] tbody tr');
+      const cards = queryAll(section, '[data-cards] > li');
+      expect(cards).toHaveLength(rows.length);
+      expect(cards.map((c) => query(c, 'a').textContent?.trim())).toEqual(rows.map((r) => query(r, 'th a').textContent?.trim()));
+    }
+    expect(queryAll(el, '[data-cards] > li')).toHaveLength(4);
+  });
+
+  it('hides only the table below nav in grouped mode: heading, count and totals are never inside a max-nav:hidden element', async () => {
+    const totals = [{ currency: 'DKK', minorUnit: 2, total: '10.00', monthlyAverage: '1.00', activeCount: 1 }];
+    const fixture = await render({ ...data(), totals });
+    await group(fixture);
+    const el = root(fixture);
+    expect(el.querySelector('.max-nav\\:hidden [data-category-group]')).toBeNull();
+    for (const section of queryAll(el, '[data-category-group]')) {
+      expect(section.closest('.max-nav\\:hidden')).toBeNull();
+      expect(query(section, 'h3').closest('.max-nav\\:hidden')).toBeNull();
+      expect(query(section, 'h3 + p').closest('.max-nav\\:hidden')).toBeNull();
+      expect(query(section, '[data-table-scroll]').classList.contains('max-nav:hidden')).toBe(true);
+      expect(query(section, '[data-cards]').classList.contains('nav:hidden')).toBe(true);
+      expect(query(section, '[data-cards]').closest('.max-nav\\:hidden')).toBeNull();
+      for (const list of queryAll(section, '[data-totals]')) expect(list.closest('.max-nav\\:hidden')).toBeNull();
+    }
+    expect(queryAll(el, '[data-category-group] [data-totals]').length).toBeGreaterThan(0);
+  });
+
+  it('gives each group\'s scroll region and card list its own heading as accessible name', async () => {
+    const fixture = await render(data());
+    await group(fixture);
+    const el = root(fixture);
+    const names = queryAll(el, '[data-category-group]').map((section) => {
+      const id = query(section, 'h3').id;
+      expect(query(section, '[data-table-scroll]').getAttribute('aria-labelledby')).toBe(id);
+      expect(query(section, '[data-cards]').getAttribute('aria-labelledby')).toBe(id);
+      return id;
+    });
+    expect(new Set(names).size).toBe(3);
+  });
+
+  it('keeps a single-category grouped overview consistent', async () => {
+    const fixture = await render(overviewWith([{ name: 'One', category: 'Only' }, { name: 'Two', category: 'Only' }]));
+    await group(fixture);
+    const el = root(fixture);
+    expect(el.querySelectorAll('[data-category-group]')).toHaveLength(1);
+    expect(el.querySelectorAll('[data-table-scroll]')).toHaveLength(1);
+    expect(queryAll(el, '[data-cards] > li')).toHaveLength(2);
+  });
+
+  it('renders no table section or card list for an empty group set but keeps the empty-state text', async () => {
+    const el = root(await render({ ...overviewFixture(), subscriptions: [], totals: [] }));
+    expect(el.querySelector('[data-cards]')).toBeNull();
+    expect(el.querySelector('[data-table-scroll]')).toBeNull();
+    expect(el.querySelector('[data-empty-state]')).not.toBeNull();
+  });
+
+  describe('action isolation', () => {
+    const idOf = (overview: SubscriptionOverview, name: string) => overview.subscriptions.find((s) => s.name === name)!.id;
+
+    it('Pause on a card posts once and does not navigate', async () => {
+      const overview = data();
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      const navigateCommands = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const el = root(await render(overview));
+      query<HTMLButtonElement>(cardFor(el, 'Alpha'), 'button').click();
+      http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'Alpha')}/pause?period=year-2026` }).flush({});
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(overview);
+      expect(navigate).not.toHaveBeenCalled();
+      expect(navigateCommands).not.toHaveBeenCalled();
+    });
+
+    it('the stretched link navigates to the detail page and sends no pause or resume request', async () => {
+      const overview = data();
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      const el = root(await render(overview));
+      query<HTMLAnchorElement>(cardFor(el, 'Alpha'), 'a').click();
+      expect(navigate).toHaveBeenCalledTimes(1);
+      expect(String(navigate.mock.calls[0][0])).toContain(`/subscriptions/${idOf(overview, 'Alpha')}`);
+      http.expectNone((request) => request.method === 'POST');
+    });
+
+    it('Resume on a card posts the resume for that row', async () => {
+      const overview = data();
+      const el = root(await render(overview));
+      query<HTMLButtonElement>(cardFor(el, 'Bravo'), 'button').click();
+      http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'Bravo')}/resume?period=year-2026` }).flush({});
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(overview);
+    });
+
+    it('disables every card and table button while an action is in flight, and shows the error state', async () => {
+      const overview = data();
+      const fixture = await render(overview);
+      const el = root(fixture);
+      query<HTMLButtonElement>(cardFor(el, 'Alpha'), 'button').click();
+      await settle(fixture);
+      const buttons = queryAll<HTMLButtonElement>(el, 'button.btn-outline');
+      expect(buttons.length).toBeGreaterThanOrEqual(4);
+      expect(buttons.every((b) => b.disabled)).toBe(true);
+      http.expectOne({ method: 'POST', url: `/api/subscriptions/${idOf(overview, 'Alpha')}/pause?period=year-2026` }).flush({}, { status: 409, statusText: 'Conflict' });
+      await settle(fixture);
+      http.expectOne({ method: 'GET', url: OVERVIEW_URL }).flush(overview);
+      await settle(fixture);
+      expect(queryAll<HTMLButtonElement>(el, 'button.btn-outline').every((b) => !b.disabled)).toBe(true);
+      expect(query(el, '[role=alert]').textContent).toContain(en['subscriptions.pauseInvalid']);
+    });
   });
 });

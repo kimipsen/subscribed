@@ -80,7 +80,28 @@
 
       <app-panel labelledBy="history-heading">
         <h2 id="history-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'detail.historyHeading' | t }}</h2>
-        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <ng-template #historyPeriod let-row>
+          @if (row.effectiveTo) { {{ 'detail.periodClosed' | t: { from: date(row.effectiveFrom), to: date(row.effectiveTo) } }} }
+          @else { {{ 'detail.periodOpen' | t: { from: date(row.effectiveFrom) } }} }
+          @if (row.initial) { <span class="text-base-content/70" data-history-note>{{ 'detail.initialPrice' | t }}</span> }
+          @if (row.current) { <app-status-badge status="current">{{ 'detail.badge.current' | t }}</app-status-badge> }
+          @if (row.upcoming) { <app-status-badge status="upcoming">{{ 'detail.badge.upcoming' | t }}</app-status-badge> }
+        </ng-template>
+        <ng-template #historyChange let-row>
+          @if (row.change; as change) {
+            {{ signed(change.amount) }}@if (change.percent !== null) { ({{ percent(change.percent) }}) }
+          } @else {
+            <span class="text-base-content/70">{{ 'detail.noPreviousPrice' | t }}</span>
+          }
+        </ng-template>
+        <ng-template #historyOption let-row>
+          @if (optionOf(row.paymentOptionId); as option) {
+            <app-payment-option-logo [brand]="option.brand" [size]="20" /> {{ optionText(option) }}@if (option.removed) { <span class="text-base-content/70"> {{ 'detail.paymentOption.removed' | t }}</span> }
+          } @else {
+            <span class="text-base-content/70">—</span>
+          }
+        </ng-template>
+        <section class="overflow-x-auto max-nav:hidden" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
           <table class="table">
             <caption class="py-2 text-start text-base-content/70">{{ 'detail.historyCaption' | t }}</caption>
             <thead>
@@ -96,34 +117,16 @@
             <tbody>
               @for (row of d.priceHistory; track row.entryId) {
                 <tr>
-                  <th scope="row">
-                    @if (row.effectiveTo) { {{ 'detail.periodClosed' | t: { from: date(row.effectiveFrom), to: date(row.effectiveTo) } }} }
-                    @else { {{ 'detail.periodOpen' | t: { from: date(row.effectiveFrom) } }} }
-                    @if (row.initial) { <span class="text-base-content/70" data-history-note>{{ 'detail.initialPrice' | t }}</span> }
-                    @if (row.current) { <app-status-badge status="current">{{ 'detail.badge.current' | t }}</app-status-badge> }
-                    @if (row.upcoming) { <app-status-badge status="upcoming">{{ 'detail.badge.upcoming' | t }}</app-status-badge> }
-                  </th>
+                  <th scope="row"><ng-container [ngTemplateOutlet]="historyPeriod" [ngTemplateOutletContext]="{ $implicit: row }" /></th>
                   <td>{{ money(row.amount) }} · {{ cadence(row.cadenceUnit, row.cadenceCount) }}</td>
                   <td>{{ money(row.normalizedMonthly) }}</td>
-                  <td>
-                    @if (row.change; as change) {
-                      {{ signed(change.amount) }}@if (change.percent !== null) { ({{ percent(change.percent) }}) }
-                    } @else {
-                      <span class="text-base-content/70">{{ 'detail.noPreviousPrice' | t }}</span>
-                    }
-                  </td>
-                  <td>
-                    @if (optionOf(row.paymentOptionId); as option) {
-                      <app-payment-option-logo [brand]="option.brand" [size]="20" /> {{ optionText(option) }}@if (option.removed) { <span class="text-base-content/70"> {{ 'detail.paymentOption.removed' | t }}</span> }
-                    } @else {
-                      <span class="text-base-content/70">—</span>
-                    }
-                  </td>
+                  <td><ng-container [ngTemplateOutlet]="historyChange" [ngTemplateOutletContext]="{ $implicit: row }" /></td>
+                  <td><ng-container [ngTemplateOutlet]="historyOption" [ngTemplateOutletContext]="{ $implicit: row }" /></td>
                   <td>
                     <div class="flex flex-wrap gap-2">
-                      <button type="button" class="btn btn-sm btn-outline" [id]="'correct-' + row.entryId" (click)="openEntry({ mode: 'correct', entry: row })">{{ 'detail.entry.correct' | t }}</button>
+                      <button type="button" class="btn btn-sm btn-outline" [id]="'correct-' + row.entryId" [attr.data-focus-key]="'correct-' + row.entryId" (click)="openEntry({ mode: 'correct', entry: row })">{{ 'detail.entry.correct' | t }}</button>
                       @if (!row.initial) {
-                        <button type="button" class="btn btn-sm btn-outline" [id]="'remove-' + row.entryId" (click)="askRemoveEntry(row)">{{ 'detail.entry.remove' | t }}</button>
+                        <button type="button" class="btn btn-sm btn-outline" [id]="'remove-' + row.entryId" [attr.data-focus-key]="'remove-' + row.entryId" (click)="askRemoveEntry(row)">{{ 'detail.entry.remove' | t }}</button>
                       }
                     </div>
                   </td>
@@ -132,6 +135,28 @@
             </tbody>
           </table>
         </section>
+        <ul class="m-0 flex list-none flex-col gap-3 p-0 nav:hidden" data-cards [attr.aria-label]="'detail.historyCaption' | t">
+          @for (row of d.priceHistory; track row.entryId) {
+            <li class="flex min-w-0 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4" data-history-card>
+              <p class="m-0 font-semibold wrap-anywhere"><ng-container [ngTemplateOutlet]="historyPeriod" [ngTemplateOutletContext]="{ $implicit: row }" /></p>
+              <p class="m-0 wrap-anywhere">{{ money(row.amount) }} · {{ cadence(row.cadenceUnit, row.cadenceCount) }}</p>
+              <dl class="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
+                <dt class="font-semibold">{{ 'detail.col.perMonth' | t }}</dt>
+                <dd class="m-0 wrap-anywhere">{{ money(row.normalizedMonthly) }}</dd>
+                <dt class="font-semibold">{{ 'detail.col.change' | t }}</dt>
+                <dd class="m-0 wrap-anywhere"><ng-container [ngTemplateOutlet]="historyChange" [ngTemplateOutletContext]="{ $implicit: row }" /></dd>
+                <dt class="font-semibold">{{ 'detail.col.paymentOption' | t }}</dt>
+                <dd class="m-0 wrap-anywhere"><ng-container [ngTemplateOutlet]="historyOption" [ngTemplateOutletContext]="{ $implicit: row }" /></dd>
+              </dl>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'card-correct-' + row.entryId" [attr.data-focus-key]="'correct-' + row.entryId" (click)="openEntry({ mode: 'correct', entry: row })">{{ 'detail.entry.correct' | t }}</button>
+                @if (!row.initial) {
+                  <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'card-remove-' + row.entryId" [attr.data-focus-key]="'remove-' + row.entryId" (click)="askRemoveEntry(row)">{{ 'detail.entry.remove' | t }}</button>
+                }
+              </div>
+            </li>
+          }
+        </ul>
 
         @if (confirmEntry(); as entry) {
           <div class="alert alert-warning my-4" role="alertdialog" aria-labelledby="confirm-entry" data-confirm-entry>
@@ -213,7 +238,7 @@
       <app-panel labelledBy="pauses-heading">
         <h2 id="pauses-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'pauses.heading' | t }}</h2>
         @if (pauses().length) {
-          <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+          <section class="overflow-x-auto max-nav:hidden" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
             <table class="table" data-pauses>
               <caption class="py-2 text-start text-base-content/70">{{ 'pauses.caption' | t }}</caption>
               <thead>
@@ -230,8 +255,8 @@
                     <td>@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</td>
                     <td>
                       <div class="flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm btn-outline" [id]="'edit-pause-' + row.id" (click)="openPause({ mode: 'edit', period: row })">{{ 'pauses.edit' | t }}</button>
-                        <button type="button" class="btn btn-sm btn-outline" [id]="'delete-pause-' + row.id" (click)="askRemovePause(row)">{{ 'pauses.delete' | t }}</button>
+                        <button type="button" class="btn btn-sm btn-outline" [id]="'edit-pause-' + row.id" [attr.data-focus-key]="'edit-pause-' + row.id" (click)="openPause({ mode: 'edit', period: row })">{{ 'pauses.edit' | t }}</button>
+                        <button type="button" class="btn btn-sm btn-outline" [id]="'delete-pause-' + row.id" [attr.data-focus-key]="'delete-pause-' + row.id" (click)="askRemovePause(row)">{{ 'pauses.delete' | t }}</button>
                       </div>
                     </td>
                   </tr>
@@ -239,6 +264,22 @@
               </tbody>
             </table>
           </section>
+          <ul class="m-0 flex list-none flex-col gap-3 p-0 nav:hidden" data-cards data-pauses-cards [attr.aria-label]="'pauses.caption' | t">
+            @for (row of pauses(); track row.id) {
+              <li class="flex min-w-0 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4" data-pause-card>
+                <dl class="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
+                  <dt class="font-semibold">{{ 'pauses.col.pauseDate' | t }}</dt>
+                  <dd class="m-0 wrap-anywhere">{{ date(row.pauseDate) }}</dd>
+                  <dt class="font-semibold">{{ 'pauses.col.resumeDate' | t }}</dt>
+                  <dd class="m-0 wrap-anywhere">@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</dd>
+                </dl>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'card-edit-pause-' + row.id" [attr.data-focus-key]="'edit-pause-' + row.id" (click)="openPause({ mode: 'edit', period: row })">{{ 'pauses.edit' | t }}</button>
+                  <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'card-delete-pause-' + row.id" [attr.data-focus-key]="'delete-pause-' + row.id" (click)="askRemovePause(row)">{{ 'pauses.delete' | t }}</button>
+                </div>
+              </li>
+            }
+          </ul>
         } @else {
           <p class="my-2 text-base-content/70" data-pauses-empty>{{ 'pauses.empty' | t }}</p>
         }

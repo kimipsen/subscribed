@@ -99,38 +99,61 @@
           <td>{{ money(row.periodTotal, row.currency, row.minorUnit) }}</td>
           <td>
             @if (row.paused) {
-              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [disabled]="acting() !== null"
+              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [attr.data-focus-key]="'action-' + row.id" [disabled]="acting() !== null"
                 [attr.aria-label]="'subscriptions.resumeLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.resume' | t }}</button>
             } @else if (canPause(row)) {
-              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [disabled]="acting() !== null"
+              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [attr.data-focus-key]="'action-' + row.id" [disabled]="acting() !== null"
                 [attr.aria-label]="'subscriptions.pauseLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.pause' | t }}</button>
             }
           </td>
         </tr>
       </ng-template>
 
+      <ng-template #subscriptionCard let-row>
+        <li class="relative flex min-w-0 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4" data-card>
+          <span class="flex min-w-0 items-center gap-2">
+            <app-service-logo [name]="row.name" [logoUrl]="row.logoUrl" [size]="24" />
+            <a class="min-w-0 font-medium text-primary underline wrap-anywhere after:absolute after:inset-0" [routerLink]="['/subscriptions', row.id]">{{ row.name }}</a>
+          </span>
+          <p class="m-0 wrap-anywhere">{{ price(row) }} · {{ cadence(row.currentPrice) }}</p>
+          <p class="m-0 flex flex-wrap items-center gap-2">
+            <app-status-badge [status]="row.status">{{ statusKey(row.status) | t }}</app-status-badge>
+            @if (row.upcomingPriceChange) {
+              <app-status-badge status="upcoming">{{ 'subscriptions.priceChangeScheduled' | t }}</app-status-badge>
+            }
+          </p>
+          @if (row.paused) {
+            <button type="button" class="btn btn-sm btn-outline relative z-10 self-start max-nav:min-h-11" [id]="'card-action-' + row.id" [attr.data-focus-key]="'action-' + row.id" [disabled]="acting() !== null"
+              [attr.aria-label]="'subscriptions.resumeLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.resume' | t }}</button>
+          } @else if (canPause(row)) {
+            <button type="button" class="btn btn-sm btn-outline relative z-10 self-start max-nav:min-h-11" [id]="'card-action-' + row.id" [attr.data-focus-key]="'action-' + row.id" [disabled]="acting() !== null"
+              [attr.aria-label]="'subscriptions.pauseLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.pause' | t }}</button>
+          }
+        </li>
+      </ng-template>
+
       @if (visibleRows().length === 0) {
         <!-- Defensive guard (R3.4): effectiveFilter falls back to All, so no selectable filter can match nothing. -->
         <p class="m-0 text-base-content/70">{{ 'subscriptions.filter.emptyBody' | t }}</p>
       } @else if (grouped()) {
-        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
-          @for (group of groups(); track group.key; let index = $index) {
-            <section class="my-4" data-category-group [attr.aria-labelledby]="'category-group-' + index">
-              <h3 class="mt-0 mb-1 text-lg font-semibold wrap-anywhere" [id]="'category-group-' + index">{{ groupLabel(group) }}</h3>
-              <p class="my-1 text-base-content/70">{{ 'subscriptions.group.count' | t: { count: '' + group.count } }}</p>
-              @if (group.totals.length > 0) {
-                <ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0" data-totals>
-                  @for (total of group.totals; track total.currency) {
-                    <li class="wrap-anywhere">
-                      {{ 'subscriptions.totalsLine' | t: {
-                        total: money(total.total, total.currency, total.minorUnit),
-                        average: money(total.monthlyAverage, total.currency, total.minorUnit)
-                      } }}
-                      <span class="text-base-content/70">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
-                    </li>
-                  }
-                </ul>
-              }
+        @for (group of groups(); track group.key; let index = $index) {
+          <section class="my-4" data-category-group [attr.aria-labelledby]="'category-group-' + index">
+            <h3 class="mt-0 mb-1 text-lg font-semibold wrap-anywhere" [id]="'category-group-' + index">{{ groupLabel(group) }}</h3>
+            <p class="my-1 text-base-content/70">{{ 'subscriptions.group.count' | t: { count: '' + group.count } }}</p>
+            @if (group.totals.length > 0) {
+              <ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0" data-totals>
+                @for (total of group.totals; track total.currency) {
+                  <li class="wrap-anywhere">
+                    {{ 'subscriptions.totalsLine' | t: {
+                      total: money(total.total, total.currency, total.minorUnit),
+                      average: money(total.monthlyAverage, total.currency, total.minorUnit)
+                    } }}
+                    <span class="text-base-content/70">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
+                  </li>
+                }
+              </ul>
+            }
+            <section class="overflow-x-auto max-nav:hidden" tabindex="0" data-table-scroll [attr.aria-labelledby]="'category-group-' + index">
               <table class="table" [attr.aria-labelledby]="'category-group-' + index">
                 <ng-container [ngTemplateOutlet]="columns" />
                 <tbody>
@@ -140,10 +163,15 @@
                 </tbody>
               </table>
             </section>
-          }
-        </section>
+            <ul class="m-0 flex list-none flex-col gap-3 p-0 nav:hidden" data-cards [attr.aria-labelledby]="'category-group-' + index">
+              @for (row of group.rows; track row.id) {
+                <ng-container [ngTemplateOutlet]="subscriptionCard" [ngTemplateOutletContext]="{ $implicit: row }" />
+              }
+            </ul>
+          </section>
+        }
       } @else {
-        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <section class="overflow-x-auto max-nav:hidden" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
           <table class="table">
             <caption class="py-2 text-start text-base-content/70">{{ 'subscriptions.tableCaption' | t }}</caption>
             <ng-container [ngTemplateOutlet]="columns" />
@@ -154,6 +182,11 @@
             </tbody>
           </table>
         </section>
+        <ul class="m-0 flex list-none flex-col gap-3 p-0 nav:hidden" data-cards [attr.aria-label]="'subscriptions.tableCaption' | t">
+          @for (row of visibleRows(); track row.id) {
+            <ng-container [ngTemplateOutlet]="subscriptionCard" [ngTemplateOutletContext]="{ $implicit: row }" />
+          }
+        </ul>
       }
     }
   }
