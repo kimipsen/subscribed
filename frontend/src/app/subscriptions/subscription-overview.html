@@ -1,6 +1,6 @@
 <section aria-labelledby="subscriptions-heading">
   <h2 id="subscriptions-heading" class="mb-2 text-2xl font-semibold wrap-anywhere">{{ 'subscriptions.heading' | t }}</h2>
-  <p class="my-2"><a class="text-primary underline" routerLink="/payment-options">{{ 'paymentOptions.link' | t }}</a></p>
+  <p class="my-2"><a class="text-primary underline max-nav:inline-flex max-nav:min-h-11 max-nav:items-center" routerLink="/payment-options">{{ 'paymentOptions.link' | t }}</a></p>
   @if (notice(); as message) {
     <app-notice [role]="'status'" data-action-notice>{{ message.key | t: message.params }}</app-notice>
   }
@@ -18,14 +18,14 @@
     <app-notice>
       <p class="m-0">{{ 'subscriptions.loadFailed' | t }}</p>
       @if (reference()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ reference() }}</code></p> }
-      <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'common.retry' | t }}</button>
+      <button type="button" class="btn btn-sm btn-outline mt-2 max-nav:min-h-11" (click)="load()">{{ 'common.retry' | t }}</button>
     </app-notice>
   } @else if (overview(); as data) {
     @if (rows().length === 0) {
       <div class="my-4 rounded-box border border-base-300 bg-base-100 p-6" data-empty-state>
         <h3 class="mt-0 mb-2 text-lg font-semibold">{{ 'subscriptions.emptyHeading' | t }}</h3>
         <p class="mt-0 mb-4">{{ 'subscriptions.emptyBody' | t }}</p>
-        <a class="btn btn-primary" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a>
+        <a class="btn btn-primary max-nav:min-h-11" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a>
       </div>
     } @else {
       <section class="my-4" aria-labelledby="totals-heading" data-totals-panel>
@@ -46,10 +46,10 @@
           </ul>
         }
       </section>
-      <p class="my-2"><a class="btn btn-primary" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a></p>
+      <p class="my-2"><a class="btn btn-primary max-nav:min-h-11" routerLink="/subscriptions/new">{{ 'subscriptions.addLink' | t }}</a></p>
       <div class="flex flex-wrap items-end gap-x-6 gap-y-2" data-category-toolbar>
         <app-form-field [label]="'subscriptions.filter.label' | t" controlId="category-filter" class="min-w-0 max-w-full">
-          <select id="category-filter" class="select border-base-content/55 max-w-full" (change)="selectCategory($any($event.target).value)">
+          <select id="category-filter" class="select max-nav:min-h-11 border-base-content/55 max-w-full" (change)="selectCategory($any($event.target).value)">
             <option value="all" [selected]="filterValue() === 'all'">{{ 'subscriptions.filter.all' | t }}</option>
             @for (option of categoryOptions(); track option.key) {
               <option [value]="'cat:' + option.key" [selected]="filterValue() === 'cat:' + option.key">{{ option.label }}</option>
@@ -59,10 +59,10 @@
             }
           </select>
         </app-form-field>
-        <div class="mb-4 flex items-center gap-2">
+        <label for="group-toggle" class="mb-4 flex cursor-pointer items-center gap-2 font-medium max-nav:min-h-11">
           <input id="group-toggle" type="checkbox" class="checkbox border-base-content/55" [checked]="grouped()" (change)="setGrouped($any($event.target).checked)" />
-          <label for="group-toggle" class="font-medium">{{ 'subscriptions.group.toggle' | t }}</label>
-        </div>
+          {{ 'subscriptions.group.toggle' | t }}
+        </label>
       </div>
       <output class="block my-2 text-base-content/70">{{ 'subscriptions.filter.resultCount' | t: { count: '' + visibleRows().length } }}</output>
 
@@ -99,38 +99,61 @@
           <td>{{ money(row.periodTotal, row.currency, row.minorUnit) }}</td>
           <td>
             @if (row.paused) {
-              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [disabled]="acting() !== null"
+              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [attr.data-focus-key]="'action-' + row.id" [disabled]="acting() !== null"
                 [attr.aria-label]="'subscriptions.resumeLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.resume' | t }}</button>
             } @else if (canPause(row)) {
-              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [disabled]="acting() !== null"
+              <button type="button" class="btn btn-sm btn-outline" [id]="'action-' + row.id" [attr.data-focus-key]="'action-' + row.id" [disabled]="acting() !== null"
                 [attr.aria-label]="'subscriptions.pauseLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.pause' | t }}</button>
             }
           </td>
         </tr>
       </ng-template>
 
+      <ng-template #subscriptionCard let-row>
+        <li class="relative flex min-w-0 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4" data-card>
+          <span class="flex min-w-0 items-center gap-2">
+            <app-service-logo [name]="row.name" [logoUrl]="row.logoUrl" [size]="24" />
+            <a class="min-w-0 font-medium text-primary underline wrap-anywhere after:absolute after:inset-0" [routerLink]="['/subscriptions', row.id]">{{ row.name }}</a>
+          </span>
+          <p class="m-0 wrap-anywhere">{{ price(row) }} · {{ cadence(row.currentPrice) }}</p>
+          <p class="m-0 flex flex-wrap items-center gap-2">
+            <app-status-badge [status]="row.status">{{ statusKey(row.status) | t }}</app-status-badge>
+            @if (row.upcomingPriceChange) {
+              <app-status-badge status="upcoming">{{ 'subscriptions.priceChangeScheduled' | t }}</app-status-badge>
+            }
+          </p>
+          @if (row.paused) {
+            <button type="button" class="btn btn-sm btn-outline relative z-10 self-start max-nav:min-h-11" [id]="'card-action-' + row.id" [attr.data-focus-key]="'action-' + row.id" [disabled]="acting() !== null"
+              [attr.aria-label]="'subscriptions.resumeLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.resume' | t }}</button>
+          } @else if (canPause(row)) {
+            <button type="button" class="btn btn-sm btn-outline relative z-10 self-start max-nav:min-h-11" [id]="'card-action-' + row.id" [attr.data-focus-key]="'action-' + row.id" [disabled]="acting() !== null"
+              [attr.aria-label]="'subscriptions.pauseLabel' | t: { name: row.name }" (click)="toggle(row)">{{ 'subscriptions.pause' | t }}</button>
+          }
+        </li>
+      </ng-template>
+
       @if (visibleRows().length === 0) {
         <!-- Defensive guard (R3.4): effectiveFilter falls back to All, so no selectable filter can match nothing. -->
         <p class="m-0 text-base-content/70">{{ 'subscriptions.filter.emptyBody' | t }}</p>
       } @else if (grouped()) {
-        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
-          @for (group of groups(); track group.key; let index = $index) {
-            <section class="my-4" data-category-group [attr.aria-labelledby]="'category-group-' + index">
-              <h3 class="mt-0 mb-1 text-lg font-semibold wrap-anywhere" [id]="'category-group-' + index">{{ groupLabel(group) }}</h3>
-              <p class="my-1 text-base-content/70">{{ 'subscriptions.group.count' | t: { count: '' + group.count } }}</p>
-              @if (group.totals.length > 0) {
-                <ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0" data-totals>
-                  @for (total of group.totals; track total.currency) {
-                    <li class="wrap-anywhere">
-                      {{ 'subscriptions.totalsLine' | t: {
-                        total: money(total.total, total.currency, total.minorUnit),
-                        average: money(total.monthlyAverage, total.currency, total.minorUnit)
-                      } }}
-                      <span class="text-base-content/70">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
-                    </li>
-                  }
-                </ul>
-              }
+        @for (group of groups(); track group.key; let index = $index) {
+          <section class="my-4" data-category-group [attr.aria-labelledby]="'category-group-' + index">
+            <h3 class="mt-0 mb-1 text-lg font-semibold wrap-anywhere" [id]="'category-group-' + index">{{ groupLabel(group) }}</h3>
+            <p class="my-1 text-base-content/70">{{ 'subscriptions.group.count' | t: { count: '' + group.count } }}</p>
+            @if (group.totals.length > 0) {
+              <ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0" data-totals>
+                @for (total of group.totals; track total.currency) {
+                  <li class="wrap-anywhere">
+                    {{ 'subscriptions.totalsLine' | t: {
+                      total: money(total.total, total.currency, total.minorUnit),
+                      average: money(total.monthlyAverage, total.currency, total.minorUnit)
+                    } }}
+                    <span class="text-base-content/70">({{ 'subscriptions.totalsActive' | t: { count: '' + total.activeCount } }})</span>
+                  </li>
+                }
+              </ul>
+            }
+            <section class="overflow-x-auto max-nav:hidden" tabindex="0" data-table-scroll [attr.aria-labelledby]="'category-group-' + index">
               <table class="table" [attr.aria-labelledby]="'category-group-' + index">
                 <ng-container [ngTemplateOutlet]="columns" />
                 <tbody>
@@ -140,10 +163,15 @@
                 </tbody>
               </table>
             </section>
-          }
-        </section>
+            <ul class="m-0 flex list-none flex-col gap-3 p-0 nav:hidden" data-cards [attr.aria-labelledby]="'category-group-' + index">
+              @for (row of group.rows; track row.id) {
+                <ng-container [ngTemplateOutlet]="subscriptionCard" [ngTemplateOutletContext]="{ $implicit: row }" />
+              }
+            </ul>
+          </section>
+        }
       } @else {
-        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <section class="overflow-x-auto max-nav:hidden" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
           <table class="table">
             <caption class="py-2 text-start text-base-content/70">{{ 'subscriptions.tableCaption' | t }}</caption>
             <ng-container [ngTemplateOutlet]="columns" />
@@ -154,6 +182,11 @@
             </tbody>
           </table>
         </section>
+        <ul class="m-0 flex list-none flex-col gap-3 p-0 nav:hidden" data-cards [attr.aria-label]="'subscriptions.tableCaption' | t">
+          @for (row of visibleRows(); track row.id) {
+            <ng-container [ngTemplateOutlet]="subscriptionCard" [ngTemplateOutletContext]="{ $implicit: row }" />
+          }
+        </ul>
       }
     }
   }

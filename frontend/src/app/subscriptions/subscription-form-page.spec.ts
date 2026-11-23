@@ -201,6 +201,28 @@ describe('SubscriptionFormPage', () => {
     expect(field.closest('[data-field]')?.querySelector('img, app-payment-option-logo')).toBeNull();
   });
 
+  it('gives every single-line control a 44px minimum height below the nav breakpoint (max-nav:min-h-11), and keeps desktop unchanged', async () => {
+    const { root } = await openAdd();
+    const controls = Array.from(root.querySelectorAll<HTMLElement>('form input:not([type="radio"]):not([type="checkbox"]), form select'));
+    expect(controls.length).toBeGreaterThan(5);
+    for (const control of controls) {
+      expect(control.classList.contains('max-nav:min-h-11'), `${control.id || control.getAttribute('name')} lacks max-nav:min-h-11`).toBe(true);
+      expect(control.classList.contains('min-h-11'), `${control.id} has an unconditional min-h-11`).toBe(false);
+    }
+  });
+
+  it('makes the whole radio row the hit area: the input sits inside its label', async () => {
+    const { root } = await openAdd();
+    const radios = Array.from(root.querySelectorAll<HTMLInputElement>('input[type="radio"][name="cadencePreset"]'));
+    expect(radios.length).toBe(4);
+    for (const radio of radios) {
+      const label = radio.closest('label');
+      expect(label, radio.id).not.toBeNull();
+      expect(label!.htmlFor).toBe(radio.id);
+      expect(label!.classList.contains('min-h-11')).toBe(true);
+    }
+  });
+
   // ---- payment option (edit mode, #39) ----------------------------------------------------------------
 
   const VISA = '0192f3c1a1b27c4e8d2e5f60718293b5';

@@ -7,13 +7,13 @@
       <app-skeleton-block />
     } @else if (notFound()) {
       <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'subscriptions.notFound' | t }}</h1>
-      <a class="text-primary underline" routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
+      <a class="text-primary underline max-nav:inline-flex max-nav:min-h-11 max-nav:items-center" routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
     } @else if (loadFailed()) {
       <h1 class="mb-2 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ 'subscriptions.heading' | t }}</h1>
       <app-notice>
         <p class="m-0">{{ 'detail.loadFailed' | t }}</p>
         @if (traceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ traceId() }}</code></p> }
-        <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'common.retry' | t }}</button>
+        <button type="button" class="btn btn-sm btn-outline mt-2 max-nav:min-h-11" (click)="load()">{{ 'common.retry' | t }}</button>
       </app-notice>
     } @else if (detail(); as d) {
       <div class="mb-2 flex items-center gap-3" data-title-row>
@@ -21,14 +21,14 @@
         <h1 class="m-0 min-w-0 text-2xl font-semibold wrap-anywhere" tabindex="-1">{{ d.name }}</h1>
       </div>
       <div class="my-2 flex flex-wrap items-center gap-3">
-        <a class="text-primary underline" routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
-        <a class="btn btn-sm btn-outline" [routerLink]="['/subscriptions', d.id, 'edit']">{{ 'detail.edit' | t }}</a>
+        <a class="text-primary underline max-nav:inline-flex max-nav:min-h-11 max-nav:items-center" routerLink="/">{{ 'subscriptions.backHome' | t }}</a>
+        <a class="btn btn-sm btn-outline max-nav:min-h-11" [routerLink]="['/subscriptions', d.id, 'edit']">{{ 'detail.edit' | t }}</a>
       </div>
 
       @if (conflict()) {
         <app-notice>
           <p class="m-0">{{ 'subscriptions.form.conflict' | t }}</p>
-          <button type="button" class="btn btn-sm btn-outline mt-2" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
+          <button type="button" class="btn btn-sm btn-outline mt-2 max-nav:min-h-11" (click)="load()">{{ 'subscriptions.form.reloadLatest' | t }}</button>
         </app-notice>
       }
       @if (notice(); as message) {
@@ -62,7 +62,7 @@
           <dd class="m-0">{{ money(d.periodTotal) }}</dd>
           @if (isHttpsUrl(d.effectiveUnsubscribeUrl)) {
             <dt class="mt-2 font-semibold sm:mt-0">{{ 'detail.unsubscribe' | t }}</dt>
-            <dd class="m-0 wrap-anywhere"><a class="text-primary underline" [href]="d.effectiveUnsubscribeUrl" target="_blank" rel="noopener noreferrer">{{ 'detail.unsubscribeLink' | t }}</a></dd>
+            <dd class="m-0 wrap-anywhere"><a class="text-primary underline max-nav:inline-flex max-nav:min-h-11 max-nav:items-center" [href]="d.effectiveUnsubscribeUrl" target="_blank" rel="noopener noreferrer">{{ 'detail.unsubscribeLink' | t }}</a></dd>
           }
           @if (d.cancelBy) {
             <dt class="mt-2 font-semibold sm:mt-0">{{ 'detail.cancelBy' | t }}</dt>
@@ -80,7 +80,29 @@
 
       <app-panel labelledBy="history-heading">
         <h2 id="history-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'detail.historyHeading' | t }}</h2>
-        <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+        <ng-template #historyPeriod let-row>
+          @if (row.effectiveTo) { {{ 'detail.periodClosed' | t: { from: date(row.effectiveFrom), to: date(row.effectiveTo) } }} }
+          @else { {{ 'detail.periodOpen' | t: { from: date(row.effectiveFrom) } }} }
+          @if (row.via === 'mcp') { <span class="badge badge-neutral" data-via-mcp>{{ 'detail.viaMcp' | t }}</span> }
+          @if (row.initial) { <span class="text-base-content/70" data-history-note>{{ 'detail.initialPrice' | t }}</span> }
+          @if (row.current) { <app-status-badge status="current">{{ 'detail.badge.current' | t }}</app-status-badge> }
+          @if (row.upcoming) { <app-status-badge status="upcoming">{{ 'detail.badge.upcoming' | t }}</app-status-badge> }
+        </ng-template>
+        <ng-template #historyChange let-row>
+          @if (row.change; as change) {
+            {{ signed(change.amount) }}@if (change.percent !== null) { ({{ percent(change.percent) }}) }
+          } @else {
+            <span class="text-base-content/70">{{ 'detail.noPreviousPrice' | t }}</span>
+          }
+        </ng-template>
+        <ng-template #historyOption let-row>
+          @if (optionOf(row.paymentOptionId); as option) {
+            <app-payment-option-logo [brand]="option.brand" [size]="20" /> {{ optionText(option) }}@if (option.removed) { <span class="text-base-content/70"> {{ 'detail.paymentOption.removed' | t }}</span> }
+          } @else {
+            <span class="text-base-content/70">—</span>
+          }
+        </ng-template>
+        <section class="overflow-x-auto max-nav:hidden" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
           <table class="table">
             <caption class="py-2 text-start text-base-content/70">{{ 'detail.historyCaption' | t }}</caption>
             <thead>
@@ -96,35 +118,16 @@
             <tbody>
               @for (row of d.priceHistory; track row.entryId) {
                 <tr>
-                  <th scope="row">
-                    @if (row.effectiveTo) { {{ 'detail.periodClosed' | t: { from: date(row.effectiveFrom), to: date(row.effectiveTo) } }} }
-                    @else { {{ 'detail.periodOpen' | t: { from: date(row.effectiveFrom) } }} }
-                    @if (row.via === 'mcp') { <span class="badge badge-neutral" data-via-mcp>{{ 'detail.viaMcp' | t }}</span> }
-                    @if (row.initial) { <span class="text-base-content/70" data-history-note>{{ 'detail.initialPrice' | t }}</span> }
-                    @if (row.current) { <app-status-badge status="current">{{ 'detail.badge.current' | t }}</app-status-badge> }
-                    @if (row.upcoming) { <app-status-badge status="upcoming">{{ 'detail.badge.upcoming' | t }}</app-status-badge> }
-                  </th>
+                  <th scope="row"><ng-container [ngTemplateOutlet]="historyPeriod" [ngTemplateOutletContext]="{ $implicit: row }" /></th>
                   <td>{{ money(row.amount) }} · {{ cadence(row.cadenceUnit, row.cadenceCount) }}</td>
                   <td>{{ money(row.normalizedMonthly) }}</td>
-                  <td>
-                    @if (row.change; as change) {
-                      {{ signed(change.amount) }}@if (change.percent !== null) { ({{ percent(change.percent) }}) }
-                    } @else {
-                      <span class="text-base-content/70">{{ 'detail.noPreviousPrice' | t }}</span>
-                    }
-                  </td>
-                  <td>
-                    @if (optionOf(row.paymentOptionId); as option) {
-                      <app-payment-option-logo [brand]="option.brand" [size]="20" /> {{ optionText(option) }}@if (option.removed) { <span class="text-base-content/70"> {{ 'detail.paymentOption.removed' | t }}</span> }
-                    } @else {
-                      <span class="text-base-content/70">—</span>
-                    }
-                  </td>
+                  <td><ng-container [ngTemplateOutlet]="historyChange" [ngTemplateOutletContext]="{ $implicit: row }" /></td>
+                  <td><ng-container [ngTemplateOutlet]="historyOption" [ngTemplateOutletContext]="{ $implicit: row }" /></td>
                   <td>
                     <div class="flex flex-wrap gap-2">
-                      <button type="button" class="btn btn-sm btn-outline" [id]="'correct-' + row.entryId" (click)="openEntry({ mode: 'correct', entry: row })">{{ 'detail.entry.correct' | t }}</button>
+                      <button type="button" class="btn btn-sm btn-outline" [id]="'correct-' + row.entryId" [attr.data-focus-key]="'correct-' + row.entryId" (click)="openEntry({ mode: 'correct', entry: row })">{{ 'detail.entry.correct' | t }}</button>
                       @if (!row.initial) {
-                        <button type="button" class="btn btn-sm btn-outline" [id]="'remove-' + row.entryId" (click)="askRemoveEntry(row)">{{ 'detail.entry.remove' | t }}</button>
+                        <button type="button" class="btn btn-sm btn-outline" [id]="'remove-' + row.entryId" [attr.data-focus-key]="'remove-' + row.entryId" (click)="askRemoveEntry(row)">{{ 'detail.entry.remove' | t }}</button>
                       }
                     </div>
                   </td>
@@ -133,21 +136,43 @@
             </tbody>
           </table>
         </section>
+        <ul class="m-0 flex list-none flex-col gap-3 p-0 nav:hidden" data-cards [attr.aria-label]="'detail.historyCaption' | t">
+          @for (row of d.priceHistory; track row.entryId) {
+            <li class="flex min-w-0 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4" data-history-card>
+              <p class="m-0 font-semibold wrap-anywhere"><ng-container [ngTemplateOutlet]="historyPeriod" [ngTemplateOutletContext]="{ $implicit: row }" /></p>
+              <p class="m-0 wrap-anywhere">{{ money(row.amount) }} · {{ cadence(row.cadenceUnit, row.cadenceCount) }}</p>
+              <dl class="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
+                <dt class="font-semibold">{{ 'detail.col.perMonth' | t }}</dt>
+                <dd class="m-0 wrap-anywhere">{{ money(row.normalizedMonthly) }}</dd>
+                <dt class="font-semibold">{{ 'detail.col.change' | t }}</dt>
+                <dd class="m-0 wrap-anywhere"><ng-container [ngTemplateOutlet]="historyChange" [ngTemplateOutletContext]="{ $implicit: row }" /></dd>
+                <dt class="font-semibold">{{ 'detail.col.paymentOption' | t }}</dt>
+                <dd class="m-0 wrap-anywhere"><ng-container [ngTemplateOutlet]="historyOption" [ngTemplateOutletContext]="{ $implicit: row }" /></dd>
+              </dl>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'card-correct-' + row.entryId" [attr.data-focus-key]="'correct-' + row.entryId" (click)="openEntry({ mode: 'correct', entry: row })">{{ 'detail.entry.correct' | t }}</button>
+                @if (!row.initial) {
+                  <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'card-remove-' + row.entryId" [attr.data-focus-key]="'remove-' + row.entryId" (click)="askRemoveEntry(row)">{{ 'detail.entry.remove' | t }}</button>
+                }
+              </div>
+            </li>
+          }
+        </ul>
 
         @if (confirmEntry(); as entry) {
           <div class="alert alert-warning my-4" role="alertdialog" aria-labelledby="confirm-entry" data-confirm-entry>
             <div class="min-w-0 wrap-anywhere">
               <p id="confirm-entry" class="m-0" tabindex="-1">{{ 'detail.entry.removeConfirm' | t: { date: date(entry.effectiveFrom) } }}</p>
               <div class="mt-2 flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-neutral" [disabled]="saving()" (click)="removeEntry()">{{ 'detail.entry.removeYes' | t }}</button>
-                <button type="button" class="btn btn-sm btn-outline" (click)="cancelRemoveEntry()">{{ 'detail.keep' | t }}</button>
+                <button type="button" class="btn btn-sm btn-neutral max-nav:min-h-11" [disabled]="saving()" (click)="removeEntry()">{{ 'detail.entry.removeYes' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" (click)="cancelRemoveEntry()">{{ 'detail.keep' | t }}</button>
               </div>
             </div>
           </div>
         }
 
         @if (!entryForm()) {
-          <div class="mt-4"><button type="button" class="btn btn-primary" id="add-entry" (click)="openEntry({ mode: 'add' })">{{ 'detail.entry.add' | t }}</button></div>
+          <div class="mt-4"><button type="button" class="btn btn-primary max-nav:min-h-11" id="add-entry" (click)="openEntry({ mode: 'add' })">{{ 'detail.entry.add' | t }}</button></div>
         } @else {
           <form class="mt-4 flex max-w-xl flex-col" (ngSubmit)="saveEntry()" novalidate data-entry-form>
             <h3 id="entry-form-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere" tabindex="-1">{{ (entryForm()?.mode === 'correct' ? 'detail.entry.correctHeading' : 'detail.entry.addHeading') | t }}</h3>
@@ -155,7 +180,7 @@
             <app-form-field [label]="'detail.entry.effectiveFrom' | t" controlId="entry-effectiveFrom" hintId="entry-date-hint"
               [hint]="initialCorrection() ? ('detail.entry.initialDateHint' | t) : null"
               [error]="dateError ? (dateError.key | t: dateError.params) : null">
-              <input id="entry-effectiveFrom" class="input border-base-content/55 w-full aria-invalid:border-2" name="entryDate" type="date" [(ngModel)]="entryDate" [disabled]="initialCorrection()"
+              <input id="entry-effectiveFrom" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="entryDate" type="date" [(ngModel)]="entryDate" [disabled]="initialCorrection()"
                 [attr.aria-invalid]="dateError ? 'true' : null"
                 [attr.aria-describedby]="describedBy('effectiveFrom', initialCorrection() ? 'entry-date-hint' : undefined)" />
             </app-form-field>
@@ -163,30 +188,30 @@
             <app-form-field [label]="'subscriptions.field.amount' | t" controlId="entry-amount"
               [hint]="'subscriptions.field.amountHint' | t: { example: amountExample(), separator: separator() }"
               [error]="amountError ? (amountError.key | t: amountError.params) : null">
-              <input id="entry-amount" class="input border-base-content/55 w-full aria-invalid:border-2" name="entryAmount" type="text" inputmode="decimal" autocomplete="off" [ngModel]="entryAmountText"
+              <input id="entry-amount" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="entryAmount" type="text" inputmode="decimal" autocomplete="off" [ngModel]="entryAmountText"
                 (ngModelChange)="onEntryAmountInput($event)"
                 [attr.aria-invalid]="amountError ? 'true' : null" [attr.aria-describedby]="describedBy('amount', 'entry-amount-hint')" />
             </app-form-field>
             <fieldset class="mb-4 min-w-0 rounded-box border border-base-300 px-4 pt-2 pb-4">
               <legend class="px-1 font-semibold">{{ 'subscriptions.field.cadence' | t }}</legend>
-              <div class="flex min-h-11 items-center gap-2"><input id="entry-cadence-week" class="radio border-base-content/55" type="radio" name="entryPreset" value="week" [(ngModel)]="entryPreset" />
-                <label for="entry-cadence-week">{{ 'cadence.weekly' | t }}</label></div>
-              <div class="flex min-h-11 items-center gap-2"><input id="entry-cadence-month" class="radio border-base-content/55" type="radio" name="entryPreset" value="month" [(ngModel)]="entryPreset" />
-                <label for="entry-cadence-month">{{ 'cadence.monthly' | t }}</label></div>
-              <div class="flex min-h-11 items-center gap-2"><input id="entry-cadence-year" class="radio border-base-content/55" type="radio" name="entryPreset" value="year" [(ngModel)]="entryPreset" />
-                <label for="entry-cadence-year">{{ 'cadence.yearly' | t }}</label></div>
-              <div class="flex min-h-11 items-center gap-2"><input id="entry-cadence-custom" class="radio border-base-content/55" type="radio" name="entryPreset" value="custom" [(ngModel)]="entryPreset" />
-                <label for="entry-cadence-custom">{{ 'cadence.custom' | t }}</label></div>
+              <label class="flex min-h-11 cursor-pointer items-center gap-2" for="entry-cadence-week"><input id="entry-cadence-week" class="radio border-base-content/55" type="radio" name="entryPreset" value="week" [(ngModel)]="entryPreset" />
+                <span>{{ 'cadence.weekly' | t }}</span></label>
+              <label class="flex min-h-11 cursor-pointer items-center gap-2" for="entry-cadence-month"><input id="entry-cadence-month" class="radio border-base-content/55" type="radio" name="entryPreset" value="month" [(ngModel)]="entryPreset" />
+                <span>{{ 'cadence.monthly' | t }}</span></label>
+              <label class="flex min-h-11 cursor-pointer items-center gap-2" for="entry-cadence-year"><input id="entry-cadence-year" class="radio border-base-content/55" type="radio" name="entryPreset" value="year" [(ngModel)]="entryPreset" />
+                <span>{{ 'cadence.yearly' | t }}</span></label>
+              <label class="flex min-h-11 cursor-pointer items-center gap-2" for="entry-cadence-custom"><input id="entry-cadence-custom" class="radio border-base-content/55" type="radio" name="entryPreset" value="custom" [(ngModel)]="entryPreset" />
+                <span>{{ 'cadence.custom' | t }}</span></label>
               @if (entryPreset === 'custom') {
                 <div class="mt-2 grid max-w-xs gap-2" data-custom-cadence>
                   @let countError = entryError('cadenceCount');
                   <app-form-field [label]="('cadence.every' | t) + ' ' + ('cadence.number' | t)" controlId="entry-cadence-count" errorId="entry-cadenceCount-error"
                     [error]="countError ? (countError.key | t: countError.params) : null">
-                    <input id="entry-cadence-count" class="input border-base-content/55 w-full aria-invalid:border-2" name="entryCustomCount" type="text" inputmode="numeric" [(ngModel)]="entryCustomCount"
+                    <input id="entry-cadence-count" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="entryCustomCount" type="text" inputmode="numeric" [(ngModel)]="entryCustomCount"
                       [attr.aria-invalid]="countError ? 'true' : null" [attr.aria-describedby]="describedBy('cadenceCount')" />
                   </app-form-field>
                   <label class="font-medium" for="entry-cadence-unit">{{ 'cadence.unit' | t }}</label>
-                  <select id="entry-cadence-unit" class="select border-base-content/55 w-full" name="entryCustomUnit" [(ngModel)]="entryCustomUnit">
+                  <select id="entry-cadence-unit" class="select max-nav:min-h-11 border-base-content/55 w-full" name="entryCustomUnit" [(ngModel)]="entryCustomUnit">
                     <option value="week">{{ 'cadence.unit.week' | t }}</option>
                     <option value="month">{{ 'cadence.unit.month' | t }}</option>
                     <option value="year">{{ 'cadence.unit.year' | t }}</option>
@@ -197,15 +222,15 @@
             @let optionError = entryError('paymentOptionId');
             <app-form-field [label]="'paymentOptions.select.label' | t" controlId="entry-paymentOption" errorId="entry-paymentOptionId-error"
               [error]="optionError ? (optionError.key | t: optionError.params) : null">
-              <select id="entry-paymentOption" class="select border-base-content/55 w-full aria-invalid:border-2" name="entryOption" [(ngModel)]="entryOption"
+              <select id="entry-paymentOption" class="select max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="entryOption" [(ngModel)]="entryOption"
                 [attr.aria-invalid]="optionError ? 'true' : null" [attr.aria-describedby]="describedBy('paymentOptionId')">
                 <option value="">{{ 'paymentOptions.select.none' | t }}</option>
                 @for (o of entryOptionChoices(); track o.id) { <option [value]="o.id" [disabled]="o.removed">{{ choiceText(o) }}</option> }
               </select>
             </app-form-field>
             <div class="flex flex-wrap items-center gap-2">
-              <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'detail.entry.save') | t }}</button>
-              <button type="button" class="btn btn-outline" (click)="closeEntry()">{{ 'subscriptions.form.cancel' | t }}</button>
+              <button type="submit" class="btn btn-primary max-nav:min-h-11" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'detail.entry.save') | t }}</button>
+              <button type="button" class="btn btn-outline max-nav:min-h-11" (click)="closeEntry()">{{ 'subscriptions.form.cancel' | t }}</button>
             </div>
           </form>
         }
@@ -214,7 +239,7 @@
       <app-panel labelledBy="pauses-heading">
         <h2 id="pauses-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'pauses.heading' | t }}</h2>
         @if (pauses().length) {
-          <section class="overflow-x-auto" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
+          <section class="overflow-x-auto max-nav:hidden" tabindex="0" data-table-scroll [attr.aria-label]="'subscriptions.scrollRegion' | t">
             <table class="table" data-pauses>
               <caption class="py-2 text-start text-base-content/70">{{ 'pauses.caption' | t }}</caption>
               <thead>
@@ -234,8 +259,8 @@
                     <td>@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</td>
                     <td>
                       <div class="flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-sm btn-outline" [id]="'edit-pause-' + row.id" (click)="openPause({ mode: 'edit', period: row })">{{ 'pauses.edit' | t }}</button>
-                        <button type="button" class="btn btn-sm btn-outline" [id]="'delete-pause-' + row.id" (click)="askRemovePause(row)">{{ 'pauses.delete' | t }}</button>
+                        <button type="button" class="btn btn-sm btn-outline" [id]="'edit-pause-' + row.id" [attr.data-focus-key]="'edit-pause-' + row.id" (click)="openPause({ mode: 'edit', period: row })">{{ 'pauses.edit' | t }}</button>
+                        <button type="button" class="btn btn-sm btn-outline" [id]="'delete-pause-' + row.id" [attr.data-focus-key]="'delete-pause-' + row.id" (click)="askRemovePause(row)">{{ 'pauses.delete' | t }}</button>
                       </div>
                     </td>
                   </tr>
@@ -243,6 +268,25 @@
               </tbody>
             </table>
           </section>
+          <ul class="m-0 flex list-none flex-col gap-3 p-0 nav:hidden" data-cards data-pauses-cards [attr.aria-label]="'pauses.caption' | t">
+            @for (row of pauses(); track row.id) {
+              <li class="flex min-w-0 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4" data-pause-card>
+                <dl class="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
+                  <dt class="font-semibold">{{ 'pauses.col.pauseDate' | t }}</dt>
+                  <dd class="m-0 wrap-anywhere">
+                    {{ date(row.pauseDate) }}
+                    @if (row.via === 'mcp') { <span class="badge badge-neutral" data-via-mcp>{{ 'detail.viaMcp' | t }}</span> }
+                  </dd>
+                  <dt class="font-semibold">{{ 'pauses.col.resumeDate' | t }}</dt>
+                  <dd class="m-0 wrap-anywhere">@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</dd>
+                </dl>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'card-edit-pause-' + row.id" [attr.data-focus-key]="'edit-pause-' + row.id" (click)="openPause({ mode: 'edit', period: row })">{{ 'pauses.edit' | t }}</button>
+                  <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" [id]="'card-delete-pause-' + row.id" [attr.data-focus-key]="'delete-pause-' + row.id" (click)="askRemovePause(row)">{{ 'pauses.delete' | t }}</button>
+                </div>
+              </li>
+            }
+          </ul>
         } @else {
           <p class="my-2 text-base-content/70" data-pauses-empty>{{ 'pauses.empty' | t }}</p>
         }
@@ -252,33 +296,33 @@
             <div class="min-w-0 wrap-anywhere">
               <p id="confirm-pause" class="m-0" tabindex="-1">{{ 'pauses.deleteConfirm' | t: { date: date(pause.pauseDate) } }}</p>
               <div class="mt-2 flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-neutral" [disabled]="saving()" (click)="removePause()">{{ 'pauses.deleteYes' | t }}</button>
-                <button type="button" class="btn btn-sm btn-outline" (click)="cancelRemovePause()">{{ 'detail.keep' | t }}</button>
+                <button type="button" class="btn btn-sm btn-neutral max-nav:min-h-11" [disabled]="saving()" (click)="removePause()">{{ 'pauses.deleteYes' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" (click)="cancelRemovePause()">{{ 'detail.keep' | t }}</button>
               </div>
             </div>
           </div>
         }
 
         @if (!pauseForm()) {
-          <div class="mt-4"><button type="button" class="btn btn-primary" id="add-pause" (click)="openPause({ mode: 'add' })">{{ 'pauses.add' | t }}</button></div>
+          <div class="mt-4"><button type="button" class="btn btn-primary max-nav:min-h-11" id="add-pause" (click)="openPause({ mode: 'add' })">{{ 'pauses.add' | t }}</button></div>
         } @else {
           <form class="mt-4 flex max-w-xl flex-col" (ngSubmit)="savePause()" novalidate data-pause-form>
             <h3 id="pause-form-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere" tabindex="-1">{{ (pauseForm()?.mode === 'edit' ? 'pauses.editHeading' : 'pauses.addHeading') | t }}</h3>
             @let pauseDateError = pauseError('pauseDate');
             <app-form-field [label]="'pauses.field.pauseDate' | t" controlId="pause-pauseDate"
               [error]="pauseDateError ? (pauseDateError.key | t: pauseDateError.params) : null">
-              <input id="pause-pauseDate" class="input border-base-content/55 w-full aria-invalid:border-2" name="pauseDateValue" type="date" [max]="maxDate()" [(ngModel)]="pauseDateValue"
+              <input id="pause-pauseDate" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="pauseDateValue" type="date" [max]="maxDate()" [(ngModel)]="pauseDateValue"
                 [attr.aria-invalid]="pauseDateError ? 'true' : null" [attr.aria-describedby]="pauseDateError ? 'pause-pauseDate-error' : null" />
             </app-form-field>
             @let resumeDateError = pauseError('resumeDate');
             <app-form-field [label]="'pauses.field.resumeDate' | t" controlId="pause-resumeDate"
               [error]="resumeDateError ? (resumeDateError.key | t: resumeDateError.params) : null">
-              <input id="pause-resumeDate" class="input border-base-content/55 w-full aria-invalid:border-2" name="resumeDateValue" type="date" [max]="maxDate()" [(ngModel)]="resumeDateValue"
+              <input id="pause-resumeDate" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="resumeDateValue" type="date" [max]="maxDate()" [(ngModel)]="resumeDateValue"
                 [attr.aria-invalid]="resumeDateError ? 'true' : null" [attr.aria-describedby]="resumeDateError ? 'pause-resumeDate-error' : null" />
             </app-form-field>
             <div class="flex flex-wrap items-center gap-2">
-              <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'pauses.save') | t }}</button>
-              <button type="button" class="btn btn-outline" (click)="closePause()">{{ 'subscriptions.form.cancel' | t }}</button>
+              <button type="submit" class="btn btn-primary max-nav:min-h-11" [disabled]="saving()">{{ (saving() ? 'subscriptions.form.saving' : 'pauses.save') | t }}</button>
+              <button type="button" class="btn btn-outline max-nav:min-h-11" (click)="closePause()">{{ 'subscriptions.form.cancel' | t }}</button>
             </div>
           </form>
         }
@@ -288,18 +332,18 @@
         <h2 id="manage-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'subscriptions.form.editHeading' | t }}</h2>
         <div class="flex flex-wrap items-center gap-2">
           @if (d.paused) {
-            <button type="button" class="btn btn-outline" id="pause-toggle" [disabled]="saving()" (click)="resume()">{{ 'subscriptions.resume' | t }}</button>
+            <button type="button" class="btn btn-outline max-nav:min-h-11" id="pause-toggle" [disabled]="saving()" (click)="resume()">{{ 'subscriptions.resume' | t }}</button>
           } @else if (canPause(d)) {
-            <button type="button" class="btn btn-outline" id="pause-toggle" [disabled]="saving()" (click)="pause()">{{ 'subscriptions.pause' | t }}</button>
+            <button type="button" class="btn btn-outline max-nav:min-h-11" id="pause-toggle" [disabled]="saving()" (click)="pause()">{{ 'subscriptions.pause' | t }}</button>
           }
           @if (d.endDate) {
-            <button type="button" class="btn btn-outline" [disabled]="saving()" (click)="reinstate()">{{ 'detail.reinstate' | t }}</button>
+            <button type="button" class="btn btn-outline max-nav:min-h-11" [disabled]="saving()" (click)="reinstate()">{{ 'detail.reinstate' | t }}</button>
           }
           @if (!endOpen()) {
-            <button type="button" class="btn btn-outline" id="end-open" (click)="openEnd()">{{ 'detail.end' | t }}</button>
+            <button type="button" class="btn btn-outline max-nav:min-h-11" id="end-open" (click)="openEnd()">{{ 'detail.end' | t }}</button>
           }
           @if (!confirmRemove()) {
-            <button type="button" class="btn btn-outline" id="remove-open" (click)="askRemove()">{{ 'detail.remove' | t }}</button>
+            <button type="button" class="btn btn-outline max-nav:min-h-11" id="remove-open" (click)="askRemove()">{{ 'detail.remove' | t }}</button>
           }
         </div>
         @if (endOpen()) {
@@ -307,12 +351,12 @@
             @let closeError = endError();
             <app-form-field [label]="'detail.end.heading' | t" controlId="end-date"
               [error]="closeError ? (closeError.key | t: closeError.params) : null">
-              <input id="end-date" class="input border-base-content/55 w-full aria-invalid:border-2" name="endDateValue" type="date" [(ngModel)]="endDateValue"
+              <input id="end-date" class="input max-nav:min-h-11 border-base-content/55 w-full aria-invalid:border-2" name="endDateValue" type="date" [(ngModel)]="endDateValue"
                 [attr.aria-invalid]="closeError ? 'true' : null" [attr.aria-describedby]="closeError ? 'end-date-error' : null" />
             </app-form-field>
             <div class="flex flex-wrap items-center gap-2">
-              <button type="submit" class="btn btn-primary" [disabled]="saving()">{{ 'detail.end.save' | t }}</button>
-              <button type="button" class="btn btn-outline" (click)="closeEnd()">{{ 'subscriptions.form.cancel' | t }}</button>
+              <button type="submit" class="btn btn-primary max-nav:min-h-11" [disabled]="saving()">{{ 'detail.end.save' | t }}</button>
+              <button type="button" class="btn btn-outline max-nav:min-h-11" (click)="closeEnd()">{{ 'subscriptions.form.cancel' | t }}</button>
             </div>
           </form>
         }
@@ -321,8 +365,8 @@
             <div class="min-w-0 wrap-anywhere">
               <p id="confirm-remove" class="m-0" tabindex="-1">{{ 'detail.remove.confirm' | t: { name: d.name } }}</p>
               <div class="mt-2 flex flex-wrap gap-2">
-                <button type="button" class="btn btn-sm btn-neutral" [disabled]="saving()" (click)="remove()">{{ 'detail.remove.yes' | t }}</button>
-                <button type="button" class="btn btn-sm btn-outline" (click)="cancelRemove()">{{ 'detail.keep' | t }}</button>
+                <button type="button" class="btn btn-sm btn-neutral max-nav:min-h-11" [disabled]="saving()" (click)="remove()">{{ 'detail.remove.yes' | t }}</button>
+                <button type="button" class="btn btn-sm btn-outline max-nav:min-h-11" (click)="cancelRemove()">{{ 'detail.keep' | t }}</button>
               </div>
             </div>
           </div>

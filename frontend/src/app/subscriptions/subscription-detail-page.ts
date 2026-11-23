@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, Injector, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -6,6 +7,7 @@ import { Observable } from 'rxjs';
 import { LanguageService, Message, MessageKey } from '../i18n/i18n';
 import { TranslatePipe } from '../i18n/translate.pipe';
 import { SessionService } from '../session';
+import { focusVisible } from '../ui/focus-visible-target';
 import { PaymentOptionLogo } from './payment-option-logo';
 import { optionText } from './payment-option-text';
 import { PaymentOptionsService } from './payment-options.service';
@@ -79,7 +81,7 @@ const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.i
 
 @Component({
   selector: 'app-subscription-detail-page',
-  imports: [FormsModule, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo, FormField, Notice, Panel, PeriodSelector, SkeletonBlock, StatusBadge],
+  imports: [FormsModule, NgTemplateOutlet, RouterLink, TranslatePipe, SessionUnavailable, ServiceLogo, PaymentOptionLogo, FormField, Notice, Panel, PeriodSelector, SkeletonBlock, StatusBadge],
   templateUrl: './subscription-detail-page.html',
 })
 export class SubscriptionDetailPage {
@@ -326,7 +328,8 @@ export class SubscriptionDetailPage {
     const form = this.entryForm();
     this.entryForm.set(null);
     this.entryErrors.set({});
-    this.focusLater(form?.mode === 'correct' ? `#correct-${form.entry.entryId}` : '#add-entry');
+    if (form?.mode === 'correct') this.focusLaterKey(`correct-${form.entry.entryId}`);
+    else this.focusLater('#add-entry');
   }
 
   onEntryAmountInput(text: string): void {
@@ -368,7 +371,8 @@ export class SubscriptionDetailPage {
   cancelRemoveEntry(): void {
     const entry = this.confirmEntry();
     this.confirmEntry.set(null);
-    this.focusLater(entry ? `#remove-${entry.entryId}` : '#add-entry');
+    if (entry) this.focusLaterKey(`remove-${entry.entryId}`);
+    else this.focusLater('#add-entry');
   }
 
   removeEntry(): void {
@@ -430,7 +434,8 @@ export class SubscriptionDetailPage {
     const form = this.pauseForm();
     this.pauseForm.set(null);
     this.pauseErrors.set({});
-    this.focusLater(form?.mode === 'edit' ? `#edit-pause-${form.period.id}` : '#add-pause');
+    if (form?.mode === 'edit') this.focusLaterKey(`edit-pause-${form.period.id}`);
+    else this.focusLater('#add-pause');
   }
 
   savePause(): void {
@@ -465,7 +470,8 @@ export class SubscriptionDetailPage {
   cancelRemovePause(): void {
     const period = this.confirmPause();
     this.confirmPause.set(null);
-    this.focusLater(period ? `#delete-pause-${period.id}` : '#add-pause');
+    if (period) this.focusLaterKey(`delete-pause-${period.id}`);
+    else this.focusLater('#add-pause');
   }
 
   removePause(): void {
@@ -683,9 +689,17 @@ export class SubscriptionDetailPage {
     return Object.keys(mapped).length > 0;
   }
 
-  /** Focus after the next render: the element is not in the DOM until change detection has run. */
+  /**
+   * Focus after the next render: the element is not in the DOM until change detection has run. Only for elements that exist
+   * once (headings, forms, page-level buttons); row actions that are also rendered as card buttons use `focusLaterKey`.
+   */
   private focusLater(selector: string): void {
     afterNextRender(() => document.querySelector<HTMLElement>(selector)?.focus(), { injector: this.injector });
+  }
+
+  /** Focuses the visible copy of a row action that exists as both a table button and a card button. */
+  private focusLaterKey(key: string): void {
+    afterNextRender(() => focusVisible(document, key), { injector: this.injector });
   }
 
   private clearProblems(): void {

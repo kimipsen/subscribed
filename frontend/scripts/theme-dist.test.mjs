@@ -159,6 +159,62 @@ export const PROOFS = [
       const queries = mediaBlocks(text).map(({ query }) => query);
       assert.ok(queries.some((q) => NAV_MIN.test(q)), `no 900px min-width media query (found: ${[...new Set(queries)].join(' | ')})`);
       assert.ok(queries.some((q) => NAV_MAX.test(q)), `no 900px max-width media query (found: ${[...new Set(queries)].join(' | ')})`);
+      const guardedMin = mediaBlocks(text).filter(({ query }) => NAV_MIN.test(query)).map(({ body }) => body).join('');
+      const guardedMax = mediaBlocks(text).filter(({ query }) => NAV_MAX.test(query)).map(({ body }) => body).join('');
+      assert.ok(guardedMin.includes('.nav\\:hidden{display:none}'), 'nav:hidden must sit inside the 900px min-width media block');
+      assert.ok(guardedMax.includes('.max-nav\\:hidden{display:none}'), 'max-nav:hidden must sit inside the 900px max-width media block');
+    },
+  },
+  {
+    name: 'below-nav touch-target utilities (max-nav:min-h-11, max-nav:min-w-11) exist only behind the max-width media query',
+    files: ['src/app/app.html', 'src/app/subscriptions/subscription-form-page.html'],
+    check: (text) => {
+      const guardedMax = mediaBlocks(text).filter(({ query }) => NAV_MAX.test(query)).map(({ body }) => body).join('');
+      const unguarded = normalise(text);
+      for (const [utility, declaration] of [['min-h-11', 'min-height:calc(var(--spacing)*11)'], ['min-w-11', 'min-width:calc(var(--spacing)*11)']]) {
+        const rule = `.max-nav\\:${utility}{${declaration}}`;
+        assert.ok(guardedMax.includes(rule), `max-nav:${utility} must sit inside the 900px max-width media block`);
+        assert.ok(!unguarded.replace(guardedMax, '').includes(`.max-nav\\:${utility}`), `max-nav:${utility} appears outside the max-width media block`);
+      }
+    },
+  },
+  {
+    name: 'drawer variants exist: starting:, open: and backdrop: utilities',
+    files: ['src/app/app.html'],
+    check: (text) => {
+      const source = normalise(text);
+      assert.ok(/\.starting\\:open\\:-translate-x-full:is\(\[open\],:popover-open,:open\)\{/.test(source), 'starting:open:-translate-x-full rule is missing');
+      assert.ok(source.includes('.open\\:flex:is([open],:popover-open,:open){display:flex}'), 'open:flex rule is missing');
+      assert.ok(/\.backdrop\\:bg-base-content\\\/50::backdrop\{/.test(source), 'backdrop:bg-base-content/50 rule is missing');
+    },
+  },
+  {
+    name: 'nav:open:hidden is a combined rule inside the 900px block and comes after open:flex (order decides the cascade)',
+    files: ['src/app/app.html'],
+    check: (text) => {
+      const source = normalise(text);
+      const hidden = '.nav\\:open\\:hidden:is([open],:popover-open,:open){display:none}';
+      const guardedMin = mediaBlocks(text).filter(({ query }) => NAV_MIN.test(query)).map(({ body }) => body).join('');
+      assert.ok(guardedMin.includes(hidden), 'nav:open:hidden must sit inside the 900px min-width media block');
+      assert.ok(!source.replace(guardedMin, '').includes('.nav\\:open\\:hidden'), 'nav:open:hidden appears outside the 900px block');
+      const openFlex = source.indexOf('.open\\:flex:is(');
+      const navHidden = source.indexOf(hidden);
+      assert.ok(openFlex >= 0 && navHidden > openFlex, `nav:open:hidden (${navHidden}) must come after .open:flex (${openFlex})`);
+    },
+  },
+  {
+    name: 'the drawer classes carry no unconditional display rule (display only behind open: or inside a media query)',
+    files: ['src/app/app.html'],
+    check: (text) => {
+      const source = normalise(text);
+      const unconditional = [];
+      for (const utility of ['flex', 'hidden', 'block', 'grid', 'inline-flex']) {
+        const rule = new RegExp(`(?:^|\\})\\.${utility}\\{display:`);
+        if (rule.test(source.replace(/@media[^{]*\{(?:[^{}]|\{[^{}]*\})*\}/g, ''))) unconditional.push(utility);
+      }
+      const dialog = readFileSync(new URL('../src/app/app.html', import.meta.url), 'utf8').match(/<dialog[^>]*class="([^"]*)"/)?.[1] ?? '';
+      const classes = dialog.split(/\s+/);
+      for (const utility of unconditional) assert.ok(!classes.includes(utility), `the drawer dialog carries the bare display utility "${utility}" (it would override the closed state)`);
     },
   },
   {
@@ -170,6 +226,16 @@ export const PROOFS = [
     name: '.overflow-x-auto exists (scrollable table region)',
     files: ['src/app/subscriptions/subscription-overview.html'],
     check: (text) => assert.ok(normalise(text).includes('.overflow-x-auto{overflow-x:auto}'), '.overflow-x-auto rule is missing'),
+  },
+  {
+    name: 'the per-group [data-table-scroll] wrappers are scrollable regions below the nav breakpoint hidden only by max-nav:hidden',
+    files: ['src/app/subscriptions/subscription-overview.html'],
+    check: (text) => {
+      const wrappers = [...readFileSync(new URL('../src/app/subscriptions/subscription-overview.html', import.meta.url), 'utf8').matchAll(/<section class="([^"]*)"[^>]*data-table-scroll/g)];
+      assert.ok(wrappers.length >= 1, 'no [data-table-scroll] wrapper found in the overview template');
+      for (const [, classes] of wrappers) assert.ok(classes.split(/\s+/).includes('overflow-x-auto'), `a [data-table-scroll] wrapper lacks overflow-x-auto: ${classes}`);
+      assert.ok(normalise(text).includes('.overflow-x-auto{overflow-x:auto}'), '.overflow-x-auto rule is missing');
+    },
   },
   {
     name: 'the collapsed sidebar tooltip rules exist (aria-hidden .tooltip-content child, not data-tip)',

@@ -298,6 +298,8 @@ function tokenContexts(unit) {
   ];
 }
 
+const DISPLAY_UTILITY = /^(?:flex|grid|block|inline|inline-[a-z]+|hidden|contents|flow-root|table|table-(?:row|cell|caption|column|footer-group|header-group|row-group|column-group))$/;
+
 export const CHECKS = {
   1: (unit) => (unit.file.endsWith('.scss') ? [`${unit.file}: scss file under src`] : []),
 
@@ -408,6 +410,25 @@ export const CHECKS = {
     }
     return findings;
   },
+
+  // A native <dialog> is hidden by the user-agent rule `dialog:not([open]) { display: none }`. Any display utility on
+  // the dialog element that is not gated by the `open` variant outranks that rule and shows the closed dialog. The
+  // guard reads each class token by its full variant chain (split on `:`, last segment is the utility, the rest are
+  // variants), so `open:flex` and `nav:open:hidden` pass while `flex`, `nav:flex`, `max-nav:flex` and `nav:hidden` fail.
+  // Only the dialog element's own classes are checked: its content sits inside an inner wrapper and may use any display.
+  12: (unit) => {
+    const findings = [];
+    for (const element of unit.elements) {
+      if (element.tag !== 'dialog') continue;
+      for (const { token } of element.tokens) {
+        const { variants, base } = splitToken(token);
+        if (DISPLAY_UTILITY.test(base) && !variants.includes('open')) {
+          findings.push(`${where(unit, element.line)}: "${token}" on <dialog> is a display utility without the open: variant (it would override dialog:not([open]) and show the closed dialog)`);
+        }
+      }
+    }
+    return findings;
+  },
 };
 
 function isDaisyComponent(base) {
@@ -418,7 +439,7 @@ function isDaisyComponent(base) {
 
 /** Legacy group: a file is "token-free" when checks 4, 5 and 6 report nothing. */
 const LEGACY = [4, 5, 6];
-const TEMPLATE_CHECKS = [4, 5, 6, 7, 8, 9, 10, 11];
+const TEMPLATE_CHECKS = [4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 export const runChecks = (unit, numbers = TEMPLATE_CHECKS) => numbers.flatMap((number) => CHECKS[number](unit).map((finding) => `check ${number}: ${finding}`));
 
@@ -585,6 +606,30 @@ test('negative (b): the <nav id="primary-nav"> element itself with max-nav:hidde
   assert.deepEqual(scan('<nav id="primary-nav" class="max-nav:hidden"><a data-nav-label class="nav:group-data-[collapsed=true]:sr-only">Home</a></nav>', [7]), []);
   assert.equal(scan('<nav id="primary-nav"><a data-nav-label class="max-nav:hidden">Home</a></nav>', [7]).length, 1);
   assert.equal(scan('<nav id="primary-nav"><a class="hidden"><span data-nav-label>Home</span></a></nav>', [7]).length, 1);
+});
+
+test('check 12: the app shell has a <dialog> and the guard reads it', () => {
+  const app = units.find((unit) => unit.file === 'src/app/app.html');
+  const dialogs = app.elements.filter((element) => element.tag === 'dialog');
+  assert.equal(dialogs.length, 1);
+  assert.ok(dialogs[0].tokens.some(({ token }) => token === 'open:flex'));
+  assert.ok(dialogs[0].tokens.some(({ token }) => token === 'nav:open:hidden'));
+});
+
+test('negative (f): a display utility on <dialog> without the open variant fails check 12, open-gated ones pass', () => {
+  for (const token of ['flex', 'nav:flex', 'max-nav:flex', 'nav:hidden', 'grid', 'block', 'inline-flex', 'hidden', '!flex', 'sm:open-not:flex']) {
+    const findings = scan(`<dialog class="fixed ${token}"></dialog>`, [12]);
+    assert.equal(findings.length, 1, token);
+    assert.match(findings[0], /check 12: .*on <dialog> is a display utility without the open: variant/);
+  }
+  assert.deepEqual(scan('<dialog class="fixed inset-y-0 open:flex open:flex-col nav:open:hidden"></dialog>', [12]), []);
+  assert.deepEqual(scan('<dialog class="nav:open:hidden open:block"></dialog>', [12]), []);
+  assert.deepEqual(scan('<dialog class="fixed flex-col m-0 h-dvh"></dialog>', [12]), []);
+});
+
+test('negative (f): the guard also reads [class] literals and ignores display utilities on the content and on other elements', () => {
+  assert.equal(scan(`<dialog [class]="open ? 'flex' : 'open:flex'"></dialog>`, [12]).length, 1);
+  assert.deepEqual(scan('<dialog class="open:flex"><div class="flex"></div></dialog><div class="flex nav:hidden"></div>', [12]), []);
 });
 
 test('negative (c): an <input> without the border token inside @for fails check 11, a correct one passes', () => {
