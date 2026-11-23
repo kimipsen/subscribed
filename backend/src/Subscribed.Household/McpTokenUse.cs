@@ -86,8 +86,12 @@ public sealed class McpTokenUseTracker(IMcpTokenUseStore store, TimeProvider tim
 
             if (!_inFlight.TryGetValue(tokenId, out touch!))
             {
+                // The timeout and the timestamp start here, not when the thread pool gets to the work: under load the work can
+                // start after the clock has moved on, and a timeout registered late would never fire on a manually advanced clock.
+                var timeout = new CancellationTokenSource(Timeout, time);
+                var usedAt = time.GetUtcNow();
                 // Task.Run detaches from the caller's synchronization context and ExecutionContext flow of the request.
-                _inFlight[tokenId] = touch = Task.Run(() => RunAsync(tokenId), CancellationToken.None);
+                _inFlight[tokenId] = touch = Task.Run(() => RunAsync(tokenId, usedAt, timeout), CancellationToken.None);
             }
         }
 
@@ -118,12 +122,11 @@ public sealed class McpTokenUseTracker(IMcpTokenUseStore store, TimeProvider tim
     public Task<IReadOnlyDictionary<string, DateTimeOffset>> ListUseAsync(IReadOnlyCollection<string> tokenIds, CancellationToken ct = default) =>
         store.ListAsync(tokenIds, ct);
 
-    private async Task RunAsync(string tokenId)
+    private async Task RunAsync(string tokenId, DateTimeOffset usedAt, CancellationTokenSource timeout)
     {
+        using var cts = timeout; // this method owns the timeout from here on
         try
         {
-            using var cts = new CancellationTokenSource(Timeout, time);
-            var usedAt = time.GetUtcNow();
             // WaitAsync abandons a store that ignores its token, so FlushAsync always returns once the timeout passes.
             await store.UpsertAsync(tokenId, usedAt, cts.Token).WaitAsync(cts.Token).ConfigureAwait(false);
             lock (_gate)
