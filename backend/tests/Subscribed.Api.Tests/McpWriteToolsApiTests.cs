@@ -432,8 +432,12 @@ public sealed class McpWriteToolsApiTests(PostgresFixture pg)
 
         var (updateError, updateBody) = await ToolAsync(s, "update_price_entry", With(created, new()
         {
-            ["entryId"] = created.GetProperty("priceHistory")[0].GetProperty("entryId").GetString(), ["effectiveFrom"] = created.GetProperty("startDate").GetString(),
-            ["amount"] = "129.00", ["cadenceUnit"] = "month", ["cadenceCount"] = 1, ["paymentOptionId"] = "does-not-exist",
+            ["entryId"] = created.GetProperty("priceHistory")[0].GetProperty("entryId").GetString(),
+            ["effectiveFrom"] = created.GetProperty("startDate").GetString(),
+            ["amount"] = "129.00",
+            ["cadenceUnit"] = "month",
+            ["cadenceCount"] = 1,
+            ["paymentOptionId"] = "does-not-exist",
         }));
         Assert.True(updateError);
         Assert.Equal(["paymentOptionId"], ErrorKeys(updateBody));
