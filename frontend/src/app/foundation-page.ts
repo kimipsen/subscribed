@@ -1,11 +1,12 @@
 import { DOCUMENT, DatePipe } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, ComponentRef, DestroyRef, ViewContainerRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Household, Problem, SessionService, validHouseholdName, validMemberLabel } from './session';
+import type { McpTokensPanel } from './mcp-tokens-panel';
 import { LanguageService, Message, MessageKey } from './i18n/i18n';
 import { TranslatePipe } from './i18n/translate.pipe';
 import { SessionUnavailable } from './subscriptions/session-unavailable';
@@ -111,9 +112,29 @@ export class FoundationPage {
     return this.sanitizer.bypassSecurityTrustUrl(`webcal://${parsed.host}${parsed.pathname}${parsed.search}`);
   });
 
+  /**
+   * Bumped on every household load; the MCP tokens panel reloads its list when it changes. The panel is a separate lazy
+   * chunk (a dynamic import mounted into `mcpHost`) so that its code stays out of the initial bundle.
+   */
+  readonly mcpReload = signal(0);
+  private readonly mcpHost = viewChild('mcpHost', { read: ViewContainerRef });
+  private mcpPanel: ComponentRef<McpTokensPanel> | null = null;
+  private mcpMounting = false;
+  private destroyed = false;
+
   constructor() {
     effect(() => {
       if (this.page() === 'household' && this.session.current().state === 'member') this.load();
+    });
+    effect(() => {
+      const host = this.mcpHost();
+      if (host) untracked(() => void this.mountMcpPanel(host));
+      else this.mcpPanel = null;
+    });
+    inject(DestroyRef).onDestroy(() => (this.destroyed = true));
+    effect(() => {
+      const reload = this.mcpReload();
+      this.mcpPanel?.setInput('reload', reload);
     });
   }
 
@@ -131,6 +152,7 @@ export class FoundationPage {
         this.syncLabelEditor(household, true);
         this.loading.set(false);
         if (this.timeZones().length === 0) this.loadTimeZones();
+        this.mcpReload.update((n) => n + 1);
       },
       error: (error: HttpErrorResponse) => {
         this.loading.set(false);
@@ -138,6 +160,33 @@ export class FoundationPage {
         this.traceId.set(this.errorDetail(error)?.traceId);
       },
     });
+  }
+
+  private async mountMcpPanel(host: ViewContainerRef): Promise<void> {
+    if (this.mcpPanel || this.mcpMounting) return;
+    this.mcpMounting = true;
+    try {
+      const { McpTokensPanel: panel } = await import('./mcp-tokens-panel');
+      // The page can be gone, the host replaced or already filled by the time the chunk arrives.
+      if (this.destroyed || this.mcpHost() !== host || host.length > 0) return;
+      const ref = host.createComponent(panel);
+      ref.setInput('reload', untracked(this.mcpReload));
+      ref.instance.householdChange.subscribe((updated) => this.replaceHousehold(updated));
+      this.mcpPanel = ref;
+      ref.onDestroy(() => {
+        if (this.mcpPanel === ref) this.mcpPanel = null;
+      });
+    } catch {
+      // The chunk could not be loaded (offline, or a deploy replaced it): the rest of the page keeps working and the
+      // tokens section stays absent until the page is opened again.
+    } finally {
+      this.mcpMounting = false;
+    }
+  }
+
+  /** A panel that changed the household (an MCP token create or revoke) hands back the new one, so If-Match stays current. */
+  replaceHousehold(updated: Household): void {
+    this.household.set(updated);
   }
 
   loadTimeZones(): void {

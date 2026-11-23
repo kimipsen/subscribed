@@ -22,6 +22,12 @@ public static partial class HouseholdLog
     [LoggerMessage(EventId = 3103, Level = LogLevel.Warning, Message = "household.time_zone_data_missing: the server lists no time zone but UTC; only UTC households work")]
     private static partial void TimeZoneDataMissingCore(ILogger logger);
 
+    [LoggerMessage(EventId = 3104, Level = LogLevel.Information, Message = "household.mcp_token_created {TokenId}")]
+    private static partial void McpTokenCreatedCore(ILogger logger, string tokenId);
+
+    [LoggerMessage(EventId = 3105, Level = LogLevel.Information, Message = "household.mcp_token_revoked {TokenId}")]
+    private static partial void McpTokenRevokedCore(ILogger logger, string tokenId);
+
     /// <summary>Startup signal: no tz database in this runtime image. Carries no data at all.</summary>
     public static void TimeZoneDataMissing(ILogger logger)
     {
@@ -46,5 +52,18 @@ public static partial class HouseholdLog
     {
         ArgumentNullException.ThrowIfNull(logger);
         FeedRevokedCore(logger, householdId);
+    }
+
+    /// <summary>An MCP token was created. Carries the public token id only: never the secret, its hash or the name.</summary>
+    public static void McpTokenCreated(ILogger logger, string tokenId)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        McpTokenCreatedCore(logger, tokenId);
+    }
+
+    public static void McpTokenRevoked(ILogger logger, string tokenId)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        McpTokenRevokedCore(logger, tokenId);
     }
 }

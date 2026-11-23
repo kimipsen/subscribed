@@ -37,7 +37,7 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
             await RequireUsablePaymentOptionAsync(command.PaymentOptionId, ct).ConfigureAwait(false);
             var id = SubscriptionIds.New(time);
             var streamKey = SubscriptionIds.StreamKey(id);
-            var events = SubscriptionDecisions.Add(command, HouseholdService.StreamId, SubscriptionIds.New(time), time.GetUtcNow());
+            var events = Stamp(SubscriptionDecisions.Add(command, HouseholdService.StreamId, SubscriptionIds.New(time), time.GetUtcNow()), context);
             await using var session = store.LightweightSession();
             SetHeaders(session, context);
             session.Events.StartStream<SubscriptionState>(streamKey, [.. events]);
@@ -154,6 +154,7 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
             var events = await decideAsync(history, ct).ConfigureAwait(false);
             if (events.Count > 0)
             {
+                events = Stamp(events, context);
                 SetHeaders(session, context);
 
                 // Marten's expected version is the stream version AFTER the append.
@@ -221,12 +222,31 @@ public sealed class SubscriptionService(IDocumentStore store, TimeProvider time,
         PaymentOptionLog.EditChange(loggers.CreateLogger(PaymentOptionLog.Category), change, priceEvents);
     }
 
+    /// <summary>
+    /// Applied once after the decide step: a write that carries a source (MCP) marks every via-capable event with it; a web write
+    /// leaves them untouched, so a web edit of an MCP-written row clears its via (D10).
+    /// </summary>
+    private static IReadOnlyList<object> Stamp(IReadOnlyList<object> events, WriteContext context) =>
+        string.IsNullOrEmpty(context.Source)
+            ? events
+            : [.. events.Select(e => e is IViaStamped stamped ? stamped.WithVia(context.Source) : e)];
+
     private static void SetHeaders(IDocumentSession session, WriteContext context)
     {
         session.SetHeader("actor", context.Actor);
         if (!string.IsNullOrEmpty(context.CorrelationId))
         {
             session.SetHeader("correlationId", context.CorrelationId);
+        }
+
+        if (!string.IsNullOrEmpty(context.Source))
+        {
+            session.SetHeader("source", context.Source);
+        }
+
+        if (!string.IsNullOrEmpty(context.TokenId))
+        {
+            session.SetHeader("tokenId", context.TokenId);
         }
     }
 }

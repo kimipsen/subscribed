@@ -85,6 +85,24 @@ It must also **not log the path of `/calendar/`**: the private calendar feed URL
 (see [Calendar reminders](../backend/README.md#calendar-reminders)).
 Do not use plain HTTP as the public origin with the production Compose configuration.
 
+### Reverse proxy settings for MCP
+
+The MCP server answers on `/mcp` (see [docs/mcp.md](../docs/mcp.md)). Agents connect to it through the public host, so the
+proxy must:
+
+* **forward `/mcp` to the same upstream** as everything else (`subscribed:8080`); there is no separate MCP service;
+* **not buffer responses** for `/mcp`: a response is a `text/event-stream`. The app sends `X-Accel-Buffering: no`, which nginx
+  honours (or set `proxy_buffering off` for the `/mcp` location); other proxies need the equivalent setting, which you must
+  verify with a real client;
+* **allow long reads**: a read timeout of a few minutes, not the 30 or 60 seconds some proxies default to;
+* **not log the `Authorization` header** (or any request header) of `/mcp` requests: the header **is** the credential, and
+  a proxy log, trace or WAF capture would keep every token in clear text. Use the same care for any log shipper in front of
+  the app;
+* **rate limit failed authentication**. The app does not rate limit `/mcp`: every request with a wrong token is a `401` and
+  one household read. Limit repeated `401` responses per client address at the proxy.
+
+A request body larger than 64 KB on `/mcp` is rejected by the app with `413`; do not raise your proxy's limit above that for `/mcp`.
+
 Every command below supplies `--env-file deploy/.env` explicitly. Do not rely on Compose
 automatically finding that file from the repository root.
 
@@ -245,8 +263,43 @@ The release that adds subscription tracking moves the schema from version 1 to *
 document table, `mt_doc_subscription_view`, and one new grant). `migrate` must run before the app
 starts: readiness returns 503 until the database is at schema version 2.
 
+The release that adds the MCP server moves the schema from version 3 to **version 4** (one new
+document table, `mt_doc_mcp_token_use`, and one new grant on it). The **migrator must run first**: `admin db migrate`
+creates the table through the migrator role and re-applies `grants.sql`, and `/health/ready` returns 503 until the database is
+at schema version 4. There is no SQL migration file. Start the new app only after `migrate` exited 0.
+
 Do not assume an older image can run against a newer schema. Test database restoration before
 relying on rollback.
+
+### MCP rollout is one-way once a token exists
+
+The MCP server stores its tokens in the household event stream as two new events, `household.mcp_token_created.v1` and
+`household.mcp_token_revoked.v1`. An older application version does not know these aliases: when it loads the household stream
+after the first token was created it throws `UnknownEventAliasException`, and that takes down **the whole web app**, not
+only MCP. Therefore:
+
+* **"Deploy the previous image" is NOT safe once a token has been created.** Neither is a restore-free rollback.
+* **`Mcp:Enabled=false` does not help.** The flag stops `/mcp` and new tokens, but it does not undo events that were
+  already written. An old image still fails on the stream.
+* **Rolling deploys:** while an old instance still serves traffic after a new instance wrote the first token event, the old
+  instance fails on the household stream. Drain the old instances before anyone can create a token, or keep
+  `Mcp__Enabled=false` until **every** instance runs the new version, then enable it.
+* **Forward fix, if the new version must be pulled:** build and deploy a **patched older image** that tolerates the two
+  unknown household aliases (skips those events, or maps them to a no-op) and run that instead. Alternatively restore the
+  backup taken before the new version served traffic; changes made after it are lost.
+* **No patched older image exists yet.** The forward-fix image has not been built and this procedure has **never been
+  rehearsed**. If you need rollback safety, ship an earlier release that tolerates unknown household aliases first
+  (without any MCP code), and only then ship the MCP release.
+
+Back up PostgreSQL before deploying this release, and keep `Mcp__Enabled=false` until the rollout is complete.
+
+### The `Mcp:Enabled` setting
+
+`Mcp:Enabled` defaults to `true`. Set it to `false` to stop new exposure at once: `/mcp` disappears (a `404` on every
+method), and creating a token answers `409` `mcp-disabled`. Listing and revoking tokens keep working. The production
+`deploy/compose.yml` does not pass this key through; set it for the `subscribed` service in a Compose override file
+(`environment: { Mcp__Enabled: "false" }`) or edit the `environment` list, then recreate the container. A household with no
+tokens exposes nothing even when the flag is on.
 
 ### Backup and restore
 
@@ -280,6 +333,9 @@ requires the original Data Protection keys.
 | Readiness `Degraded` with HTTP 200 | Inspect Keycloak connectivity/discovery and TLS; database readiness alone does not prove login works. |
 | Keycloak `invalid_redirect_uri` | Register the exact public HTTPS callback, and check `PUBLIC_ORIGIN` and trusted proxy headers. |
 | Access denied after login | Grant the exact subject from this realm; do not use username or email. |
+| MCP client gets `401` | The token is wrong, was revoked, or its member was removed; every cause answers the same. Create a new token on the household page. |
+| MCP client hangs or is cut off | The proxy buffers `/mcp` or has a short read timeout; see the MCP proxy settings above. |
+| MCP client gets `404` on `/mcp` | `Mcp:Enabled` is `false`, or the proxy does not forward `/mcp` to the app. |
 | Cannot reach port 8080 remotely | Expected: it is loopback-only. Access through the HTTPS reverse proxy. |
 | Login/logout fails after configuration changes | Recreate the app container and check issuer, secret and both registered redirect URIs. |
 

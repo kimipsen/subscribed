@@ -19,9 +19,14 @@ public static class HouseholdErrorCodes
     public const string NotAMember = "not-a-member";
     public const string LastMember = "last-member";
     public const string InvalidTimeZone = "invalid-time-zone";
+    public const string InvalidTokenName = "invalid-token-name";
+    public const string TooManyTokens = "too-many-tokens";
+    public const string TokenNotFound = "token-not-found";
 }
 
 public sealed record ActiveMember(string MemberId, string Issuer, string Subject, string DisplayLabel, DateTimeOffset GrantedAt);
+
+public sealed record ActiveMcpToken(string TokenId, string MemberId, string Name, string SecretHash, DateTimeOffset CreatedAt);
 
 /// <summary>The Household aggregate: rehydrated from its events; decisions return new events.</summary>
 public sealed class Household
@@ -29,8 +34,11 @@ public sealed class Household
     public const string DefaultStreamId = "household-default";
     public const int MaxNameLength = 80;
     public const int MaxLabelLength = 64;
+    public const int MaxTokenNameLength = 64;
+    public const int MaxActiveTokensPerMember = 20;
 
     private readonly Dictionary<string, ActiveMember> _members = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ActiveMcpToken> _mcpTokens = new(StringComparer.Ordinal);
 
     public bool Exists { get; private set; }
 
@@ -47,6 +55,9 @@ public sealed class Household
     public DateTimeOffset? CalendarFeedRotatedAt { get; private set; }
 
     public IReadOnlyCollection<ActiveMember> Members => _members.Values;
+
+    /// <summary>Active MCP tokens (hash only). A revoked member's tokens are dropped (plan D6).</summary>
+    public IReadOnlyCollection<ActiveMcpToken> McpTokens => _mcpTokens.Values;
 
     public static Household Rehydrate(IEnumerable<object> events)
     {
@@ -76,6 +87,11 @@ public sealed class Household
                 break;
             case HouseholdMemberRevoked e:
                 _members.Remove(e.MemberId);
+                foreach (var tokenId in _mcpTokens.Values.Where(t => t.MemberId == e.MemberId).Select(t => t.TokenId).ToList())
+                {
+                    _mcpTokens.Remove(tokenId);
+                }
+
                 break;
             case HouseholdMemberLabelChanged e:
                 if (!_members.TryGetValue(e.MemberId, out var existing))
@@ -95,6 +111,12 @@ public sealed class Household
             case HouseholdCalendarFeedRevoked:
                 CalendarFeedSecretHash = null;
                 CalendarFeedRotatedAt = null;
+                break;
+            case HouseholdMcpTokenCreated e:
+                _mcpTokens[e.TokenId] = new ActiveMcpToken(e.TokenId, e.MemberId, e.Name, e.SecretHash, e.CreatedAt);
+                break;
+            case HouseholdMcpTokenRevoked e:
+                _mcpTokens.Remove(e.TokenId);
                 break;
             default:
                 throw new InvalidOperationException($"Event type {@event?.GetType().Name ?? "null"} is not a household event.");
@@ -199,6 +221,60 @@ public sealed class Household
     {
         RequireExists();
         return CalendarFeedSecretHash is null ? [] : [new HouseholdCalendarFeedRevoked(now.ToUniversalTime())];
+    }
+
+    /// <summary>
+    /// Creates a named MCP token for an active member: the name is trimmed to 1–64 characters without control characters
+    /// (<c>invalid-token-name</c>), at most 20 active tokens per member (<c>too-many-tokens</c>). The hash is computed by the service.
+    /// </summary>
+    public IReadOnlyList<object> CreateMcpToken(string memberId, string? name, string secretHash, string tokenId, DateTimeOffset now)
+    {
+        RequireExists();
+        if (!_members.ContainsKey(memberId))
+        {
+            throw new HouseholdDomainException(HouseholdErrorCodes.NotAMember, "memberId", "The member is not an active member.");
+        }
+
+        var normalized = NormalizeTokenName(name);
+        if (_mcpTokens.Values.Count(t => t.MemberId == memberId) >= MaxActiveTokensPerMember)
+        {
+            throw new HouseholdDomainException(HouseholdErrorCodes.TooManyTokens, "name", $"A member can have at most {MaxActiveTokensPerMember} active tokens.");
+        }
+
+        if (!IsSecretHash(secretHash))
+        {
+            throw new ArgumentException("The MCP token secret hash must be 64 lower-case hex characters.", nameof(secretHash));
+        }
+
+        if (!McpTokenSecrets.IsTokenId(tokenId) || _mcpTokens.ContainsKey(tokenId))
+        {
+            throw new ArgumentException("The MCP token id must be 16 unused lower-case hex characters.", nameof(tokenId));
+        }
+
+        return [new HouseholdMcpTokenCreated(tokenId, memberId, normalized, secretHash, now.ToUniversalTime())];
+    }
+
+    /// <summary>A member can revoke only their own active token. Unknown, already revoked or foreign tokens throw <c>token-not-found</c>.</summary>
+    public IReadOnlyList<object> RevokeMcpToken(string memberId, string tokenId, DateTimeOffset now)
+    {
+        RequireExists();
+        if (!_mcpTokens.TryGetValue(tokenId ?? "", out var token) || !string.Equals(token.MemberId, memberId, StringComparison.Ordinal))
+        {
+            throw new HouseholdDomainException(HouseholdErrorCodes.TokenNotFound, "tokenId", "The token was not found.");
+        }
+
+        return [new HouseholdMcpTokenRevoked(token.TokenId, now.ToUniversalTime())];
+    }
+
+    public static string NormalizeTokenName(string? name)
+    {
+        var trimmed = (name ?? "").Trim();
+        if (trimmed.Length is < 1 or > MaxTokenNameLength || trimmed.Any(char.IsControl))
+        {
+            throw new HouseholdDomainException(HouseholdErrorCodes.InvalidTokenName, "name", "Token name must be 1–64 characters.");
+        }
+
+        return trimmed;
     }
 
     public static bool IsSecretHash(string? value) =>

@@ -20,6 +20,20 @@ public sealed class HouseholdViewMember
     public DateTimeOffset GrantedAt { get; set; }
 }
 
+/// <summary>An active MCP token. Holds the secret's hash only; the hash is never serialized to any endpoint.</summary>
+public sealed class HouseholdViewMcpToken
+{
+    public string TokenId { get; set; } = "";
+
+    public string MemberId { get; set; } = "";
+
+    public string Name { get; set; } = "";
+
+    public string SecretHash { get; set; } = "";
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 /// <summary>
 /// Inline read model: committed in the same transaction as the events. Serves reads and the
 /// per-request membership check (one primary-key read, uncached).
@@ -41,6 +55,9 @@ public sealed class HouseholdView
     public string? CalendarFeedSecretHash { get; set; }
 
     public DateTimeOffset? CalendarFeedRotatedAt { get; set; }
+
+    /// <summary>Active MCP tokens of all members. Rows written before MCP tokens existed load with an empty list.</summary>
+    public List<HouseholdViewMcpToken> McpTokens { get; set; } = [];
 
     public bool CalendarFeedEnabled => CalendarFeedSecretHash is not null;
 
@@ -81,7 +98,26 @@ public sealed class HouseholdViewProjection : SingleStreamProjection<HouseholdVi
         view.CalendarFeedRotatedAt = null;
     }
 
-    public static void Apply(HouseholdMemberRevoked e, HouseholdView view) => view.Members.RemoveAll(m => m.MemberId == e.MemberId);
+    public static void Apply(HouseholdMemberRevoked e, HouseholdView view)
+    {
+        view.Members.RemoveAll(m => m.MemberId == e.MemberId);
+        view.McpTokens.RemoveAll(t => t.MemberId == e.MemberId);
+    }
+
+    public static void Apply(HouseholdMcpTokenCreated e, HouseholdView view)
+    {
+        view.McpTokens.RemoveAll(t => t.TokenId == e.TokenId);
+        view.McpTokens.Add(new HouseholdViewMcpToken
+        {
+            TokenId = e.TokenId,
+            MemberId = e.MemberId,
+            Name = e.Name,
+            SecretHash = e.SecretHash,
+            CreatedAt = e.CreatedAt,
+        });
+    }
+
+    public static void Apply(HouseholdMcpTokenRevoked e, HouseholdView view) => view.McpTokens.RemoveAll(t => t.TokenId == e.TokenId);
 
     public static void Apply(HouseholdMemberLabelChanged e, HouseholdView view)
     {
@@ -97,6 +133,7 @@ public sealed class HouseholdViewProjection : SingleStreamProjection<HouseholdVi
 public sealed class HouseholdModule : IEventStoreModule
 {
     public const string ViewAlias = "household_view";
+    public const string McpTokenUseAlias = "mcp_token_use";
 
     public void Configure(StoreOptions options)
     {
@@ -107,6 +144,7 @@ public sealed class HouseholdModule : IEventStoreModule
         }
 
         options.Schema.For<HouseholdView>().Identity(x => x.Id).DocumentAlias(ViewAlias);
+        options.Schema.For<McpTokenUse>().Identity(x => x.Id).DocumentAlias(McpTokenUseAlias);
         options.Projections.Add<HouseholdViewProjection>(ProjectionLifecycle.Inline);
     }
 }

@@ -22,6 +22,8 @@ public static class ProblemCodes
     public const string MethodNotAllowed = "method-not-allowed";
     public const string UnsupportedMediaType = "unsupported-media-type";
     public const string InternalError = "internal-error";
+    public const string TooManyTokens = "too-many-tokens";
+    public const string McpDisabled = "mcp-disabled";
 }
 
 public static class Problem

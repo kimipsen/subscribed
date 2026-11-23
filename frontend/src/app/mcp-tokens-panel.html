@@ -1,0 +1,95 @@
+<app-panel labelledBy="mcp-heading">
+  <h2 id="mcp-heading" class="mt-0 mb-2 text-lg font-semibold wrap-anywhere">{{ 'household.mcpHeading' | t }}</h2>
+  <p class="my-2">{{ 'household.mcpIntro' | t }}</p>
+  <form class="flex max-w-xl flex-col" (ngSubmit)="createMcpToken()" novalidate>
+    <div class="mb-4 flex flex-col gap-1">
+      <label class="font-medium" for="mcp-name">{{ 'household.mcpNameLabel' | t }}</label>
+      <input id="mcp-name" class="input w-full border-base-content/55 aria-invalid:border-2" name="mcpName" [(ngModel)]="mcpName"
+        maxlength="64" required [attr.aria-invalid]="mcpError()?.key === 'household.mcpNameInvalid' ? 'true' : null"
+        aria-describedby="mcp-name-hint mcp-error" [disabled]="mcpBusy()">
+      <p id="mcp-name-hint" class="m-0 text-sm text-base-content/70 wrap-anywhere">{{ 'household.mcpNameHint' | t }}</p>
+      <div id="mcp-error" class="text-sm text-error wrap-anywhere" role="alert">
+        @if (mcpError()) {
+          <p class="m-0">{{ i18n.message(mcpError()) }}</p>
+          @if (mcpTraceId()) { <p class="m-0">{{ 'common.referenceLabel' | t }} <code>{{ mcpTraceId() }}</code></p> }
+        }
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn btn-primary" id="mcp-create" [disabled]="mcpBusy() || !validMcpName(mcpName)">
+        {{ (mcpBusy() ? 'household.mcpWorking' : 'household.mcpCreate') | t }}
+      </button>
+    </div>
+  </form>
+  @if (mcpSecret(); as secret) {
+    <div id="mcp-secret-block" class="my-4 flex max-w-xl flex-col gap-2">
+      <div class="flex flex-col gap-1">
+        <label class="font-medium" for="mcp-secret">{{ 'household.mcpSecretLabel' | t: { name: secret.name } }}</label>
+        <input id="mcp-secret" class="input w-full border-base-content/55" #mcpInput readonly [value]="secret.value" aria-describedby="mcp-secret-once">
+      </div>
+      <app-notice id="mcp-secret-once" [role]="'status'">{{ 'household.mcpSecretOnce' | t }}</app-notice>
+      <div class="flex flex-col gap-1">
+        <span class="font-medium">{{ 'household.mcpUrlLabel' | t }}</span>
+        <code id="mcp-url" class="wrap-anywhere">{{ mcpUrl() }}</code>
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="font-medium" id="mcp-command-label">{{ 'household.mcpCommandLabel' | t }}</span>
+        <pre id="mcp-command" class="m-0 overflow-x-auto rounded-box bg-base-200 p-2 text-sm" aria-labelledby="mcp-command-label"><code>{{ mcpCommand() }}</code></pre>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline" id="mcp-copy" (click)="copyMcpSecret(mcpInput)">{{ 'household.mcpCopy' | t }}</button>
+        <button type="button" class="btn btn-outline" id="mcp-hide" (click)="hideMcpSecret()">{{ 'household.mcpHide' | t }}</button>
+      </div>
+      <output class="text-base-content/70">{{ i18n.message(mcpCopyMessage()) }}</output>
+    </div>
+  }
+  @if (mcpRevoked()) {
+    <output class="block my-2 text-base-content/70" id="mcp-revoked">{{ 'household.mcpRevoked' | t }}</output>
+  }
+  <h3 class="mt-4 mb-2 text-base font-semibold wrap-anywhere">{{ 'household.mcpListHeading' | t }}</h3>
+  @if (mcpLoadFailed()) {
+    <app-notice data-problem>
+      <p class="m-0">{{ 'household.mcpLoadFailed' | t }}</p>
+      <button type="button" class="btn btn-sm btn-outline mt-2" id="mcp-retry" (click)="loadMcpTokens()">{{ 'household.mcpRetry' | t }}</button>
+    </app-notice>
+  } @else if (mcpTokens(); as tokens) {
+    @if (tokens.length === 0) {
+      <p class="my-2 text-base-content/70" id="mcp-empty">{{ 'household.mcpEmpty' | t }}</p>
+    } @else {
+      <ul class="m-0 flex list-none flex-col gap-2 p-0" data-mcp-token-list>
+        @for (token of tokens; track token.id) {
+          <li class="flex flex-wrap items-center gap-2 border-b border-base-300 py-2" data-mcp-token>
+            <strong class="min-w-0 flex-1 wrap-anywhere" [id]="'mcp-token-name-' + token.id">{{ token.name }}</strong>
+            <span class="text-base-content/70">{{ 'household.mcpCreated' | t: { date: (token.createdAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}</span>
+            <span class="text-base-content/70">
+              @if (token.lastUsedAt) {
+                {{ 'household.mcpLastUsed' | t: { date: (token.lastUsedAt | date:'mediumDate':undefined:i18n.dateLocale()) ?? '' } }}
+              } @else {
+                {{ 'household.mcpNeverUsed' | t }}
+              }
+            </span>
+            @if (confirmingRevokeId() === token.id) {
+              <div class="alert alert-warning w-full" role="alertdialog" [attr.aria-labelledby]="'mcp-revoke-confirm-' + token.id" data-mcp-revoke-confirm>
+                <div class="min-w-0 wrap-anywhere">
+                  <p class="m-0" [id]="'mcp-revoke-confirm-' + token.id">{{ 'household.mcpRevokeConfirm' | t: { name: token.name } }}</p>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-neutral" data-mcp-revoke-yes [disabled]="mcpBusy()" (click)="revokeMcpToken(token)">{{ 'household.mcpRevokeYes' | t }}</button>
+                    <button type="button" class="btn btn-sm btn-outline" data-mcp-revoke-no (click)="cancelRevokeMcpToken()">{{ 'household.mcpRevokeNo' | t }}</button>
+                  </div>
+                </div>
+              </div>
+            } @else {
+              <button type="button" class="btn btn-sm btn-outline" data-mcp-revoke [disabled]="mcpBusy()" (click)="askRevokeMcpToken(token)"
+                [attr.aria-describedby]="'mcp-token-name-' + token.id">{{ 'household.mcpRevoke' | t }}</button>
+            }
+          </li>
+        }
+      </ul>
+    }
+  } @else {
+    <div aria-busy="true">
+      <output class="block my-2 text-base-content/70">{{ 'household.mcpLoading' | t }}</output>
+      <app-skeleton-block />
+    </div>
+  }
+</app-panel>

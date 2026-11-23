@@ -75,9 +75,9 @@ creates the table, records version 3 and re-applies `grants.sql`, and readiness 
 | Project | Contents |
 | --- | --- |
 | `src/Subscribed.Platform` | `SubscribedStore` (only Marten configuration), `EventStoreErrors.Map` (only library-aware error code), `Database/grants.sql` (embedded, single source), `SchemaMigrator` + `SchemaVersion`, `ReadinessProbe`, `MartenXmlRepository` (DP keys), RFC 9457 `Problem`, `MemberIdentity`, `SecurityLog` |
-| `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler; the household time zone (`TimeZoneIds`, `ITimeZoneSource`) and the calendar feed secret (`CalendarFeedSecrets`) |
+| `src/Subscribed.Household` | v1 events with explicit aliases, `Household` aggregate (rehydrate/decide), `HouseholdView` + inline projection, `HouseholdService`, rebuild, endpoints, `HouseholdMembership` authorization handler; the household time zone (`TimeZoneIds`, `ITimeZoneSource`) and the calendar feed secret (`CalendarFeedSecrets`); MCP token storage and management (`McpTokenSecrets`, `McpTokenUse`, `McpTokenEndpoints`) |
 | `src/Subscribed.Subscriptions` | sixteen `subscription.*.v1` events with explicit aliases, `SubscriptionState` (the Marten document and the domain state in one: a self-aggregating inline snapshot), `SubscriptionDecisions` (commands to events, field and invariant checks), `SubscriptionCalculator` (status, current price, history, period totals, with exact rational arithmetic), `ReportPeriod`, `SubscriptionService`, the migrator-only `SubscriptionProjectionRebuilder`, the known-services catalog (`Catalog/`), DTOs and `/api/subscriptions` endpoints; `PaymentOptions/` holds the three `payment_option.*.v1` events, `PaymentOptionState`, `PaymentOptionDecisions`, `PaymentOptionService`, its rebuilder and the `/api/payment-options` endpoints; `Calendar/` holds the iCal feed builder (`CalendarFeedBuilder`, `IcsWriter`, `VTimeZoneWriter`, `CalendarFeedText`), see "Calendar reminders" |
-| `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli`, and `Calendar/CalendarEndpoints` (the anonymous `/calendar/{secret}/subscribed.ics` feed) |
+| `src/Subscribed.Api` | `Program` (web, `--check-config`, `--probe-live`, `admin …`), `SubscribedApp` (composition/pipeline), BFF (`OidcSetup`, `SessionCookie`, `BffEndpoints`, `RequestGuards`), `SpaHost`, health, `AdminCli`, `Calendar/CalendarEndpoints` (the anonymous `/calendar/{secret}/subscribed.ics` feed) and `Mcp/` (the `McpBearer` scheme, the `/mcp` read tools, the tool wrapper, the 64 KB body cap and the content-free `McpLog`), see "MCP server" |
 | `tests/Subscribed.UnitTests` | invariants (AC7), golden event fixtures + unknown alias (AC6), validators, error map |
 | `tests/Subscribed.Persistence.Tests` | AC1–AC5, AC19, AC20 on PostgreSQL 18 as the least-privilege role |
 | `tests/Subscribed.Api.Tests` | HTTP tests on TestServer with the in-process stub IdP (AC8–AC15, AC12b, AC21), child-process startup tests (AC13), admin CLI |
@@ -415,6 +415,7 @@ responses carry `catalogId` and `logoUrl` on the overview rows and on the detail
 | `Oidc:IdpLogout` | `ClientId` (default) or `None` |
 | `ConnectionStrings:Subscribed` | app role (required for the web host) |
 | `ConnectionStrings:SubscribedMigrator` | migrator (`admin db migrate|patch`, `admin projections rebuild`) |
+| `Mcp:Enabled` | optional boolean, default `true`; `false` unmaps `/mcp` and makes `POST /api/household/mcp-tokens` answer `409 mcp-disabled`; listing and revoking tokens keep working; env `Mcp__Enabled` |
 | `Database:Schema` / `Database:AppRole` | `^[a-z_][a-z0-9_]{0,62}$`; schema default `subscribed`; AppRole required for migrate |
 
 Sources: `appsettings.json` (non-secret defaults only), environment variables (`Section__Key`),
@@ -536,6 +537,64 @@ another terminal, and browse port 4200. The local Keycloak client permits both
 callback origins. Existing realms are not re-imported: re-run
 `scripts/dev-keycloak-users.sh` to update their callback registrations (this also
 resets synthetic user passwords).
+
+## MCP server
+
+The MCP server lets a household member's AI assistant read and change subscriptions through 20 tools. The user-facing
+description (creating a token, connecting Claude Code, the tool table, the security model) is in
+[`docs/mcp.md`](../docs/mcp.md); this section records what the backend does.
+
+| Endpoint | Success | Notes |
+| --- | --- | --- |
+| `POST /mcp` | `200` `text/event-stream` (one JSON-RPC message), `202` for a notification | Streamable HTTP, stateless; `McpBearer` authentication only; 64 KB body cap (`413`) |
+| `GET /mcp`, `DELETE /mcp` | `405` with `Allow: POST` | after the token check; `401` without a valid token |
+| `GET /api/household/mcp-tokens` | `200` `{ tokens: [{ id, name, createdAt, lastUsedAt }] }` | the signed-in member's active tokens; never a secret or hash |
+| `POST /api/household/mcp-tokens` | `201` `{ household, token, secret }`, `Cache-Control: no-store` | body `{ name }` (1 to 64 characters); `secret` is shown once; `409` `too-many-tokens` (20 active per member) and `409` `mcp-disabled`; needs `X-CSRF`, no `If-Match` |
+| `DELETE /api/household/mcp-tokens/{tokenId}` | `200` `{ household }`, new `ETag` | revokes one of the member's own tokens; `404` for an unknown id; needs `X-CSRF` |
+
+The token endpoints use the cookie session (`BFF`) and the `X-CSRF` and `Origin` rules; they reject an MCP
+token because the `McpBearer` scheme is not part of their policy, and `/mcp` rejects a cookie because only the `McpMember`
+policy (which lists `McpBearer` alone) guards it.
+
+- **Authentication.** The `McpBearer` scheme reads only `Authorization: Bearer <token>`, finds the token in the household view,
+  and requires its member to be active. It is registered next to the BFF scheme but is never a default scheme. Every
+  failure (missing, malformed, unknown or revoked token, removed member) is one `401` `problem+json` with `WWW-Authenticate: Bearer`;
+  a database failure is a `503`. The matcher compares against **every** stored token with a constant-time comparison.
+- **Secret scheme.** The same as the calendar feed: 256 random bits as base64url (43 characters), only `SHA-256(secret)` as
+  64 lower-case hex characters is stored, the public token id is 16 lower-case hex characters.
+- **Events.** `household.mcp_token_created.v1` (token id, member id, name, secret hash, created at) and
+  `household.mcp_token_revoked.v1`. Both are new aliases with golden fixtures. An older application version throws
+  `UnknownEventAliasException` on a stream that holds them, see the rollout note in [`deploy/README.md`](../deploy/README.md#mcp-rollout-is-one-way-once-a-token-exists).
+  Subscription events carry a `via` marker (`mcp` or none) that the detail DTOs expose per price entry and pause period.
+- **Database.** One new Marten document, `mcp_token_use` (table `mt_doc_mcp_token_use`), holds the last-used time of each token;
+  the app role gets `SELECT, INSERT, UPDATE` on it in `grants.sql` (no DELETE, so rows of revoked tokens stay). `SchemaVersion.Current`
+  is **4**, so `admin db migrate` must run before the new app starts. Last-used is written detached, at most once per token per
+  five minutes, so a failing write never fails a request.
+- **Logging.** The `Subscribed.Mcp` category writes one content-free line per tool call (tool, outcome, error code, token id,
+  correlation id) and one per `401` class; no line carries arguments, results, the header, a secret or a hash. The
+  `ModelContextProtocol` category is raised to `Critical` because the SDK logs exception messages.
+- **Pinned package.** `ModelContextProtocol.AspNetCore` **2.4.0** (see the spike below).
+
+### MCP SDK spike (issue #55, WP2)
+
+Outcome: **the official SDK path is kept** (no fallback to a hand-rolled JSON-RPC handler). Everything below was observed against
+the running host in `Subscribed.Api.Tests` (`McpEndpointApiTests`), except where it says "not verified".
+
+| Item | Result |
+| --- | --- |
+| Package | `ModelContextProtocol.AspNetCore` **2.4.0**, pinned `[2.4.0]` in `Directory.Packages.props` and referenced from `Subscribed.Api.csproj` only. It resolves `ModelContextProtocol` **2.4.0** and `ModelContextProtocol.Core` **2.4.0** transitively. The `packages.lock.json` of `Subscribed.Api`, `Subscribed.Api.Tests` and `Subscribed.UnitTests` (the projects that reference `Api`) were regenerated. |
+| (a) Restore and build | `dotnet restore --locked-mode` and `dotnet build` succeed on `net11.0` with `CentralPackageTransitivePinningEnabled`, with `-warnaserror` analyzers on. |
+| (b) Transport and content type | `app.MapMcp("/mcp")` with `WithHttpTransport(o => o.Stateless = true)` works. `initialize`, `tools/list` and `tools/call` all answer **`200` with `Content-Type: text/event-stream`**: one `event: message` whose `data:` line is the JSON-RPC message, plus `Cache-Control: no-store, no-cache` and `X-Accel-Buffering: no`. Nothing may assume plain JSON; a notification (no `id`) answers `202`. The test client accepts both framings. No `Mcp-Session-Id` is ever sent. |
+| (c) Protocol negotiation | `initialize` returns the requested revision when it is supported (`2025-11-25`, `2025-06-18`, `2024-11-05`) and `2025-11-25` for an unsupported one. **Not verified here: MCP Inspector and Claude Code (`claude mcp add --transport http`)** were not run, because this build ran headless without those clients. The HTTP protocol exchange is covered by the tests; run both clients against a real deployment before announcing the feature. |
+| (d) `HttpContext` in tools | `IHttpContextAccessor.HttpContext` is available inside tool methods in stateless mode (it is the request that carries the bearer principal), so `McpCaller` reads the member, the token id and the household view from it. `AddHttpContextAccessor()` is registered explicitly. |
+| (e) Exceptions | The SDK does not swallow the body-cap exception: a chunked body over 64 KB is a `413` from the app's error boundary. For an exception thrown from a tool method the SDK answers `200` with `isError: true` and the text `An error occurred invoking '<tool>'.`, **but it logs the full exception, message and stack, at `Error` level** (category `ModelContextProtocol.Server.McpServer`); a missing or mistyped argument takes the same path. So (1) every tool body runs inside `McpToolRunner`, which catches everything itself and answers with the fixed `internal-error` body, and (2) `ConfigureLogging` raises the `ModelContextProtocol` category to `Critical`, so no SDK line carries an exception message or stack. The content-free `Subscribed.Mcp` lines replace them. |
+| (f) `Origin` | The SDK does **not** validate the `Origin` header (a request with a foreign `Origin` and a valid token succeeds). That is acceptable because `/mcp` accepts only a bearer token, never a cookie, and a browser cannot attach the token to a cross-site request; no CORS policy exists. |
+| (g) OAuth discovery after the `401` | Before the change `GET /.well-known/oauth-protected-resource` fell into the SPA fallback and answered the SPA HTML with `200`; a client that probes it would try to parse HTML as OAuth metadata. The host now answers a plain `404` problem for `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server` and `/register` (and their sub-paths). It is a clean "not here", not OAuth support. How the two clients react was not verified. |
+| (h) `GET` and `DELETE` | Stateless mode maps only `POST`. The host answers `GET /mcp` and `DELETE /mcp` with `401` without a valid token and `405` (`Allow: POST`) with one. Any other path under `/mcp` (and every method with `Mcp:Enabled=false`) is a `404` problem. |
+
+Decisions this spike fixes for the downstream beads: tool names are `snake_case`; tools return a `CallToolResult` with one JSON text block
+(camelCase, the web API's DTOs); domain errors are tool errors `{ code, title, errors?, currentVersion? }` with the web API's problem codes; an
+unclassified failure is `{ code: "internal-error", title: "The request failed.", traceId }`.
 
 ## Tests
 

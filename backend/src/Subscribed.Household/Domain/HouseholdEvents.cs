@@ -23,6 +23,11 @@ public sealed record HouseholdCalendarFeedRotated(string SecretHash, DateTimeOff
 
 public sealed record HouseholdCalendarFeedRevoked(DateTimeOffset RevokedAt);
 
+/// <summary>Only the lower-case hex SHA-256 of the token secret is stored, never the secret. <c>TokenId</c> is public (headers, logs, lists).</summary>
+public sealed record HouseholdMcpTokenCreated(string TokenId, string MemberId, string Name, string SecretHash, DateTimeOffset CreatedAt);
+
+public sealed record HouseholdMcpTokenRevoked(string TokenId, DateTimeOffset RevokedAt);
+
 public sealed class UnknownEventAliasException(string alias)
     : Exception($"Unknown household event alias '{alias}'. Stored events are never skipped.")
 {
@@ -40,6 +45,8 @@ public static class HouseholdEventTypes
     public const string TimeZoneChanged = "household.time_zone_changed.v1";
     public const string CalendarFeedRotated = "household.calendar_feed_rotated.v1";
     public const string CalendarFeedRevoked = "household.calendar_feed_revoked.v1";
+    public const string McpTokenCreated = "household.mcp_token_created.v1";
+    public const string McpTokenRevoked = "household.mcp_token_revoked.v1";
 
     public static readonly IReadOnlyDictionary<string, Type> ByAlias = new Dictionary<string, Type>(StringComparer.Ordinal)
     {
@@ -51,6 +58,8 @@ public static class HouseholdEventTypes
         [TimeZoneChanged] = typeof(HouseholdTimeZoneChanged),
         [CalendarFeedRotated] = typeof(HouseholdCalendarFeedRotated),
         [CalendarFeedRevoked] = typeof(HouseholdCalendarFeedRevoked),
+        [McpTokenCreated] = typeof(HouseholdMcpTokenCreated),
+        [McpTokenRevoked] = typeof(HouseholdMcpTokenRevoked),
     };
 
     /// <summary>The same JSON shape Marten is configured with (System.Text.Json, camelCase).</summary>

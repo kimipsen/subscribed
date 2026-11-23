@@ -83,6 +83,7 @@
         <ng-template #historyPeriod let-row>
           @if (row.effectiveTo) { {{ 'detail.periodClosed' | t: { from: date(row.effectiveFrom), to: date(row.effectiveTo) } }} }
           @else { {{ 'detail.periodOpen' | t: { from: date(row.effectiveFrom) } }} }
+          @if (row.via === 'mcp') { <span class="badge badge-neutral" data-via-mcp>{{ 'detail.viaMcp' | t }}</span> }
           @if (row.initial) { <span class="text-base-content/70" data-history-note>{{ 'detail.initialPrice' | t }}</span> }
           @if (row.current) { <app-status-badge status="current">{{ 'detail.badge.current' | t }}</app-status-badge> }
           @if (row.upcoming) { <app-status-badge status="upcoming">{{ 'detail.badge.upcoming' | t }}</app-status-badge> }
@@ -251,7 +252,10 @@
               <tbody>
                 @for (row of pauses(); track row.id) {
                   <tr>
-                    <th scope="row">{{ date(row.pauseDate) }}</th>
+                    <th scope="row">
+                      {{ date(row.pauseDate) }}
+                      @if (row.via === 'mcp') { <span class="badge badge-neutral" data-via-mcp>{{ 'detail.viaMcp' | t }}</span> }
+                    </th>
                     <td>@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</td>
                     <td>
                       <div class="flex flex-wrap gap-2">
@@ -269,7 +273,10 @@
               <li class="flex min-w-0 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4" data-pause-card>
                 <dl class="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
                   <dt class="font-semibold">{{ 'pauses.col.pauseDate' | t }}</dt>
-                  <dd class="m-0 wrap-anywhere">{{ date(row.pauseDate) }}</dd>
+                  <dd class="m-0 wrap-anywhere">
+                    {{ date(row.pauseDate) }}
+                    @if (row.via === 'mcp') { <span class="badge badge-neutral" data-via-mcp>{{ 'detail.viaMcp' | t }}</span> }
+                  </dd>
                   <dt class="font-semibold">{{ 'pauses.col.resumeDate' | t }}</dt>
                   <dd class="m-0 wrap-anywhere">@if (row.resumeDate) { {{ date(row.resumeDate) }} } @else { {{ 'pauses.ongoing' | t }} }</dd>
                 </dl>

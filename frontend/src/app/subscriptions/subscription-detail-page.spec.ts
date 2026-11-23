@@ -931,6 +931,44 @@ describe('SubscriptionDetailPage', () => {
     expect(el(root, '#delete-pause-p2').textContent?.trim()).toBe(en['pauses.delete']);
   });
 
+  describe('via MCP marker', () => {
+    const marker = (row: HTMLElement) => row.querySelector('[data-via-mcp]');
+
+    it('marks price history rows written through MCP and no others', async () => {
+      const detail = detailFixture();
+      detail.priceHistory = detail.priceHistory.map((row, index) => ({
+        ...row, via: index === 0 ? 'mcp' : index === 1 ? null : undefined,
+      }));
+      const { root } = await open(detail);
+      const history = rows(root);
+      expect(history.length).toBeGreaterThanOrEqual(3);
+      expect(marker(history[0])?.textContent?.trim()).toBe(en['detail.viaMcp']);
+      expect(history.slice(1).some((row) => marker(row))).toBe(false);
+    });
+
+    it('marks pause periods written through MCP and no others', async () => {
+      const { root } = await open(withPauses([
+        { id: 'p1', pauseDate: '2026-03-01', resumeDate: '2026-03-10', via: 'mcp' },
+        { id: 'p2', pauseDate: '2026-06-01', resumeDate: '2026-06-10', via: null },
+        { id: 'p3', pauseDate: '2026-11-01', resumeDate: null },
+      ]));
+      const pauses = pauseRows(root);
+      expect(marker(pauses[0])?.textContent?.trim()).toBe(en['detail.viaMcp']);
+      expect(marker(pauses[1])).toBeNull();
+      expect(marker(pauses[2])).toBeNull();
+    });
+
+    it('carries a text label, not colour only, in both languages', async () => {
+      const detail = detailFixture();
+      detail.priceHistory = detail.priceHistory.map((row, index) => ({ ...row, via: index === 0 ? 'mcp' : null }));
+      const { harness, root } = await open(detail);
+      TestBed.inject(LanguageService).setLanguage('da');
+      await settle(harness);
+      expect(marker(rows(root)[0])?.textContent?.trim()).toBe(da['detail.viaMcp']);
+      expect(en['detail.viaMcp']).toBe('via MCP');
+    });
+  });
+
   it('shows a message instead of an empty table when there is no pause', async () => {
     const { root } = await open(withPauses([]));
     expect(pauseRows(root)).toHaveLength(0);

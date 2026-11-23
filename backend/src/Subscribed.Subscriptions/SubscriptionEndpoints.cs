@@ -272,30 +272,16 @@ public static class SubscriptionEndpoints
         {
             return respond(await action(memberId).ConfigureAwait(false));
         }
-        catch (SubscriptionNotFoundException)
+        catch (Exception ex) when (ex is SubscriptionNotFoundException or SubscriptionValidationException or SubscriptionStateException
+            || ex is EventStoreException { Failure.Kind: EventStoreFailureKind.ConcurrencyConflict })
         {
-            return NotFound();
-        }
-        catch (SubscriptionValidationException ex)
-        {
-            return Invalid(ex);
-        }
-        catch (SubscriptionStateException)
-        {
-            var current = await service.GetAsync(bare, context.RequestAborted).ConfigureAwait(false);
-            return current is null
-                ? NotFound()
-                : Problem.Result(409, ProblemCodes.InvalidSubscriptionState, "The subscription is not in a state that allows this change.",
-                    new Dictionary<string, object?> { ["currentVersion"] = current.Version });
-        }
-        catch (EventStoreException ex) when (ex.Failure.Kind == EventStoreFailureKind.ConcurrencyConflict)
-        {
-            SecurityLog.Info(loggers.CreateLogger(SecurityEvents.Category), SecurityEvents.ConcurrencyConflict, memberId);
-            var current = await service.GetAsync(bare, context.RequestAborted).ConfigureAwait(false);
-            return current is null
-                ? NotFound()
-                : Problem.Result(412, ProblemCodes.ConcurrencyConflict, "The subscription was changed by someone else.",
-                    new Dictionary<string, object?> { ["currentVersion"] = current.Version });
+            if (ex is EventStoreException)
+            {
+                SecurityLog.Info(loggers.CreateLogger(SecurityEvents.Category), SecurityEvents.ConcurrencyConflict, memberId);
+            }
+
+            var failure = await SubscriptionFailures.MapAsync(ex, bare, service, context.RequestAborted).ConfigureAwait(false);
+            return SubscriptionFailures.ToResult(failure!);
         }
     }
 
@@ -359,18 +345,12 @@ public static class SubscriptionEndpoints
             return cached;
         }
 
-        var resolved = Subscribed.Household.Domain.TimeZoneIds.TryResolve(HouseholdMembership.ViewFor(context).TimeZoneId, out var zone) ? zone : null;
-        if (resolved is null)
-        {
-            HouseholdLog.TimeZoneUnresolvable(loggers.CreateLogger(HouseholdLog.Category), HouseholdService.StreamId);
-        }
-
-        context.Items[ZoneKey] = resolved ?? TimeZoneInfo.Utc;
-        return (TimeZoneInfo)context.Items[ZoneKey]!;
+        var resolved = HouseholdZones.Resolve(HouseholdMembership.ViewFor(context), loggers);
+        context.Items[ZoneKey] = resolved;
+        return resolved;
     }
 
-    private static IResult NotFound() => Problem.Result(404, ProblemCodes.NotFound, "Subscription not found.");
+    private static IResult NotFound() => SubscriptionFailures.ToResult(SubscriptionFailures.NotFound);
 
-    private static IResult Invalid(SubscriptionValidationException ex) =>
-        ValidationProblems.Result(ex.Errors.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal));
+    private static IResult Invalid(SubscriptionValidationException ex) => SubscriptionFailures.ToResult(SubscriptionFailures.Validation(ex));
 }

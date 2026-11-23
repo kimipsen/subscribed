@@ -102,7 +102,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     internal async Task DropDatabaseAsync(string name)
     {
-        await AdminAsync($"DROP DATABASE IF EXISTS {name} WITH (FORCE)");
+        await ForceDropAsync(name);
         lock (_databases)
         {
             _databases.Remove(name);
@@ -132,10 +132,10 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         foreach (var db in remaining)
         {
-            await AdminAsync($"DROP DATABASE IF EXISTS {db} WITH (FORCE)");
+            await ForceDropAsync(db);
         }
 
-        await AdminAsync($"DROP DATABASE IF EXISTS {TemplateDatabase} WITH (FORCE)");
+        await ForceDropAsync(TemplateDatabase);
         await AdminAsync($"DROP ROLE IF EXISTS {AppRole}");
         await AdminAsync($"DROP ROLE IF EXISTS {MigratorRole}");
     }
@@ -149,6 +149,27 @@ public sealed class PostgresFixture : IAsyncLifetime
         catch (Exception ex) when (ex is NpgsqlException or TimeoutException or InvalidOperationException)
         {
             Console.Error.WriteLine($"Test database cleanup failed ({ex.GetType().Name}).");
+        }
+    }
+
+    /// <summary>
+    /// DROP DATABASE ... WITH (FORCE), retried briefly on 42501. A backend that has just disconnected can still be exiting when the
+    /// drop runs; Postgres then refuses to terminate it ("permission denied to terminate process") although nothing is left to
+    /// terminate, and the process is gone a few milliseconds later.
+    /// </summary>
+    private async Task ForceDropAsync(string database)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await AdminAsync($"DROP DATABASE IF EXISTS {database} WITH (FORCE)");
+                return;
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.InsufficientPrivilege && attempt < 20)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50 * attempt));
+            }
         }
     }
 

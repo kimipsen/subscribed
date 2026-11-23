@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
     <PackageReference Include="Microsoft.Extensions.Configuration.KeyPerFile" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <ProjectReference Include="../Subscribed.Platform/Subscribed.Platform.csproj" />
     <ProjectReference Include="../Subscribed.Household/Subscribed.Household.csproj" />
     <ProjectReference Include="../Subscribed.Subscriptions/Subscribed.Subscriptions.csproj" />

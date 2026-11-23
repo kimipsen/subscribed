@@ -148,8 +148,10 @@ public sealed class SubscriptionCatalogLinkTests
     {
         // SHA-256 of each fixture as it was at master 9d2d61e. A change to a v1 shape must be a new alias, never an edit.
         // added and details_changed later gained an optional trailing field: their original payloads are pinned, unchanged, under
-        // legacy/, and the top-level fixtures carry the new field.
-        var folder = alias is SubscriptionEventTypes.Added or SubscriptionEventTypes.DetailsChanged ? Path.Combine("events", "legacy") : "events";
+        // legacy/, and the top-level fixtures carry the new field. The price entry events gained the optional trailing via (#55 WP3).
+        var folder = alias is SubscriptionEventTypes.Added or SubscriptionEventTypes.DetailsChanged or SubscriptionEventTypes.PriceEntryAdded or SubscriptionEventTypes.PriceEntryCorrected
+            ? Path.Combine("events", "legacy")
+            : "events";
         var bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", folder, alias + ".json"));
         Assert.Equal(sha256, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)));
     }

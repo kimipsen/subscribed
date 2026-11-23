@@ -100,7 +100,8 @@ public sealed record HistoryEntryDto(
     PriceChangeDto? Change,
     bool Current,
     bool Upcoming,
-    string? PaymentOptionId = null);
+    string? PaymentOptionId = null,
+    string? Via = null);
 
 public sealed record SubscriptionSummaryDto(
     string Id,
@@ -173,12 +174,12 @@ public sealed record ReportPeriodDto(string Key, DateOnly From, DateOnly To, int
 }
 
 /// <summary>One pause period of a subscription. <c>resumeDate</c> is the first day charged again, null while the pause is open.</summary>
-public sealed record PausePeriodDto(string Id, DateOnly PauseDate, DateOnly? ResumeDate)
+public sealed record PausePeriodDto(string Id, DateOnly PauseDate, DateOnly? ResumeDate, string? Via = null)
 {
     public static PausePeriodDto From(PausePeriod period)
     {
         ArgumentNullException.ThrowIfNull(period);
-        return new PausePeriodDto(period.PeriodId, period.PauseDate, period.ResumeDate);
+        return new PausePeriodDto(period.PeriodId, period.PauseDate, period.ResumeDate, period.Via);
     }
 }
 
@@ -279,7 +280,8 @@ public sealed record SubscriptionDetailDto(
                 r.Change is { } c ? new PriceChangeDto(Money.FormatAmount(c.Amount, minor), c.Percent is { } p ? Money.FormatAmount(p, 1) : null) : null,
                 r.Current,
                 r.Upcoming,
-                r.Entry.PaymentOptionId))],
+                r.Entry.PaymentOptionId,
+                r.Entry.Via))],
             state.UnsubscribeUrl,
             UnsubscribeLink.Effective(state, catalog),
             Money.FormatAmount(Money.RoundHalfAwayFromZero(charge.Cost, minor), minor),

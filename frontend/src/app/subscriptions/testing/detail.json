@@ -37,7 +37,8 @@
       "change": null,
       "current": false,
       "upcoming": false,
-      "paymentOptionId": null
+      "paymentOptionId": null,
+      "via": null
     },
     {
       "entryId": "01a1eaf4c6897b6b9cee164a5680be86",
@@ -55,7 +56,8 @@
       },
       "current": false,
       "upcoming": false,
-      "paymentOptionId": null
+      "paymentOptionId": null,
+      "via": null
     },
     {
       "entryId": "01a1eaf4c6897e009f864a6b2620e625",
@@ -73,7 +75,8 @@
       },
       "current": true,
       "upcoming": false,
-      "paymentOptionId": null
+      "paymentOptionId": null,
+      "via": null
     },
     {
       "entryId": "01a1eaf4c6897afaad21bd0d78ecb7aa",
@@ -91,7 +94,8 @@
       },
       "current": false,
       "upcoming": true,
-      "paymentOptionId": null
+      "paymentOptionId": null,
+      "via": null
     }
   ],
   "unsubscribeUrl": "https://example.com/cancel",
@@ -107,7 +111,8 @@
     {
       "id": "01a1eaf4c6897729beec0b0c65241ac6",
       "pauseDate": "2026-10-28",
-      "resumeDate": "2026-11-07"
+      "resumeDate": "2026-11-07",
+      "via": null
     }
   ],
   "cancelBy": null,

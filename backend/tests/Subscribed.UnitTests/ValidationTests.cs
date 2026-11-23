@@ -159,7 +159,12 @@ public sealed class ValidationTests
             Assert.Contains(new ExpectedGrant(GrantObjectKind.Table, "subscribed.mt_doc_payment_option_view", privilege), expected);
         }
 
-        Assert.Equal(17, expected.Count(g => g.Kind != GrantObjectKind.Schema && g.ObjectName.StartsWith("subscribed.mt_", StringComparison.Ordinal)));
+        foreach (var privilege in new[] { "SELECT", "INSERT", "UPDATE" })
+        {
+            Assert.Contains(new ExpectedGrant(GrantObjectKind.Table, "subscribed.mt_doc_mcp_token_use", privilege), expected);
+        }
+
+        Assert.Equal(20, expected.Count(g => g.Kind != GrantObjectKind.Schema && g.ObjectName.StartsWith("subscribed.mt_", StringComparison.Ordinal)));
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http.Features;
 using Subscribed.Api.Configuration;
+using Subscribed.Api.Mcp;
 using Subscribed.Platform.EventStore;
 using Subscribed.Platform.Identity;
 using Subscribed.Platform.Problems;
@@ -90,7 +91,7 @@ public static class RequestGuards
 
             var path = context.Request.Path;
             if (string.IsNullOrEmpty(headers.CacheControl)
-                && (IsApiPath(path) || path.StartsWithSegments("/bff", StringComparison.Ordinal) || path.StartsWithSegments("/calendar", StringComparison.Ordinal) || path.StartsWithSegments("/health", StringComparison.Ordinal)
+                && (IsApiPath(path) || path.StartsWithSegments("/bff", StringComparison.Ordinal) || path.StartsWithSegments("/calendar", StringComparison.Ordinal) || McpRequestLimits.IsMcpPath(path) || path.StartsWithSegments("/health", StringComparison.Ordinal)
                     || path.StartsWithSegments(OidcSetup.CallbackPath, StringComparison.Ordinal) || headers.Location.Count > 0))
             {
                 headers.CacheControl = "no-store";

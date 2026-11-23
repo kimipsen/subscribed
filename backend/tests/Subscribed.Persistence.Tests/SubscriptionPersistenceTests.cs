@@ -497,17 +497,18 @@ public sealed class SubscriptionPersistenceTests(PostgresFixture pg)
     }
 
     [Fact]
-    public async Task Migration_is_idempotent_at_schema_version_3_with_no_drift_for_every_module()
+    public async Task Migration_is_idempotent_at_schema_version_4_with_no_drift_for_every_module()
     {
         await using var db = await pg.CreateDatabaseAsync();
         await SchemaMigrator.MigrateAsync(db.MigratorConnectionString, PostgresFixture.Schema, pg.AppRole, Modules, Ct);
         await using var migrator = MigratorStore(db);
         await migrator.Storage.Database.AssertDatabaseMatchesConfigurationAsync(Ct);
 
-        Assert.Equal(3, SchemaVersion.Current);
-        Assert.Equal(3, await db.ScalarAsMigratorAsync<int>("SELECT max(version) FROM subscribed.schema_migrations"));
+        Assert.Equal(4, SchemaVersion.Current);
+        Assert.Equal(4, await db.ScalarAsMigratorAsync<int>("SELECT max(version) FROM subscribed.schema_migrations"));
         Assert.Equal(1, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM pg_tables WHERE schemaname = 'subscribed' AND tablename = 'mt_doc_subscription_view'"));
         Assert.Equal(1, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM pg_tables WHERE schemaname = 'subscribed' AND tablename = 'mt_doc_payment_option_view'"));
+        Assert.Equal(1, await db.ScalarAsMigratorAsync<long>("SELECT count(*) FROM pg_tables WHERE schemaname = 'subscribed' AND tablename = 'mt_doc_mcp_token_use'"));
     }
 
     [Fact]
