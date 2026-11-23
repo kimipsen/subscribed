@@ -8,6 +8,8 @@ overview but is left out of the monthly and yearly totals, and its price history
 A subscription can also have a cancel-by deadline, and the household can subscribe a calendar app to a private
 iCal feed that reminds them 24 hours before and at the deadline (see
 [Calendar reminders](backend/README.md#calendar-reminders)).
+A household member can also give an AI assistant that speaks the Model Context Protocol (for example Claude Code) a
+revocable token, so the assistant can read and change the household's subscriptions; see [MCP server](docs/mcp.md).
 Underneath: Keycloak sign-in through a backend-for-frontend (HttpOnly cookie, no tokens in the
 browser), app-owned household membership, event-sourced `Household` and subscription streams on
 PostgreSQL (Marten), health/config validation, tests and a single-container Docker deployment.
@@ -19,6 +21,7 @@ PostgreSQL (Marten), health/config validation, tests and a single-container Dock
 | [`deploy/`](deploy/README.md) | Dockerfile, production compose (external PostgreSQL/Keycloak), provisioning template, dev Keycloak |
 | `scripts/integration-check.sh` | image + ephemeral PostgreSQL end-to-end check |
 | [`docs/subscription-catalog.md`](docs/subscription-catalog.md) | how the known-services catalog is maintained and verified |
+| [`docs/mcp.md`](docs/mcp.md) | the MCP server: tokens, connecting Claude Code, the 20 tools and the security model |
 | [`docs/dev-environment.md`](docs/dev-environment.md) | pinned development tools and container rebuild instructions |
 
 ## Run with Docker
